@@ -7,7 +7,10 @@
     <!-- 市场标签切换 -->
     <div class="av-tabs-wrap">
         <div class="av-tabs" id="marketTabs">
-            <button class="av-tab active" data-market="a_share">
+            <button class="av-tab active" data-market="watchlist">
+                <i class="bi bi-star"></i> 自选
+            </button>
+            <button class="av-tab" data-market="a_share">
                 <i class="bi bi-currency-yen"></i> A 股
             </button>
             <button class="av-tab" data-market="us_stock">
@@ -22,41 +25,86 @@
         </div>
     </div>
 
-    <!-- 市场概览指标条 -->
-    <div class="av-metrics" id="marketMetrics">
-        <div class="av-metric-card">
-            <div class="av-metric-label">今日推荐</div>
-            <div class="av-metric-value" id="metricCount">--</div>
+    <!-- ═══ 自选面板 ═══ -->
+    <div id="panelWatchlist">
+        <!-- 搜索添加框 -->
+        <div class="av-search-wrap">
+            <div class="av-search-box">
+                <i class="bi bi-search av-search-icon"></i>
+                <input type="text" id="searchInput" class="av-search-input"
+                       placeholder="搜索股票/基金代码或名称..." autocomplete="off">
+                <div class="av-search-dropdown" id="searchDropdown"></div>
+            </div>
         </div>
-        <div class="av-metric-card">
-            <div class="av-metric-label">看多信号</div>
-            <div class="av-metric-value text-success" id="metricBull">--</div>
+
+        <!-- 自选指标条 -->
+        <div class="av-metrics" id="watchlistMetrics">
+            <div class="av-metric-card">
+                <div class="av-metric-label">自选数量</div>
+                <div class="av-metric-value" id="wlCount">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">上涨</div>
+                <div class="av-metric-value text-success" id="wlUp">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">下跌</div>
+                <div class="av-metric-value text-danger" id="wlDown">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">持平</div>
+                <div class="av-metric-value" id="wlFlat">--</div>
+            </div>
         </div>
-        <div class="av-metric-card">
-            <div class="av-metric-label">看空信号</div>
-            <div class="av-metric-value text-danger" id="metricBear">--</div>
+
+        <div class="av-section-header">
+            <h6><i class="bi bi-star me-2"></i>我的自选</h6>
+            <span class="av-section-sub">点击上方搜索框添加标的</span>
         </div>
-        <div class="av-metric-card">
-            <div class="av-metric-label">综合情绪</div>
-            <div class="av-metric-value" id="metricSentiment">--</div>
+
+        <div id="watchlistCards" class="av-card-list"></div>
+
+        <div class="av-empty" id="watchlistEmpty" style="display:none;">
+            <i class="bi bi-star"></i>
+            <p>还没有添加自选</p>
+            <span>在上方搜索框输入股票代码或名称，点击搜索结果即可添加</span>
         </div>
     </div>
 
-    <!-- 推荐列表区域 -->
-    <div class="av-section-header">
-        <h6><i class="bi bi-stars me-2"></i>AI 投研推荐</h6>
-        <span class="av-section-sub" id="sectionSub">基于新闻面 + 技术面综合分析</span>
-    </div>
+    <!-- ═══ AI 报告面板 ═══ -->
+    <div id="panelReport" style="display:none;">
+        <!-- 报告指标条 -->
+        <div class="av-metrics">
+            <div class="av-metric-card">
+                <div class="av-metric-label">今日推荐</div>
+                <div class="av-metric-value" id="rptCount">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">看多信号</div>
+                <div class="av-metric-value text-success" id="rptBull">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">看空信号</div>
+                <div class="av-metric-value text-danger" id="rptBear">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">综合情绪</div>
+                <div class="av-metric-value" id="rptSentiment">--</div>
+            </div>
+        </div>
 
-    <div class="av-card-list" id="recommendList">
-        <!-- JS 动态渲染 -->
-    </div>
+        <div class="av-section-header">
+            <h6><i class="bi bi-stars me-2"></i>AI 投研报告</h6>
+            <span class="av-section-sub" id="rptDate">基于新闻面 + 技术面综合分析</span>
+        </div>
 
-    <!-- 空状态 -->
-    <div class="av-empty" id="emptyState" style="display:none;">
-        <i class="bi bi-robot"></i>
-        <p>AI 分析师正在准备中...</p>
-        <span>系统将在接入数据源后自动生成投研建议</span>
+        <div id="reportCards" class="av-card-list"></div>
+
+        <div class="av-empty" id="reportEmpty" style="display:none;">
+            <i class="bi bi-robot"></i>
+            <p>暂无报告</p>
+            <span>系统会在每天推送时间自动生成 AI 投研报告</span>
+        </div>
     </div>
 
 </div>
@@ -64,180 +112,205 @@
 
 {% block scripts %}
 <script>
-// ── Mock 数据（后续替换为真实 API 调用）──────────────────────────
-const MOCK_DATA = {
-    a_share: {
-        metrics: { count: 5, bull: 3, bear: 2, sentiment: "偏多" },
-        sentimentClass: "text-success",
-        items: [
-            {
-                ticker: "600519", name: "贵州茅台",
-                direction: "buy", dirLabel: "看多",
-                price: "1,680.00", change: "+2.35%",
-                confidence: 85,
-                newsReason: "白酒板块获外资连续3日净买入，消费复苏政策预期增强。茅台一季度营收同比增长18%，超市场预期。",
-                techReason: "日线 MACD 金叉，量价配合良好。站稳60日均线，上方压力位1,720。RSI 处于55附近，仍有上行空间。"
-            },
-            {
-                ticker: "300750", name: "宁德时代",
-                direction: "buy", dirLabel: "看多",
-                price: "198.50", change: "+1.82%",
-                confidence: 78,
-                newsReason: "欧盟新能源车补贴政策落地，全球动力电池需求加速。公司发布固态电池量产时间表。",
-                techReason: "周线级别底部放量，BOLL 中轨拐头向上。20日均线即将上穿60日均线形成多头排列。"
-            },
-            {
-                ticker: "601318", name: "中国平安",
-                direction: "sell", dirLabel: "看空",
-                price: "48.20", change: "-1.15%",
-                confidence: 72,
-                newsReason: "房地产信用风险暴露加剧，险资投资端承压。监管拟收紧保险资金地产投资比例。",
-                techReason: "跌破120日均线后反弹无力，MACD 死叉形态延续。成交量萎缩，多头动能不足。"
-            },
-            {
-                ticker: "002594", name: "比亚迪",
-                direction: "buy", dirLabel: "看多",
-                price: "265.30", change: "+3.10%",
-                confidence: 82,
-                newsReason: "3月新能源车销量再创历史新高，出口欧洲市场份额持续扩大。智能驾驶'天神之眼'获市场关注。",
-                techReason: "突破前期平台整理区间，放量突破。KDJ 超买但强势股特征明显，短期目标280。"
-            },
-            {
-                ticker: "000858", name: "五粮液",
-                direction: "sell", dirLabel: "看空",
-                price: "145.60", change: "-0.75%",
-                confidence: 65,
-                newsReason: "经销商库存压力增大，批价持续走低。行业竞争格局恶化，次高端价格带承压明显。",
-                techReason: "均线空头排列，价格运行在所有均线下方。MACD 绿柱持续放大，短期无止跌信号。"
-            }
-        ]
-    },
-    us_stock: {
-        metrics: { count: 4, bull: 3, bear: 1, sentiment: "强势" },
-        sentimentClass: "text-success",
-        items: [
-            {
-                ticker: "NVDA", name: "英伟达",
-                direction: "buy", dirLabel: "看多",
-                price: "$890.50", change: "+4.20%",
-                confidence: 90,
-                newsReason: "最新财报营收同比增长265%，数据中心业务爆发式增长。Blackwell 架构 GPU 订单排到明年Q2。",
-                techReason: "强势突破历史新高，成交量连续3日放大。所有均线多头排列，RSI 虽高但趋势行情中可持续。"
-            },
-            {
-                ticker: "AAPL", name: "苹果",
-                direction: "buy", dirLabel: "看多",
-                price: "$185.20", change: "+0.95%",
-                confidence: 75,
-                newsReason: "Apple Intelligence 生态持续完善，iPhone 换机周期临近。服务业务收入再创季度新高。",
-                techReason: "200日均线附近获强支撑反弹，MACD 即将金叉。历史上该位置反弹成功率超80%。"
-            },
-            {
-                ticker: "TSLA", name: "特斯拉",
-                direction: "sell", dirLabel: "看空",
-                price: "$175.30", change: "-2.80%",
-                confidence: 70,
-                newsReason: "全球交付量连续两季度下滑，价格战侵蚀利润率。FSD 自动驾驶监管审查趋严。",
-                techReason: "跌破200日均线，MACD 持续死叉。下方支撑位165，跌破则打开更大下行空间。"
-            },
-            {
-                ticker: "MSFT", name: "微软",
-                direction: "buy", dirLabel: "看多",
-                price: "$420.80", change: "+1.50%",
-                confidence: 88,
-                newsReason: "Azure 云服务增速重回30%以上，Copilot 企业客户渗透率超预期。AI 商业化变现逻辑最清晰。",
-                techReason: "沿20日均线稳步上行，布林带开口扩大。量价健康，强势整理后大概率继续向上。"
-            }
-        ]
-    },
-    hk_stock: {
-        metrics: { count: 3, bull: 2, bear: 1, sentiment: "中性" },
-        sentimentClass: "text-warning",
-        items: [
-            {
-                ticker: "0700.HK", name: "腾讯控股",
-                direction: "buy", dirLabel: "看多",
-                price: "HK$368.00", change: "+1.80%",
-                confidence: 80,
-                newsReason: "游戏版号常态化发放，视频号广告收入高速增长。回购力度创历史新高，管理层信心强。",
-                techReason: "周线三重底形态确认，突破颈线位360。MACD 零轴上方金叉，中期趋势转多。"
-            },
-            {
-                ticker: "9988.HK", name: "阿里巴巴",
-                direction: "buy", dirLabel: "看多",
-                price: "HK$82.50", change: "+2.40%",
-                confidence: 73,
-                newsReason: "云智能集团独立估值逻辑清晰，国际电商TEMU竞争压力缓解。新管理团队推进降本增效。",
-                techReason: "底部连续放量，突破下降趋势线。BOLL 开口向上，短期目标90港元。"
-            },
-            {
-                ticker: "1211.HK", name: "比亚迪股份",
-                direction: "sell", dirLabel: "看空",
-                price: "HK$225.00", change: "-1.20%",
-                confidence: 60,
-                newsReason: "港股估值较A股溢价收窄，南向资金流出。短期获利盘较重，有回调整理需求。",
-                techReason: "触及前高后放量回落，顶部K线组合偏空。KDJ 高位死叉，短期回调目标210-215。"
-            }
-        ]
-    },
-    fund: {
-        metrics: { count: 3, bull: 2, bear: 1, sentiment: "偏多" },
-        sentimentClass: "text-success",
-        items: [
-            {
-                ticker: "012414", name: "华夏中证半导体芯片ETF联接A",
-                direction: "buy", dirLabel: "推荐定投",
-                price: "0.8520", change: "+2.60%",
-                confidence: 82,
-                newsReason: "国产替代加速，半导体设备采购额创新高。AI 算力需求驱动芯片行业景气度上行。",
-                techReason: "净值回到近一年低位区间，估值处于历史20%分位。定投性价比极高。"
-            },
-            {
-                ticker: "110011", name: "易方达中小盘混合",
-                direction: "buy", dirLabel: "推荐",
-                price: "5.2380", change: "+1.10%",
-                confidence: 70,
-                newsReason: "中小盘风格持续占优，经济复苏利好成长股。基金经理张坤调仓偏向消费+科技。",
-                techReason: "净值突破近半年下降通道，月线MACD 金叉。中期修复行情可期。"
-            },
-            {
-                ticker: "007721", name: "易方达中概互联50ETF联接A",
-                direction: "sell", dirLabel: "减仓",
-                price: "0.6850", change: "-0.90%",
-                confidence: 62,
-                newsReason: "中美科技摩擦升温，中概股退市风险预期重燃。互联网监管政策不确定性增加。",
-                techReason: "净值再度逼近历史低点，下行趋势未改。建议等待企稳信号再考虑加仓。"
-            }
-        ]
+const MARKET_LABELS = {a_share:'A股', us_stock:'美股', hk_stock:'港股', fund:'基金'};
+let currentTab = 'watchlist';
+
+// ═══════════════════════════════════════════════════════════════
+// 标签切换
+// ═══════════════════════════════════════════════════════════════
+
+document.querySelectorAll('.av-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.av-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        currentTab = this.dataset.market;
+
+        if (currentTab === 'watchlist') {
+            document.getElementById('panelWatchlist').style.display = '';
+            document.getElementById('panelReport').style.display = 'none';
+            loadWatchlist();
+        } else {
+            document.getElementById('panelWatchlist').style.display = 'none';
+            document.getElementById('panelReport').style.display = '';
+            loadReport(currentTab);
+        }
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 搜索（TradingView 风格自动补全）
+// ═══════════════════════════════════════════════════════════════
+
+const searchInput = document.getElementById('searchInput');
+const searchDropdown = document.getElementById('searchDropdown');
+let searchTimer = null;
+
+searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    const q = this.value.trim();
+    if (q.length < 1) { searchDropdown.innerHTML = ''; searchDropdown.classList.remove('show'); return; }
+    searchTimer = setTimeout(() => doSearch(q), 200);
+});
+
+searchInput.addEventListener('focus', function() {
+    if (this.value.trim().length >= 1) doSearch(this.value.trim());
+});
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.av-search-box')) {
+        searchDropdown.classList.remove('show');
     }
-};
+});
 
-// ── 渲染逻辑 ───────────────────────────────────────────────────
+async function doSearch(q) {
+    const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const items = await resp.json();
+    if (items.length === 0) {
+        searchDropdown.innerHTML = '<div class="av-search-empty">无匹配结果</div>';
+        searchDropdown.classList.add('show');
+        return;
+    }
+    searchDropdown.innerHTML = items.map(s => `
+        <div class="av-search-item" data-ticker="${s.ticker}" data-name="${s.name}" data-market="${s.market}">
+            <span class="av-search-ticker">${s.ticker}</span>
+            <span class="av-search-name">${s.name}</span>
+            <span class="av-search-market">${MARKET_LABELS[s.market] || s.market}</span>
+        </div>
+    `).join('');
+    searchDropdown.classList.add('show');
 
-function renderMarket(market) {
-    const data = MOCK_DATA[market];
-    if (!data) return;
+    searchDropdown.querySelectorAll('.av-search-item').forEach(el => {
+        el.addEventListener('click', function() {
+            addToWatchlist(this.dataset.ticker, this.dataset.name, this.dataset.market);
+            searchInput.value = '';
+            searchDropdown.classList.remove('show');
+        });
+    });
+}
 
-    // 更新指标条
-    document.getElementById('metricCount').textContent = data.metrics.count;
-    document.getElementById('metricBull').textContent = data.metrics.bull;
-    document.getElementById('metricBear').textContent = data.metrics.bear;
-    const sentEl = document.getElementById('metricSentiment');
-    sentEl.textContent = data.metrics.sentiment;
-    sentEl.className = 'av-metric-value ' + data.sentimentClass;
+// ═══════════════════════════════════════════════════════════════
+// 自选管理
+// ═══════════════════════════════════════════════════════════════
 
-    // 渲染推荐卡片
-    const list = document.getElementById('recommendList');
-    const empty = document.getElementById('emptyState');
+async function addToWatchlist(ticker, name, market) {
+    const resp = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ticker, name, market})
+    });
+    if (resp.status === 409) { return; }
+    if (resp.ok) { loadWatchlist(); }
+}
 
-    if (data.items.length === 0) {
-        list.innerHTML = '';
-        empty.style.display = 'flex';
+async function removeFromWatchlist(id) {
+    await fetch(`/api/watchlist/${id}`, {method: 'DELETE'});
+    loadWatchlist();
+}
+
+async function loadWatchlist() {
+    // 先加载列表
+    const resp = await fetch('/api/watchlist');
+    const items = await resp.json();
+    const cardsEl = document.getElementById('watchlistCards');
+    const emptyEl = document.getElementById('watchlistEmpty');
+
+    if (items.length === 0) {
+        cardsEl.innerHTML = '';
+        emptyEl.style.display = 'flex';
+        document.getElementById('wlCount').textContent = '0';
+        document.getElementById('wlUp').textContent = '0';
+        document.getElementById('wlDown').textContent = '0';
+        document.getElementById('wlFlat').textContent = '0';
+        return;
+    }
+    emptyEl.style.display = 'none';
+    document.getElementById('wlCount').textContent = items.length;
+
+    // 先渲染无价格版本
+    renderWatchlistCards(items, cardsEl);
+
+    // 再异步加载行情
+    try {
+        const qResp = await fetch('/api/watchlist/quotes');
+        const quotes = await qResp.json();
+        let up = 0, down = 0, flat = 0;
+        quotes.forEach(q => {
+            if (q.change_pct > 0) up++;
+            else if (q.change_pct < 0) down++;
+            else flat++;
+        });
+        document.getElementById('wlUp').textContent = up;
+        document.getElementById('wlDown').textContent = down;
+        document.getElementById('wlFlat').textContent = flat;
+        renderWatchlistCards(quotes, cardsEl);
+    } catch(e) {
+        console.warn('行情加载失败', e);
+    }
+}
+
+function renderWatchlistCards(items, container) {
+    container.innerHTML = items.map(item => {
+        const hasPrice = item.price != null;
+        const changePct = item.change_pct != null ? item.change_pct : 0;
+        const changeClass = changePct > 0 ? 'up' : changePct < 0 ? 'down' : '';
+        const changeStr = changePct > 0 ? `+${changePct.toFixed(2)}%` : `${changePct.toFixed(2)}%`;
+        const wlId = item.watchlist_id || item.id;
+
+        return `
+        <div class="av-wl-card">
+            <div class="av-wl-left">
+                <span class="av-ticker">${item.ticker}</span>
+                <span class="av-name">${item.name || ''}</span>
+                <span class="av-wl-market">${MARKET_LABELS[item.market] || ''}</span>
+            </div>
+            <div class="av-wl-right">
+                ${hasPrice ? `
+                    <span class="av-price">${item.price}</span>
+                    <span class="av-change ${changeClass}">${changeStr}</span>
+                ` : `<span class="av-price av-loading">加载中...</span>`}
+                <button class="av-wl-remove" onclick="removeFromWatchlist(${wlId})" title="删除">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AI 报告加载
+// ═══════════════════════════════════════════════════════════════
+
+async function loadReport(market) {
+    const resp = await fetch(`/api/report?market=${market}`);
+    const result = await resp.json();
+    const cardsEl = document.getElementById('reportCards');
+    const emptyEl = document.getElementById('reportEmpty');
+
+    if (!result.data || !result.data.items || result.data.items.length === 0) {
+        cardsEl.innerHTML = '';
+        emptyEl.style.display = 'flex';
+        document.getElementById('rptCount').textContent = '--';
+        document.getElementById('rptBull').textContent = '--';
+        document.getElementById('rptBear').textContent = '--';
+        document.getElementById('rptSentiment').textContent = '--';
+        document.getElementById('rptDate').textContent = '暂无报告，系统会在推送时间自动生成';
         return;
     }
 
-    empty.style.display = 'none';
-    list.innerHTML = data.items.map(item => `
+    emptyEl.style.display = 'none';
+    const data = result.data;
+    document.getElementById('rptDate').textContent = `${result.report_date} 生成于 ${result.generated_at.slice(0,16).replace('T',' ')}`;
+
+    if (data.metrics) {
+        document.getElementById('rptCount').textContent = data.metrics.count || 0;
+        document.getElementById('rptBull').textContent = data.metrics.bull || 0;
+        document.getElementById('rptBear').textContent = data.metrics.bear || 0;
+        const sentEl = document.getElementById('rptSentiment');
+        sentEl.textContent = data.metrics.sentiment || '--';
+        sentEl.className = 'av-metric-value ' + (data.metrics.sentimentClass || '');
+    }
+
+    cardsEl.innerHTML = data.items.map(item => `
         <div class="av-rec-card">
             <div class="av-rec-header">
                 <div class="av-rec-title">
@@ -245,46 +318,32 @@ function renderMarket(market) {
                     <span class="av-name">${item.name}</span>
                 </div>
                 <div class="av-rec-right">
-                    <span class="av-price">${item.price}</span>
-                    <span class="av-change ${item.change.startsWith('+') ? 'up' : 'down'}">${item.change}</span>
+                    <span class="av-price">${item.price || ''}</span>
+                    <span class="av-change ${item.change && item.change.startsWith('+') ? 'up' : 'down'}">${item.change || ''}</span>
                 </div>
             </div>
-
             <div class="av-rec-badges">
                 <span class="av-badge-dir ${item.direction}">${item.dirLabel}</span>
-                <span class="av-badge-conf">
-                    <i class="bi bi-bullseye me-1"></i>置信度 ${item.confidence}%
-                </span>
-                <div class="av-conf-bar">
-                    <div class="av-conf-fill ${item.direction}" style="width:${item.confidence}%"></div>
-                </div>
+                <span class="av-badge-conf"><i class="bi bi-bullseye me-1"></i>置信度 ${item.confidence}%</span>
+                <div class="av-conf-bar"><div class="av-conf-fill ${item.direction}" style="width:${item.confidence}%"></div></div>
             </div>
-
             <div class="av-rec-analysis">
                 <div class="av-analysis-block">
                     <div class="av-analysis-tag news"><i class="bi bi-newspaper me-1"></i>新闻面</div>
-                    <p>${item.newsReason}</p>
+                    <p>${item.newsReason || '暂无分析'}</p>
                 </div>
                 <div class="av-analysis-block">
                     <div class="av-analysis-tag tech"><i class="bi bi-graph-up me-1"></i>技术面</div>
-                    <p>${item.techReason}</p>
+                    <p>${item.techReason || '暂无分析'}</p>
                 </div>
             </div>
         </div>
     `).join('');
 }
 
-// ── 标签切换 ───────────────────────────────────────────────────
-
-document.querySelectorAll('.av-tab').forEach(tab => {
-    tab.addEventListener('click', function() {
-        document.querySelectorAll('.av-tab').forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-        renderMarket(this.dataset.market);
-    });
-});
-
-// 默认加载 A 股
-renderMarket('a_share');
+// ═══════════════════════════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════════════════════════
+loadWatchlist();
 </script>
 {% endblock %}
