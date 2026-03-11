@@ -1,72 +1,290 @@
 {% extends "base.html" %}
-{% block title %}主页 - AI 投研系统{% endblock %}
+{% block title %}Alpha Vault - AI 投研{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
+<div class="av-container">
 
-        <!-- 欢迎横幅 -->
-        <div class="card border-0 shadow-sm bg-gradient-hero text-white mb-4">
-            <div class="card-body p-4 p-md-5 text-center">
-                <h2 class="fw-bold mb-2">
-                    <i class="bi bi-robot me-2"></i>欢迎 {{ current_user.username }}
-                </h2>
-                <p class="lead mb-0 opacity-90">AI 投研团队待命中</p>
-            </div>
+    <!-- 市场标签切换 -->
+    <div class="av-tabs-wrap">
+        <div class="av-tabs" id="marketTabs">
+            <button class="av-tab active" data-market="a_share">
+                <i class="bi bi-currency-yen"></i> A 股
+            </button>
+            <button class="av-tab" data-market="us_stock">
+                <i class="bi bi-currency-dollar"></i> 美股
+            </button>
+            <button class="av-tab" data-market="hk_stock">
+                <i class="bi bi-currency-exchange"></i> 港股
+            </button>
+            <button class="av-tab" data-market="fund">
+                <i class="bi bi-pie-chart"></i> 基金
+            </button>
         </div>
-
-        <!-- 状态卡片组 -->
-        <div class="row g-3">
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body">
-                        <i class="bi bi-broadcast fs-2 text-success"></i>
-                        <div class="fw-bold mt-2">系统状态</div>
-                        <small class="text-success">在线</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body">
-                        <i class="bi bi-telegram fs-2 text-primary"></i>
-                        <div class="fw-bold mt-2">推送通道</div>
-                        <small class="{% if current_user.tg_configured %}text-success{% else %}text-muted{% endif %}">
-                            {% if current_user.tg_configured %}已配置{% else %}未配置{% endif %}
-                        </small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body">
-                        <i class="bi bi-newspaper fs-2 text-warning"></i>
-                        <div class="fw-bold mt-2">新闻源</div>
-                        <small class="text-muted">待接入</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body">
-                        <i class="bi bi-cpu fs-2 text-info"></i>
-                        <div class="fw-bold mt-2">AI 分析</div>
-                        <small class="text-muted">待接入</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 快捷入口 -->
-        <div class="card border-0 shadow-sm mt-4">
-            <div class="card-body p-4">
-                <h5 class="mb-3"><i class="bi bi-lightning-charge me-2"></i>快捷操作</h5>
-                <a href="{{ url_for('settings') }}" class="btn btn-outline-primary me-2 mb-2">
-                    <i class="bi bi-gear me-1"></i>配置 Telegram 推送
-                </a>
-            </div>
-        </div>
-
     </div>
+
+    <!-- 市场概览指标条 -->
+    <div class="av-metrics" id="marketMetrics">
+        <div class="av-metric-card">
+            <div class="av-metric-label">今日推荐</div>
+            <div class="av-metric-value" id="metricCount">--</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">看多信号</div>
+            <div class="av-metric-value text-success" id="metricBull">--</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">看空信号</div>
+            <div class="av-metric-value text-danger" id="metricBear">--</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">综合情绪</div>
+            <div class="av-metric-value" id="metricSentiment">--</div>
+        </div>
+    </div>
+
+    <!-- 推荐列表区域 -->
+    <div class="av-section-header">
+        <h6><i class="bi bi-stars me-2"></i>AI 投研推荐</h6>
+        <span class="av-section-sub" id="sectionSub">基于新闻面 + 技术面综合分析</span>
+    </div>
+
+    <div class="av-card-list" id="recommendList">
+        <!-- JS 动态渲染 -->
+    </div>
+
+    <!-- 空状态 -->
+    <div class="av-empty" id="emptyState" style="display:none;">
+        <i class="bi bi-robot"></i>
+        <p>AI 分析师正在准备中...</p>
+        <span>系统将在接入数据源后自动生成投研建议</span>
+    </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Mock 数据（后续替换为真实 API 调用）──────────────────────────
+const MOCK_DATA = {
+    a_share: {
+        metrics: { count: 5, bull: 3, bear: 2, sentiment: "偏多" },
+        sentimentClass: "text-success",
+        items: [
+            {
+                ticker: "600519", name: "贵州茅台",
+                direction: "buy", dirLabel: "看多",
+                price: "1,680.00", change: "+2.35%",
+                confidence: 85,
+                newsReason: "白酒板块获外资连续3日净买入，消费复苏政策预期增强。茅台一季度营收同比增长18%，超市场预期。",
+                techReason: "日线 MACD 金叉，量价配合良好。站稳60日均线，上方压力位1,720。RSI 处于55附近，仍有上行空间。"
+            },
+            {
+                ticker: "300750", name: "宁德时代",
+                direction: "buy", dirLabel: "看多",
+                price: "198.50", change: "+1.82%",
+                confidence: 78,
+                newsReason: "欧盟新能源车补贴政策落地，全球动力电池需求加速。公司发布固态电池量产时间表。",
+                techReason: "周线级别底部放量，BOLL 中轨拐头向上。20日均线即将上穿60日均线形成多头排列。"
+            },
+            {
+                ticker: "601318", name: "中国平安",
+                direction: "sell", dirLabel: "看空",
+                price: "48.20", change: "-1.15%",
+                confidence: 72,
+                newsReason: "房地产信用风险暴露加剧，险资投资端承压。监管拟收紧保险资金地产投资比例。",
+                techReason: "跌破120日均线后反弹无力，MACD 死叉形态延续。成交量萎缩，多头动能不足。"
+            },
+            {
+                ticker: "002594", name: "比亚迪",
+                direction: "buy", dirLabel: "看多",
+                price: "265.30", change: "+3.10%",
+                confidence: 82,
+                newsReason: "3月新能源车销量再创历史新高，出口欧洲市场份额持续扩大。智能驾驶'天神之眼'获市场关注。",
+                techReason: "突破前期平台整理区间，放量突破。KDJ 超买但强势股特征明显，短期目标280。"
+            },
+            {
+                ticker: "000858", name: "五粮液",
+                direction: "sell", dirLabel: "看空",
+                price: "145.60", change: "-0.75%",
+                confidence: 65,
+                newsReason: "经销商库存压力增大，批价持续走低。行业竞争格局恶化，次高端价格带承压明显。",
+                techReason: "均线空头排列，价格运行在所有均线下方。MACD 绿柱持续放大，短期无止跌信号。"
+            }
+        ]
+    },
+    us_stock: {
+        metrics: { count: 4, bull: 3, bear: 1, sentiment: "强势" },
+        sentimentClass: "text-success",
+        items: [
+            {
+                ticker: "NVDA", name: "英伟达",
+                direction: "buy", dirLabel: "看多",
+                price: "$890.50", change: "+4.20%",
+                confidence: 90,
+                newsReason: "最新财报营收同比增长265%，数据中心业务爆发式增长。Blackwell 架构 GPU 订单排到明年Q2。",
+                techReason: "强势突破历史新高，成交量连续3日放大。所有均线多头排列，RSI 虽高但趋势行情中可持续。"
+            },
+            {
+                ticker: "AAPL", name: "苹果",
+                direction: "buy", dirLabel: "看多",
+                price: "$185.20", change: "+0.95%",
+                confidence: 75,
+                newsReason: "Apple Intelligence 生态持续完善，iPhone 换机周期临近。服务业务收入再创季度新高。",
+                techReason: "200日均线附近获强支撑反弹，MACD 即将金叉。历史上该位置反弹成功率超80%。"
+            },
+            {
+                ticker: "TSLA", name: "特斯拉",
+                direction: "sell", dirLabel: "看空",
+                price: "$175.30", change: "-2.80%",
+                confidence: 70,
+                newsReason: "全球交付量连续两季度下滑，价格战侵蚀利润率。FSD 自动驾驶监管审查趋严。",
+                techReason: "跌破200日均线，MACD 持续死叉。下方支撑位165，跌破则打开更大下行空间。"
+            },
+            {
+                ticker: "MSFT", name: "微软",
+                direction: "buy", dirLabel: "看多",
+                price: "$420.80", change: "+1.50%",
+                confidence: 88,
+                newsReason: "Azure 云服务增速重回30%以上，Copilot 企业客户渗透率超预期。AI 商业化变现逻辑最清晰。",
+                techReason: "沿20日均线稳步上行，布林带开口扩大。量价健康，强势整理后大概率继续向上。"
+            }
+        ]
+    },
+    hk_stock: {
+        metrics: { count: 3, bull: 2, bear: 1, sentiment: "中性" },
+        sentimentClass: "text-warning",
+        items: [
+            {
+                ticker: "0700.HK", name: "腾讯控股",
+                direction: "buy", dirLabel: "看多",
+                price: "HK$368.00", change: "+1.80%",
+                confidence: 80,
+                newsReason: "游戏版号常态化发放，视频号广告收入高速增长。回购力度创历史新高，管理层信心强。",
+                techReason: "周线三重底形态确认，突破颈线位360。MACD 零轴上方金叉，中期趋势转多。"
+            },
+            {
+                ticker: "9988.HK", name: "阿里巴巴",
+                direction: "buy", dirLabel: "看多",
+                price: "HK$82.50", change: "+2.40%",
+                confidence: 73,
+                newsReason: "云智能集团独立估值逻辑清晰，国际电商TEMU竞争压力缓解。新管理团队推进降本增效。",
+                techReason: "底部连续放量，突破下降趋势线。BOLL 开口向上，短期目标90港元。"
+            },
+            {
+                ticker: "1211.HK", name: "比亚迪股份",
+                direction: "sell", dirLabel: "看空",
+                price: "HK$225.00", change: "-1.20%",
+                confidence: 60,
+                newsReason: "港股估值较A股溢价收窄，南向资金流出。短期获利盘较重，有回调整理需求。",
+                techReason: "触及前高后放量回落，顶部K线组合偏空。KDJ 高位死叉，短期回调目标210-215。"
+            }
+        ]
+    },
+    fund: {
+        metrics: { count: 3, bull: 2, bear: 1, sentiment: "偏多" },
+        sentimentClass: "text-success",
+        items: [
+            {
+                ticker: "012414", name: "华夏中证半导体芯片ETF联接A",
+                direction: "buy", dirLabel: "推荐定投",
+                price: "0.8520", change: "+2.60%",
+                confidence: 82,
+                newsReason: "国产替代加速，半导体设备采购额创新高。AI 算力需求驱动芯片行业景气度上行。",
+                techReason: "净值回到近一年低位区间，估值处于历史20%分位。定投性价比极高。"
+            },
+            {
+                ticker: "110011", name: "易方达中小盘混合",
+                direction: "buy", dirLabel: "推荐",
+                price: "5.2380", change: "+1.10%",
+                confidence: 70,
+                newsReason: "中小盘风格持续占优，经济复苏利好成长股。基金经理张坤调仓偏向消费+科技。",
+                techReason: "净值突破近半年下降通道，月线MACD 金叉。中期修复行情可期。"
+            },
+            {
+                ticker: "007721", name: "易方达中概互联50ETF联接A",
+                direction: "sell", dirLabel: "减仓",
+                price: "0.6850", change: "-0.90%",
+                confidence: 62,
+                newsReason: "中美科技摩擦升温，中概股退市风险预期重燃。互联网监管政策不确定性增加。",
+                techReason: "净值再度逼近历史低点，下行趋势未改。建议等待企稳信号再考虑加仓。"
+            }
+        ]
+    }
+};
+
+// ── 渲染逻辑 ───────────────────────────────────────────────────
+
+function renderMarket(market) {
+    const data = MOCK_DATA[market];
+    if (!data) return;
+
+    // 更新指标条
+    document.getElementById('metricCount').textContent = data.metrics.count;
+    document.getElementById('metricBull').textContent = data.metrics.bull;
+    document.getElementById('metricBear').textContent = data.metrics.bear;
+    const sentEl = document.getElementById('metricSentiment');
+    sentEl.textContent = data.metrics.sentiment;
+    sentEl.className = 'av-metric-value ' + data.sentimentClass;
+
+    // 渲染推荐卡片
+    const list = document.getElementById('recommendList');
+    const empty = document.getElementById('emptyState');
+
+    if (data.items.length === 0) {
+        list.innerHTML = '';
+        empty.style.display = 'flex';
+        return;
+    }
+
+    empty.style.display = 'none';
+    list.innerHTML = data.items.map(item => `
+        <div class="av-rec-card">
+            <div class="av-rec-header">
+                <div class="av-rec-title">
+                    <span class="av-ticker">${item.ticker}</span>
+                    <span class="av-name">${item.name}</span>
+                </div>
+                <div class="av-rec-right">
+                    <span class="av-price">${item.price}</span>
+                    <span class="av-change ${item.change.startsWith('+') ? 'up' : 'down'}">${item.change}</span>
+                </div>
+            </div>
+
+            <div class="av-rec-badges">
+                <span class="av-badge-dir ${item.direction}">${item.dirLabel}</span>
+                <span class="av-badge-conf">
+                    <i class="bi bi-bullseye me-1"></i>置信度 ${item.confidence}%
+                </span>
+                <div class="av-conf-bar">
+                    <div class="av-conf-fill ${item.direction}" style="width:${item.confidence}%"></div>
+                </div>
+            </div>
+
+            <div class="av-rec-analysis">
+                <div class="av-analysis-block">
+                    <div class="av-analysis-tag news"><i class="bi bi-newspaper me-1"></i>新闻面</div>
+                    <p>${item.newsReason}</p>
+                </div>
+                <div class="av-analysis-block">
+                    <div class="av-analysis-tag tech"><i class="bi bi-graph-up me-1"></i>技术面</div>
+                    <p>${item.techReason}</p>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ── 标签切换 ───────────────────────────────────────────────────
+
+document.querySelectorAll('.av-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.av-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        renderMarket(this.dataset.market);
+    });
+});
+
+// 默认加载 A 股
+renderMarket('a_share');
+</script>
 {% endblock %}

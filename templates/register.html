@@ -1,48 +1,34 @@
 {% extends "base.html" %}
-{% block title %}注册 - AI 投研系统{% endblock %}
+{% block title %}注册 - Alpha Vault{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-11 col-sm-8 col-md-5 col-lg-4">
-        <div class="card shadow-sm border-0 mt-4">
-            <div class="card-body p-4">
-                <h3 class="text-center mb-4">
-                    <i class="bi bi-person-plus me-2"></i>注册新账号
-                </h3>
-                <form method="POST" action="{{ url_for('register') }}">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">用户名</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-person"></i></span>
-                            <input type="text" class="form-control" id="username"
-                                   name="username" required autofocus placeholder="请输入用户名">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">密码</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-key"></i></span>
-                            <input type="password" class="form-control" id="password"
-                                   name="password" required placeholder="至少 6 位">
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <label for="confirm" class="form-label">确认密码</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-key-fill"></i></span>
-                            <input type="password" class="form-control" id="confirm"
-                                   name="confirm" required placeholder="再次输入密码">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100 py-2 fw-bold">
-                        <i class="bi bi-check-circle me-1"></i>注 册
-                    </button>
-                </form>
-                <hr>
-                <p class="text-center text-muted mb-0">
-                    已有账号？<a href="{{ url_for('login') }}">去登录</a>
-                </p>
+<div class="av-auth-wrap">
+    <div class="av-auth-card">
+        <div class="av-auth-title">创建账号</div>
+        <div class="av-auth-subtitle">注册后即可使用 AI 投研功能</div>
+
+        <form method="POST" action="{{ url_for('register') }}">
+            <div class="mb-3">
+                <label for="username" class="form-label">用户名</label>
+                <input type="text" class="form-control" id="username"
+                       name="username" required autofocus placeholder="请输入用户名">
             </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">密码</label>
+                <input type="password" class="form-control" id="password"
+                       name="password" required placeholder="至少 6 位">
+            </div>
+            <div class="mb-4">
+                <label for="confirm" class="form-label">确认密码</label>
+                <input type="password" class="form-control" id="confirm"
+                       name="confirm" required placeholder="再次输入密码">
+            </div>
+            <button type="submit" class="av-auth-btn success">注 册</button>
+        </form>
+
+        <hr class="av-divider">
+        <div class="av-auth-footer">
+            已有账号？<a href="{{ url_for('login') }}">去登录</a>
         </div>
     </div>
 </div>
