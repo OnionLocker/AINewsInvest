@@ -1014,6 +1014,78 @@ body {
 
 /* 鈹€鈹€ 鍝嶅簲寮� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
+/* ── 异动标签 ────────────────────────────────────────────────────── */
+
+.av-badge-screened {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--av-warning);
+    background: var(--av-warning-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* ── 历史报告页面 ────────────────────────────────────────────────── */
+
+.av-hist-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    background: var(--av-surface);
+    border: 1px solid var(--av-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 8px;
+}
+
+.av-hist-row:hover {
+    border-color: var(--av-primary);
+    box-shadow: 0 0 0 3px var(--av-focus-ring);
+}
+
+.av-hist-date {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--av-text);
+    white-space: nowrap;
+    min-width: 130px;
+}
+
+.av-hist-stats {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+.av-hist-tag {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--av-text-secondary);
+    background: var(--av-bg);
+    padding: 2px 10px;
+    border-radius: 4px;
+}
+
+.av-hist-tag.text-success { color: var(--av-success) !important; }
+.av-hist-tag.text-danger  { color: var(--av-danger) !important; }
+.av-hist-tag.text-warning { color: var(--av-warning) !important; }
+
+.av-hist-time {
+    font-size: 12px;
+    color: var(--av-text-muted);
+    white-space: nowrap;
+}
+
+.av-hist-arrow {
+    color: var(--av-text-muted);
+    font-size: 14px;
+}
+
 @media (max-width: 768px) {
     .av-metrics          { grid-template-columns: repeat(2, 1fr); }
     .av-rec-analysis     { grid-template-columns: 1fr; }
@@ -1028,6 +1100,9 @@ body {
     .av-wl-right         { width: 100%; justify-content: flex-end; }
     .av-tp-grid          { grid-template-columns: repeat(2, 1fr); }
     .av-tp-bar           { font-size: 9px; }
+    .av-hist-row         { flex-wrap: wrap; gap: 8px; }
+    .av-hist-date        { min-width: auto; width: 100%; }
+    .av-hist-stats       { width: 100%; }
 }
 
 @media (max-width: 480px) {

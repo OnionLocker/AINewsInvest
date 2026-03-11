@@ -129,6 +129,12 @@ def job_us_premarket():
     push_market_report("us_stock")
 
 
+def job_track_accuracy():
+    """每日收盘后追踪推荐准确率"""
+    from scripts.track_accuracy import run as track_run
+    track_run()
+
+
 def main():
     from utils.logger import app_logger
 
@@ -155,7 +161,15 @@ def main():
         name="美股冬令时 21:30 推送",
     )
 
+    scheduler.add_job(
+        job_track_accuracy,
+        CronTrigger(hour=17, minute=0, timezone="Asia/Shanghai"),
+        id="track_accuracy",
+        name="准确率追踪 17:00",
+    )
+
     app_logger.info("定时推送调度器已启动")
+    app_logger.info("  准确率追踪:  北京时间 17:00")
     app_logger.info("  A股/港股/基金: 北京时间 08:00")
     app_logger.info("  美股夏令时:    北京时间 20:30")
     app_logger.info("  美股冬令时:    北京时间 21:30")

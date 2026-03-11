@@ -1,9 +1,10 @@
 """
 models.py - SQLAlchemy 数据模型
 
-User     → 用户账号 + Telegram 加密配置
-Watchlist → 用户自选标的
-DailyReport → 每日 AI 投研报告
+User               → 用户账号 + Telegram 加密配置
+Watchlist          → 用户自选标的
+DailyReport        → 每日 AI 投研报告
+RecommendationTrack → 推荐准确率追踪
 """
 from datetime import datetime, date
 from flask_sqlalchemy import SQLAlchemy
@@ -70,3 +71,44 @@ class DailyReport(db.Model):
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
     data = db.Column(db.Text, nullable=False)  # JSON 字符串，包含推荐列表
     pushed = db.Column(db.Boolean, default=False)
+
+    tracks = db.relationship("RecommendationTrack", backref="report", lazy="dynamic", cascade="all, delete-orphan")
+
+
+class RecommendationTrack(db.Model):
+    """
+    推荐准确率追踪
+
+    报告生成时为每条推荐创建一条记录，后续定时任务回填实际价格。
+    outcome 字段在 N 天后根据价格走势自动判定。
+    """
+    __tablename__ = "recommendation_tracks"
+    __table_args__ = (
+        db.UniqueConstraint("report_id", "ticker", name="uq_report_ticker"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, db.ForeignKey("daily_reports.id"), nullable=False, index=True)
+    ticker = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    market = db.Column(db.String(20), nullable=False)
+
+    direction = db.Column(db.String(10), nullable=False)  # buy / sell
+    entry_price = db.Column(db.Float, nullable=False)
+    stop_loss = db.Column(db.Float, nullable=False)
+    take_profit_1 = db.Column(db.Float, nullable=False)
+    take_profit_2 = db.Column(db.Float, nullable=False)
+    confidence = db.Column(db.Integer, default=0)
+
+    price_after_1d = db.Column(db.Float)
+    price_after_3d = db.Column(db.Float)
+    price_after_5d = db.Column(db.Float)
+    price_after_10d = db.Column(db.Float)
+
+    hit_tp1 = db.Column(db.Boolean)
+    hit_tp2 = db.Column(db.Boolean)
+    hit_sl = db.Column(db.Boolean)
+    outcome = db.Column(db.String(20))  # win / loss / partial / pending / expired
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

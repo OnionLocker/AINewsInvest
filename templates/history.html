@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Alpha Vault - 历史报告{% endblock %}
+
+{% block content %}
+<div class="av-container">
+
+    <div class="av-tabs-wrap">
+        <div class="av-tabs" id="histTabs">
+            <button class="av-tab active" data-market="a_share">
+                <i class="bi bi-currency-yen"></i> A 股
+            </button>
+            <button class="av-tab" data-market="us_stock">
+                <i class="bi bi-currency-dollar"></i> 美股
+            </button>
+            <button class="av-tab" data-market="hk_stock">
+                <i class="bi bi-currency-exchange"></i> 港股
+            </button>
+            <button class="av-tab" data-market="fund">
+                <i class="bi bi-pie-chart"></i> 基金
+            </button>
+        </div>
+    </div>
+
+    <!-- 准确率统计 -->
+    <div class="av-metrics" id="statsMetrics">
+        <div class="av-metric-card">
+            <div class="av-metric-label">总推荐数</div>
+            <div class="av-metric-value" id="statTotal">--</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">胜率</div>
+            <div class="av-metric-value text-success" id="statWinRate">--%</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">盈利</div>
+            <div class="av-metric-value text-success" id="statWin">--</div>
+        </div>
+        <div class="av-metric-card">
+            <div class="av-metric-label">亏损</div>
+            <div class="av-metric-value text-danger" id="statLoss">--</div>
+        </div>
+    </div>
+
+    <div class="av-section-header">
+        <h6><i class="bi bi-clock-history me-2"></i>历史报告列表</h6>
+        <span class="av-section-sub" id="histInfo">点击查看某日报告详情</span>
+    </div>
+
+    <!-- 报告日期列表 -->
+    <div id="reportList" class="av-card-list"></div>
+
+    <div class="av-empty" id="histEmpty" style="display:none;">
+        <i class="bi bi-clock-history"></i>
+        <p>暂无历史报告</p>
+        <span>报告在每天推送时间自动生成，或在首页手动生成</span>
+    </div>
+
+    <!-- 展开的报告详情 -->
+    <div id="reportDetail" style="display:none; margin-top:24px;">
+        <div class="av-section-header">
+            <h6><i class="bi bi-file-earmark-text me-2"></i><span id="detailTitle">报告详情</span></h6>
+            <button class="av-generate-btn" onclick="closeDetail()">
+                <i class="bi bi-x-lg"></i>关闭
+            </button>
+        </div>
+        <div id="detailCards" class="av-card-list"></div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MARKET_LABELS = {a_share:'A股', us_stock:'美股', hk_stock:'港股', fund:'基金'};
+let currentMarket = 'a_share';
+
+// ═══════════════════════════════════════════════════════════════
+// Tab 切换
+// ═══════════════════════════════════════════════════════════════
+
+document.querySelectorAll('#histTabs .av-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('#histTabs .av-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        currentMarket = this.dataset.market;
+        loadHistory(currentMarket);
+        loadStats(currentMarket);
+        closeDetail();
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 准确率统计
+// ═══════════════════════════════════════════════════════════════
+
+async function loadStats(market) {
+    try {
+        const resp = await fetch(`/api/accuracy?market=${market}`);
+        const data = await resp.json();
+        document.getElementById('statTotal').textContent = data.total || 0;
+        document.getElementById('statWin').textContent = data.win || 0;
+        document.getElementById('statLoss').textContent = data.loss || 0;
+        const rate = data.total > 0 ? ((data.win / data.total) * 100).toFixed(1) : '--';
+        document.getElementById('statWinRate').textContent = rate + '%';
+    } catch(e) {
+        console.error('Stats load error', e);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 历史报告列表
+// ═══════════════════════════════════════════════════════════════
+
+async function loadHistory(market) {
+    const resp = await fetch(`/api/report/history?market=${market}`);
+    const reports = await resp.json();
+    const listEl = document.getElementById('reportList');
+    const emptyEl = document.getElementById('histEmpty');
+
+    if (!reports || reports.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.style.display = 'flex';
+        document.getElementById('histInfo').textContent = '暂无报告记录';
+        return;
+    }
+    emptyEl.style.display = 'none';
+    document.getElementById('histInfo').textContent = `共 ${reports.length} 份报告`;
+
+    listEl.innerHTML = reports.map(r => {
+        const m = r.metrics || {};
+        const sentClass = m.sentimentClass || '';
+        return `
+        <div class="av-hist-row" onclick="loadDetail('${market}','${r.report_date}')">
+            <div class="av-hist-date">
+                <i class="bi bi-calendar3 me-2"></i>${r.report_date}
+            </div>
+            <div class="av-hist-stats">
+                <span class="av-hist-tag">${m.count || 0} 只</span>
+                <span class="av-hist-tag text-success">${m.bull || 0} 多</span>
+                <span class="av-hist-tag text-danger">${m.bear || 0} 空</span>
+                <span class="av-hist-tag ${sentClass}">${m.sentiment || ''}</span>
+            </div>
+            <div class="av-hist-time">${r.generated_at ? r.generated_at.slice(11,16) : ''}</div>
+            <i class="bi bi-chevron-right av-hist-arrow"></i>
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 报告详情展开
+// ═══════════════════════════════════════════════════════════════
+
+async function loadDetail(market, dateStr) {
+    const resp = await fetch(`/api/report?market=${market}&date=${dateStr}`);
+    const result = await resp.json();
+    const detailEl = document.getElementById('reportDetail');
+    const cardsEl = document.getElementById('detailCards');
+
+    if (!result.data || !result.data.items) {
+        cardsEl.innerHTML = '<div class="av-empty"><p>报告数据为空</p></div>';
+        detailEl.style.display = '';
+        return;
+    }
+
+    document.getElementById('detailTitle').textContent =
+        `${MARKET_LABELS[market] || market} ${dateStr} 报告`;
+    detailEl.style.display = '';
+
+    cardsEl.innerHTML = result.data.items.map(item => {
+        const isBuy = item.direction === 'buy';
+        const changeClass = item.change && item.change.startsWith('+') ? 'up' : 'down';
+        const hasTP = item.entry !== undefined;
+
+        return `
+        <div class="av-rec-card">
+            <div class="av-rec-header">
+                <div class="av-rec-title">
+                    <span class="av-ticker">${item.ticker}</span>
+                    <span class="av-name">${item.name}</span>
+                    ${item.screened ? `<span class="av-badge-screened"><i class="bi bi-lightning me-1"></i>${item.screenReason || '异动'}</span>` : ''}
+                </div>
+                <div class="av-rec-right">
+                    <span class="av-price">${item.price || ''}</span>
+                    <span class="av-change ${changeClass}">${item.change || ''}</span>
+                </div>
+            </div>
+            <div class="av-rec-badges">
+                <span class="av-badge-dir ${item.direction}">${item.dirLabel}</span>
+                <span class="av-badge-conf"><i class="bi bi-bullseye me-1"></i>置信度 ${item.confidence}%</span>
+                ${item.risk_reward ? `<span class="av-badge-rr"><i class="bi bi-shield-check me-1"></i>${item.risk_reward}</span>` : ''}
+                <div class="av-conf-bar"><div class="av-conf-fill ${item.direction}" style="width:${item.confidence}%"></div></div>
+            </div>
+            ${hasTP ? `
+            <div class="av-trading-plan">
+                <div class="av-tp-title"><i class="bi bi-crosshair me-1"></i>交易计划</div>
+                <div class="av-tp-grid">
+                    <div class="av-tp-item av-tp-entry">
+                        <span class="av-tp-label">入场</span>
+                        <span class="av-tp-value">${item.entry}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-sl">
+                        <span class="av-tp-label">止损</span>
+                        <span class="av-tp-value">${item.stop_loss}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-tp1">
+                        <span class="av-tp-label">止盈一</span>
+                        <span class="av-tp-value">${item.take_profit_1}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-tp2">
+                        <span class="av-tp-label">止盈二</span>
+                        <span class="av-tp-value">${item.take_profit_2}</span>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+            <div class="av-rec-analysis">
+                <div class="av-analysis-block">
+                    <div class="av-analysis-tag news"><i class="bi bi-newspaper me-1"></i>新闻面</div>
+                    <p>${item.newsReason || '暂无'}</p>
+                </div>
+                <div class="av-analysis-block">
+                    <div class="av-analysis-tag tech"><i class="bi bi-graph-up me-1"></i>技术面</div>
+                    <p>${item.techReason || '暂无'}</p>
+                </div>
+            </div>
+            ${item.llmReason ? `
+            <div class="av-analysis-block" style="margin-top:12px;">
+                <div class="av-analysis-tag" style="color:var(--av-primary);background:var(--av-primary-light);">
+                    <i class="bi bi-robot me-1"></i>AI 深度分析
+                </div>
+                <p>${item.llmReason}</p>
+            </div>
+            ` : ''}
+        </div>`;
+    }).join('');
+
+    detailEl.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function closeDetail() {
+    document.getElementById('reportDetail').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════════════════════════
+loadHistory('a_share');
+loadStats('a_share');
+</script>
+{% endblock %}

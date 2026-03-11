@@ -325,6 +325,7 @@ async function loadReport(market) {
                 <div class="av-rec-title">
                     <span class="av-ticker">${item.ticker}</span>
                     <span class="av-name">${item.name}</span>
+                    ${item.screened ? `<span class="av-badge-screened"><i class="bi bi-lightning me-1"></i>${item.screenReason || '异动'}</span>` : ''}
                 </div>
                 <div class="av-rec-right">
                     <span class="av-price">${item.price || ''}</span>
@@ -385,6 +386,14 @@ async function loadReport(market) {
                     <p>${item.techReason || '暂无分析'}</p>
                 </div>
             </div>
+            ${item.llmReason ? `
+            <div class="av-analysis-block" style="margin-top:12px;">
+                <div class="av-analysis-tag" style="color:var(--av-primary);background:var(--av-primary-light);">
+                    <i class="bi bi-robot me-1"></i>AI 深度分析
+                </div>
+                <p>${item.llmReason}</p>
+            </div>
+            ` : ''}
         </div>`;
     }).join('');
 }

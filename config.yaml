@@ -3,7 +3,7 @@
 
 app:
   name: "AI 投研系统"
-  version: "0.1.0"
+  version: "0.2.0"
   host: "0.0.0.0"
   port: 5000
   debug: false
@@ -19,10 +19,29 @@ notify:
   telegram_timeout: 10       # Telegram API 请求超时（秒）
   webhook_timeout: 10        # Webhook 请求超时（秒）
 
-# 未来扩展区（当前阶段不启用）
-# news:
-#   fetch_interval: 1800     # 新闻抓取间隔（秒）
-#   sources: []
-# ai:
-#   model: ""
-#   api_key_env: "OPENAI_API_KEY"
+# ═══════════════════════════════════════════════════════
+# LLM 设置（兼容 OpenAI API 协议）
+# 支持：OpenClaw / vLLM / Ollama / ChatGPT / DeepSeek
+# ═══════════════════════════════════════════════════════
+llm:
+  enabled: false              # 设为 true 启用 LLM 深度分析
+  base_url: ""                # 例: http://127.0.0.1:8000 (OpenClaw/vLLM)
+                              #     http://127.0.0.1:11434 (Ollama)
+                              #     https://api.openai.com  (ChatGPT)
+                              #     https://api.deepseek.com (DeepSeek)
+  model: ""                   # 模型名称，例: openclaw-7b / llama3 / gpt-4o / deepseek-chat
+  api_key: ""                 # 可留空（本地部署通常不需要 key）
+  temperature: 0.3            # 生成温度，越低越确定
+  max_tokens: 2048            # 单次最大生成 token
+  timeout: 60                 # 请求超时（秒）
+
+# 股票筛选参数
+screener:
+  vol_multiplier: 2.0         # 量能放大倍数阈值
+  price_change_threshold: 3.0 # 日涨跌幅异常阈值 (%)
+  max_screened_per_market: 10 # 每市场最多筛出标的数
+
+# 准确率追踪
+tracking:
+  eval_days: 10               # 评估周期（交易日）
+  auto_expire: true           # 超期自动标记 expired
