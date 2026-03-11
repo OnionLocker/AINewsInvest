@@ -1,8 +1,8 @@
-/* ══════════════════════════════════════════════════════════════
-   Alpha Vault - 设计系统（Light / Dark 双主题）
-   ══════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   Alpha Vault - 璁捐绯荤粺锛圠ight / Dark 鍙屼富棰橈級
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
-/* ── Light 主题（默认）──────────────────────────────────────── */
+/* 鈹€鈹€ Light 涓婚锛堥粯璁わ級鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 :root,
 [data-theme="light"] {
@@ -39,7 +39,7 @@
     color-scheme: light;
 }
 
-/* ── Dark 主题 ─────────────────────────────────────────────── */
+/* 鈹€鈹€ Dark 涓婚 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 [data-theme="dark"] {
     --av-bg:              #0f1117;
@@ -75,7 +75,7 @@
     color-scheme: dark;
 }
 
-/* ── 基础重置 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 鍩虹閲嶇疆 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -88,7 +88,7 @@ body {
     transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* ── 主题过渡动画 ──────────────────────────────────────────── */
+/* 鈹€鈹€ 涓婚杩囨浮鍔ㄧ敾 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-navbar, .av-rec-card, .av-metric-card, .av-tabs,
 .av-auth-card, .av-settings-card, .av-info-card,
@@ -96,7 +96,7 @@ body {
     transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 }
 
-/* ── 顶部导航栏 ────────────────────────────────────────────── */
+/* 鈹€鈹€ 椤堕儴瀵艰埅鏍� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-navbar {
     background: var(--av-surface);
@@ -170,14 +170,14 @@ body {
     color: var(--av-text);
 }
 
-/* 主题切换按钮图标 */
+/* 涓婚鍒囨崲鎸夐挳鍥炬爣 */
 .av-theme-btn .bi-moon-fill   { display: none; }
 .av-theme-btn .bi-sun-fill    { display: none; }
 
 [data-theme="light"] .av-theme-btn .bi-moon-fill  { display: inline; }
 [data-theme="dark"]  .av-theme-btn .bi-sun-fill   { display: inline; }
 
-/* ── 闪现消息 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 闂幇娑堟伅 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-flash-wrap {
     max-width: 960px;
@@ -191,14 +191,14 @@ body {
     border: none;
 }
 
-/* dark 模式下 Bootstrap alert 颜色修正 */
+/* dark 妯″紡涓� Bootstrap alert 棰滆壊淇 */
 [data-theme="dark"] .alert-success { background: var(--av-success-bg); color: var(--av-success); border: 1px solid var(--av-success-border); }
 [data-theme="dark"] .alert-danger  { background: var(--av-danger-bg);  color: var(--av-danger);  border: 1px solid var(--av-danger-border); }
 [data-theme="dark"] .alert-warning { background: var(--av-warning-bg); color: var(--av-warning); border: 1px solid #854d0e; }
 [data-theme="dark"] .alert-info    { background: var(--av-tag-tech-bg); color: var(--av-tag-tech); border: 1px solid #0c4a6e; }
 [data-theme="dark"] .btn-close     { filter: invert(1) grayscale(100%) brightness(200%); }
 
-/* ── 主容器 ────────────────────────────────────────────────── */
+/* 鈹€鈹€ 涓诲鍣� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-main {
     max-width: 960px;
@@ -210,7 +210,7 @@ body {
     padding: 20px 0 60px;
 }
 
-/* ── 市场标签 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 甯傚満鏍囩 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-tabs-wrap {
     display: flex;
@@ -256,7 +256,7 @@ body {
 
 .av-tab i { font-size: 14px; }
 
-/* ── 指标条 ────────────────────────────────────────────────── */
+/* 鈹€鈹€ 鎸囨爣鏉� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-metrics {
     display: grid;
@@ -290,7 +290,7 @@ body {
 .av-metric-value.text-danger  { color: var(--av-danger)  !important; }
 .av-metric-value.text-warning { color: var(--av-warning) !important; }
 
-/* ── 区域标题 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 鍖哄煙鏍囬 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-section-header {
     display: flex;
@@ -312,7 +312,7 @@ body {
     color: var(--av-text-muted);
 }
 
-/* ── 推荐卡片 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 鎺ㄨ崘鍗＄墖 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-card-list {
     display: flex;
@@ -387,7 +387,7 @@ body {
 .av-change.up   { color: var(--av-success); background: var(--av-success-bg); }
 .av-change.down { color: var(--av-danger);  background: var(--av-danger-bg); }
 
-/* 标签行 */
+/* 鏍囩琛� */
 .av-rec-badges {
     display: flex;
     align-items: center;
@@ -429,7 +429,171 @@ body {
 .av-conf-fill.buy  { background: var(--av-success); }
 .av-conf-fill.sell { background: var(--av-danger); }
 
-/* 分析区域 */
+/* 椋庨櫓鍥炴姤鏍囩 */
+.av-badge-rr {
+    font-size: 12px;
+    color: var(--av-text-muted);
+}
+
+/* 鈹€鈹€ 浜ゆ槗璁″垝鍖哄煙 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+
+.av-trading-plan {
+    background: var(--av-bg);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid var(--av-border);
+}
+
+.av-tp-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--av-text);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.av-tp-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.av-tp-item {
+    text-align: center;
+    padding: 10px 6px;
+    border-radius: 6px;
+}
+
+.av-tp-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--av-text-muted);
+    margin-bottom: 4px;
+}
+
+.av-tp-value {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.av-tp-entry {
+    background: var(--av-primary-light);
+}
+
+.av-tp-entry .av-tp-value {
+    color: var(--av-primary);
+}
+
+.av-tp-sl {
+    background: var(--av-danger-bg);
+}
+
+.av-tp-sl .av-tp-value {
+    color: var(--av-danger);
+}
+
+.av-tp-tp1 {
+    background: var(--av-success-bg);
+}
+
+.av-tp-tp1 .av-tp-value {
+    color: var(--av-success);
+}
+
+.av-tp-tp2 {
+    background: var(--av-success-bg);
+}
+
+.av-tp-tp2 .av-tp-value {
+    color: var(--av-success);
+}
+
+/* 鍙鍖栦环浣嶆潯 */
+.av-tp-visual {
+    margin-top: 4px;
+}
+
+.av-tp-bar {
+    display: flex;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.av-tp-zone {
+    padding: 6px 4px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.av-zone-sl {
+    background: var(--av-danger-bg);
+    color: var(--av-danger);
+    border: 1px solid var(--av-danger-border);
+}
+
+.av-zone-entry {
+    background: var(--av-primary-light);
+    color: var(--av-primary);
+    border-top: 1px solid var(--av-border);
+    border-bottom: 1px solid var(--av-border);
+}
+
+.av-zone-tp1 {
+    background: var(--av-success-bg);
+    color: var(--av-success);
+    border: 1px solid var(--av-success-border);
+}
+
+.av-zone-tp2 {
+    background: var(--av-success-bg);
+    color: var(--av-success);
+    border: 1px solid var(--av-success-border);
+    opacity: 0.8;
+}
+
+/* 鎵嬪姩鐢熸垚鎶ュ憡鎸夐挳 */
+.av-generate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: var(--av-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.av-generate-btn:hover {
+    background: var(--av-primary-hover);
+}
+
+.av-generate-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.av-generate-btn .spinner-border {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+}
+
+/* 鍒嗘瀽鍖哄煙 */
 .av-rec-analysis {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -462,7 +626,7 @@ body {
 .av-analysis-tag.news { color: var(--av-tag-news); background: var(--av-tag-news-bg); }
 .av-analysis-tag.tech { color: var(--av-tag-tech); background: var(--av-tag-tech-bg); }
 
-/* ── 空状态 ────────────────────────────────────────────────── */
+/* 鈹€鈹€ 绌虹姸鎬� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-empty {
     display: flex;
@@ -477,7 +641,7 @@ body {
 .av-empty p  { font-size: 16px; font-weight: 500; margin-bottom: 4px; color: var(--av-text-secondary); }
 .av-empty span { font-size: 13px; }
 
-/* ── 登录 / 注册页面 ──────────────────────────────────────── */
+/* 鈹€鈹€ 鐧诲綍 / 娉ㄥ唽椤甸潰 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-auth-wrap {
     min-height: calc(100vh - 56px);
@@ -578,7 +742,7 @@ body {
     margin: 24px 0;
 }
 
-/* ── 设置页面 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 璁剧疆椤甸潰 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-settings-card {
     background: var(--av-surface);
@@ -645,7 +809,7 @@ body {
     color: var(--av-tag-tech);
 }
 
-/* ── 通用按钮 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 閫氱敤鎸夐挳 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-btn {
     padding: 9px 20px;
@@ -666,7 +830,7 @@ body {
 .av-btn.outline-success       { background: transparent; border-color: var(--av-success); color: var(--av-success); }
 .av-btn.outline-success:hover { background: var(--av-success-bg); }
 
-/* ── 搜索框（TradingView 风格）──────────────────────────────── */
+/* 鈹€鈹€ 鎼滅储妗嗭紙TradingView 椋庢牸锛夆攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-search-wrap {
     margin-bottom: 24px;
@@ -781,7 +945,7 @@ body {
     font-size: 13px;
 }
 
-/* ── 自选卡片 ──────────────────────────────────────────────── */
+/* 鈹€鈹€ 鑷€夊崱鐗� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .av-wl-card {
     display: flex;
@@ -848,7 +1012,7 @@ body {
     font-size: 13px !important;
 }
 
-/* ── 响应式 ────────────────────────────────────────────────── */
+/* 鈹€鈹€ 鍝嶅簲寮� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 @media (max-width: 768px) {
     .av-metrics          { grid-template-columns: repeat(2, 1fr); }
@@ -862,6 +1026,8 @@ body {
     .av-wl-card          { flex-wrap: wrap; gap: 8px; }
     .av-wl-left          { width: 100%; }
     .av-wl-right         { width: 100%; justify-content: flex-end; }
+    .av-tp-grid          { grid-template-columns: repeat(2, 1fr); }
+    .av-tp-bar           { font-size: 9px; }
 }
 
 @media (max-width: 480px) {

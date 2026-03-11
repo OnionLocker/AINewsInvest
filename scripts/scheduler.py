@@ -3,8 +3,8 @@ scripts/scheduler.py - 定时推送调度器
 
 推送时间（北京时间 UTC+8）：
   - A 股 / 港股 / 基金：每天 08:00
-  - 美股夏令时（3月第2个周日 ~ 11月第1个周日）：每天 20:30（美东 08:30）
-  - 美股冬令时：每天 21:30（美东 08:30）
+  - 美股夏令时：每天 20:30（美东 08:30，开盘前1小时）
+  - 美股冬令时：每天 21:30（美东 08:30，开盘前1小时）
 
 用法：
   python scripts/scheduler.py          # 前台运行
@@ -20,16 +20,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-BJT = timezone(timedelta(hours=8))
-
-
-def is_us_dst() -> bool:
-    """判断当前是否处于美国夏令时"""
-    from zoneinfo import ZoneInfo
-    eastern = ZoneInfo("America/New_York")
-    now_et = datetime.now(eastern)
-    return bool(now_et.dst())
-
 
 def push_market_report(market: str):
     """生成指定市场的每日报告并推送给所有配置了 Telegram 的用户"""
@@ -37,6 +27,7 @@ def push_market_report(market: str):
     from models import db, User, DailyReport
     from utils.logger import app_logger
     from utils.notifier import make_notifier
+    from analysis.report_generator import generate_report
 
     with app.app_context():
         today = date.today()
@@ -46,16 +37,9 @@ def push_market_report(market: str):
             app_logger.info(f"[调度] {market} 今日报告已推送过，跳过")
             return
 
-        # TODO: 接入真实 AI 分析引擎生成报告数据
-        # 当前使用占位数据，后续替换为：
-        #   1. 拉取新闻（news_fetcher）
-        #   2. 拉取技术指标（market_data）
-        #   3. AI 综合分析生成推荐
-        report_data = {
-            "metrics": {"count": 0, "bull": 0, "bear": 0, "sentiment": "待生成"},
-            "items": [],
-            "note": "AI 分析引擎尚未接入，报告将在接入后自动生成。"
-        }
+        # 生成报告
+        app_logger.info(f"[调度] 开始生成 {market} 报告...")
+        report_data = generate_report(market)
 
         if not existing:
             report = DailyReport(
@@ -87,26 +71,44 @@ def push_market_report(market: str):
             try:
                 token, chat_id = user.get_tg_config()
                 notify = make_notifier(token, chat_id)
-                if notify:
-                    items_text = ""
-                    for item in report_data.get("items", []):
-                        direction = item.get("dirLabel", "")
-                        items_text += f"\n  {direction} {item['name']}({item['ticker']}) {item.get('price','')}"
+                if not notify:
+                    continue
 
-                    if not items_text:
-                        items_text = "\n  AI 分析引擎准备中，敬请期待"
+                # 构造推送消息
+                items = report_data.get("items", [])
+                metrics = report_data.get("metrics", {})
 
-                    msg = (
-                        f"<b>Alpha Vault {market_name}日报</b>\n"
-                        f"━━━━━━━━━━━━━━\n"
-                        f"日期：{today.isoformat()}\n"
-                        f"推荐：{report_data['metrics']['count']} 只\n"
-                        f"情绪：{report_data['metrics']['sentiment']}\n"
-                        f"\n<b>推荐标的</b>{items_text}\n"
-                        f"\n详情请登录 Alpha Vault 查看"
+                msg_parts = [
+                    f"<b>Alpha Vault {market_name}日报</b>",
+                    f"━━━━━━━━━━━━━━",
+                    f"日期：{today.isoformat()}",
+                    f"推荐：{metrics.get('count', 0)} 只 | 情绪：{metrics.get('sentiment', 'N/A')}",
+                    "",
+                ]
+
+                # 只取前 5 只推送（避免消息太长）
+                for item in items[:5]:
+                    emoji = "🟢" if item["direction"] == "buy" else "🔴"
+                    msg_parts.append(
+                        f"{emoji} <b>{item['name']}</b>({item['ticker']}) {item['dirLabel']}"
                     )
-                    if notify(msg):
-                        pushed_count += 1
+                    msg_parts.append(
+                        f"   价格 {item['price']} {item['change']}"
+                    )
+                    msg_parts.append(
+                        f"   入场 {item['entry']} | 止损 {item['stop_loss']} | 止盈 {item['take_profit_1']}"
+                    )
+                    msg_parts.append(f"   置信度 {item['confidence']}% | 风险回报 {item['risk_reward']}")
+                    msg_parts.append("")
+
+                if not items:
+                    msg_parts.append("暂无推荐标的")
+
+                msg_parts.append("详情请登录 Alpha Vault 查看完整分析")
+                msg = "\n".join(msg_parts)
+
+                if notify(msg):
+                    pushed_count += 1
             except Exception as e:
                 app_logger.warning(f"[调度] 推送给 {user.username} 失败: {e}")
 
@@ -123,7 +125,7 @@ def job_cn_morning():
 
 
 def job_us_premarket():
-    """美股盘前 - 根据夏冬令时自动判断"""
+    """美股盘前"""
     push_market_report("us_stock")
 
 
@@ -132,7 +134,6 @@ def main():
 
     scheduler = BlockingScheduler(timezone="Asia/Shanghai")
 
-    # A股/港股/基金：北京时间每天 08:00
     scheduler.add_job(
         job_cn_morning,
         CronTrigger(hour=8, minute=0, timezone="Asia/Shanghai"),
@@ -140,7 +141,6 @@ def main():
         name="A股/港股/基金 08:00 推送",
     )
 
-    # 美股夏令时：北京时间 20:30（美东 08:30，开盘前1小时）
     scheduler.add_job(
         job_us_premarket,
         CronTrigger(hour=20, minute=30, timezone="Asia/Shanghai"),
@@ -148,7 +148,6 @@ def main():
         name="美股夏令时 20:30 推送",
     )
 
-    # 美股冬令时：北京时间 21:30（美东 08:30，开盘前1小时）
     scheduler.add_job(
         job_us_premarket,
         CronTrigger(hour=21, minute=30, timezone="Asia/Shanghai"),

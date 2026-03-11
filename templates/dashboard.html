@@ -95,7 +95,12 @@
 
         <div class="av-section-header">
             <h6><i class="bi bi-stars me-2"></i>AI 投研报告</h6>
-            <span class="av-section-sub" id="rptDate">基于新闻面 + 技术面综合分析</span>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span class="av-section-sub" id="rptDate">基于新闻面 + 技术面综合分析</span>
+                <button class="av-generate-btn" id="btnGenerate" onclick="generateReport()">
+                    <i class="bi bi-lightning-charge"></i>立即生成
+                </button>
+            </div>
         </div>
 
         <div id="reportCards" class="av-card-list"></div>
@@ -310,7 +315,11 @@ async function loadReport(market) {
         sentEl.className = 'av-metric-value ' + (data.metrics.sentimentClass || '');
     }
 
-    cardsEl.innerHTML = data.items.map(item => `
+    cardsEl.innerHTML = data.items.map(item => {
+        const hasTP = item.entry !== undefined;
+        const isBuy = item.direction === 'buy';
+        const changeClass = item.change && item.change.startsWith('+') ? 'up' : 'down';
+        return `
         <div class="av-rec-card">
             <div class="av-rec-header">
                 <div class="av-rec-title">
@@ -319,14 +328,53 @@ async function loadReport(market) {
                 </div>
                 <div class="av-rec-right">
                     <span class="av-price">${item.price || ''}</span>
-                    <span class="av-change ${item.change && item.change.startsWith('+') ? 'up' : 'down'}">${item.change || ''}</span>
+                    <span class="av-change ${changeClass}">${item.change || ''}</span>
                 </div>
             </div>
             <div class="av-rec-badges">
                 <span class="av-badge-dir ${item.direction}">${item.dirLabel}</span>
                 <span class="av-badge-conf"><i class="bi bi-bullseye me-1"></i>置信度 ${item.confidence}%</span>
+                ${item.risk_reward ? `<span class="av-badge-rr"><i class="bi bi-shield-check me-1"></i>风险回报 ${item.risk_reward}</span>` : ''}
                 <div class="av-conf-bar"><div class="av-conf-fill ${item.direction}" style="width:${item.confidence}%"></div></div>
             </div>
+            ${hasTP ? `
+            <div class="av-trading-plan">
+                <div class="av-tp-title"><i class="bi bi-crosshair me-1"></i>交易计划</div>
+                <div class="av-tp-grid">
+                    <div class="av-tp-item av-tp-entry">
+                        <span class="av-tp-label">入场价位</span>
+                        <span class="av-tp-value">${item.entry}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-sl">
+                        <span class="av-tp-label">止损价位</span>
+                        <span class="av-tp-value">${item.stop_loss}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-tp1">
+                        <span class="av-tp-label">止盈一</span>
+                        <span class="av-tp-value">${item.take_profit_1}</span>
+                    </div>
+                    <div class="av-tp-item av-tp-tp2">
+                        <span class="av-tp-label">止盈二</span>
+                        <span class="av-tp-value">${item.take_profit_2}</span>
+                    </div>
+                </div>
+                <div class="av-tp-visual">
+                    <div class="av-tp-bar">
+                        ${isBuy ? `
+                        <div class="av-tp-zone av-zone-sl" style="flex:1;">SL ${item.stop_loss}</div>
+                        <div class="av-tp-zone av-zone-entry" style="flex:0.5;">入 ${item.entry}</div>
+                        <div class="av-tp-zone av-zone-tp1" style="flex:1;">TP1 ${item.take_profit_1}</div>
+                        <div class="av-tp-zone av-zone-tp2" style="flex:1;">TP2 ${item.take_profit_2}</div>
+                        ` : `
+                        <div class="av-tp-zone av-zone-tp2" style="flex:1;">TP2 ${item.take_profit_2}</div>
+                        <div class="av-tp-zone av-zone-tp1" style="flex:1;">TP1 ${item.take_profit_1}</div>
+                        <div class="av-tp-zone av-zone-entry" style="flex:0.5;">入 ${item.entry}</div>
+                        <div class="av-tp-zone av-zone-sl" style="flex:1;">SL ${item.stop_loss}</div>
+                        `}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
             <div class="av-rec-analysis">
                 <div class="av-analysis-block">
                     <div class="av-analysis-tag news"><i class="bi bi-newspaper me-1"></i>新闻面</div>
@@ -337,8 +385,37 @@ async function loadReport(market) {
                     <p>${item.techReason || '暂无分析'}</p>
                 </div>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 手动生成报告
+// ═══════════════════════════════════════════════════════════════
+
+async function generateReport() {
+    if (currentTab === 'watchlist') return;
+    const btn = document.getElementById('btnGenerate');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 生成中...';
+    try {
+        const resp = await fetch('/api/report/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({market: currentTab})
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            loadReport(currentTab);
+        } else {
+            alert(result.error || '生成失败');
+        }
+    } catch(e) {
+        alert('网络错误');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

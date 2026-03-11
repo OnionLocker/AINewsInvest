@@ -291,6 +291,44 @@ def api_report():
     )
 
 
+# ────────────────────────── API: 手动生成报告 ──────────────────────────
+
+@app.route("/api/report/generate", methods=["POST"])
+@login_required
+def api_report_generate():
+    """手动触发报告生成（前端"立即生成"按钮）"""
+    data = request.get_json(silent=True) or {}
+    market = data.get("market", "a_share")
+    valid_markets = {"a_share", "us_stock", "hk_stock", "fund"}
+    if market not in valid_markets:
+        return jsonify(error="无效的市场参数"), 400
+
+    try:
+        from analysis.report_generator import generate_report
+        report_data = generate_report(market)
+
+        today = date.today()
+        existing = DailyReport.query.filter_by(market=market, report_date=today).first()
+        if existing:
+            existing.data = json.dumps(report_data, ensure_ascii=False)
+            existing.generated_at = datetime.utcnow()
+        else:
+            report = DailyReport(
+                market=market,
+                report_date=today,
+                data=json.dumps(report_data, ensure_ascii=False),
+                pushed=False,
+            )
+            db.session.add(report)
+        db.session.commit()
+
+        app_logger.info(f"用户 {current_user.username} 手动生成 {market} 报告")
+        return jsonify(status="ok", market=market)
+    except Exception as e:
+        app_logger.error(f"手动生成报告失败: {e}")
+        return jsonify(error=str(e)), 500
+
+
 # ────────────────────────── 启动入口 ──────────────────────────
 
 if __name__ == "__main__":
