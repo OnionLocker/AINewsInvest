@@ -1,0 +1,28 @@
+# config.yaml - AI 投研系统全局配置
+# 修改此文件不需要重启，系统会自动热重载
+
+app:
+  name: "AI 投研系统"
+  version: "0.1.0"
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+# Gunicorn 生产部署参数
+gunicorn:
+  workers: 2
+  bind: "0.0.0.0:5000"
+  timeout: 120
+
+# 通知设置
+notify:
+  telegram_timeout: 10       # Telegram API 请求超时（秒）
+  webhook_timeout: 10        # Webhook 请求超时（秒）
+
+# 未来扩展区（当前阶段不启用）
+# news:
+#   fetch_interval: 1800     # 新闻抓取间隔（秒）
+#   sources: []
+# ai:
+#   model: ""
+#   api_key_env: "OPENAI_API_KEY"

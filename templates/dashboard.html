@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}主页 - AI 投研系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- 欢迎横幅 -->
+        <div class="card border-0 shadow-sm bg-gradient-hero text-white mb-4">
+            <div class="card-body p-4 p-md-5 text-center">
+                <h2 class="fw-bold mb-2">
+                    <i class="bi bi-robot me-2"></i>欢迎 {{ current_user.username }}
+                </h2>
+                <p class="lead mb-0 opacity-90">AI 投研团队待命中</p>
+            </div>
+        </div>
+
+        <!-- 状态卡片组 -->
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-broadcast fs-2 text-success"></i>
+                        <div class="fw-bold mt-2">系统状态</div>
+                        <small class="text-success">在线</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-telegram fs-2 text-primary"></i>
+                        <div class="fw-bold mt-2">推送通道</div>
+                        <small class="{% if current_user.tg_configured %}text-success{% else %}text-muted{% endif %}">
+                            {% if current_user.tg_configured %}已配置{% else %}未配置{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-newspaper fs-2 text-warning"></i>
+                        <div class="fw-bold mt-2">新闻源</div>
+                        <small class="text-muted">待接入</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-cpu fs-2 text-info"></i>
+                        <div class="fw-bold mt-2">AI 分析</div>
+                        <small class="text-muted">待接入</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快捷入口 -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-body p-4">
+                <h5 class="mb-3"><i class="bi bi-lightning-charge me-2"></i>快捷操作</h5>
+                <a href="{{ url_for('settings') }}" class="btn btn-outline-primary me-2 mb-2">
+                    <i class="bi bi-gear me-1"></i>配置 Telegram 推送
+                </a>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
