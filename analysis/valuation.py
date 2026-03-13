@@ -86,6 +86,11 @@ def _valuate_core(data: dict, price: float) -> dict:
     ev_ebitda = _calc_ev_ebitda(market_info, latest)
     safety = _calc_safety_margin(price, floor.get("average"))
 
+    cigbutt = None
+    pb = market_info.get("pb")
+    if data["market"] == "a_share" and pb is not None and pb < 1.5:
+        cigbutt = _cigbutt_asset_cushion(indicators, market_info, total_shares)
+
     result = {
         "ticker": data["ticker"],
         "market": data["market"],
@@ -93,6 +98,7 @@ def _valuate_core(data: dict, price: float) -> dict:
         "penetration_return": penetration,
         "ev_ebitda": ev_ebitda,
         "safety_margin": safety,
+        "cigbutt": cigbutt,
         "valuation_summary": "",
     }
     result["valuation_summary"] = _build_summary(result)
@@ -255,6 +261,89 @@ def _calc_safety_margin(current_price: float,
     }
 
 
+
+# ══════════════════════════════════════════════════════════════
+# 烟蒂股资产垫分析 (A股 PB<1.5 时触发)
+# ══════════════════════════════════════════════════════════════
+
+def _cigbutt_asset_cushion(indicators: list[dict], market_info: dict,
+                           total_shares: float | None) -> dict | None:
+    """
+    参考烟蒂股 Prompt v1.8 的三层资产垫体系:
+    T0: 净有息负债 / EBITDA < 3 (负债安全度)
+    T1: (现金+短期投资 - 有息负债) / 市值 (净现金占比)
+    T2: (净流动资产 - 总负债) / 市值 (Ben Graham NCAV 折价)
+
+    仅在 A股 + PB<1.5 时调用, 用于识别深度价值标的。
+    """
+    latest = indicators[0] if indicators else {}
+    market_cap_yi = market_info.get("market_cap")
+    if not market_cap_yi or market_cap_yi <= 0:
+        return None
+
+    market_cap_wan = market_cap_yi * 1e4
+
+    net_profit = latest.get("net_profit")
+    total_debt = latest.get("total_debt")
+    current_assets = latest.get("current_assets")
+
+    cash = latest.get("cash", 0) or 0
+    short_invest = latest.get("short_invest", 0) or 0
+    interest_debt = latest.get("interest_debt") or total_debt or 0
+
+    # T0: 净有息负债 / EBITDA
+    t0_ratio = None
+    t0_safe = None
+    if net_profit and net_profit > 0 and interest_debt is not None:
+        net_margin = latest.get("net_margin")
+        if net_margin and net_margin > 0:
+            revenue_approx = net_profit / (net_margin / 100)
+            ebitda_approx = revenue_approx * 0.15
+            if ebitda_approx > 0:
+                net_interest_debt = interest_debt - cash - short_invest
+                t0_ratio = round(net_interest_debt / ebitda_approx, 2)
+                t0_safe = t0_ratio < 3
+
+    # T1: (现金+短投 - 有息负债) / 市值
+    t1_ratio = None
+    if market_cap_wan > 0:
+        net_cash = (cash + short_invest - interest_debt)
+        t1_ratio = round(net_cash / market_cap_wan * 100, 2)
+
+    # T2: NCAV / 市值 (Ben Graham 公式)
+    t2_ratio = None
+    if current_assets is not None and total_debt is not None and market_cap_wan > 0:
+        ncav = current_assets - total_debt
+        t2_ratio = round(ncav / market_cap_wan * 100, 2)
+
+    # 综合评级
+    score = 0
+    if t0_safe is True:
+        score += 1
+    if t1_ratio is not None and t1_ratio > 0:
+        score += 1
+    if t2_ratio is not None and t2_ratio > 50:
+        score += 1
+
+    if score >= 3:
+        grade = "强资产垫"
+    elif score >= 2:
+        grade = "中等资产垫"
+    elif score >= 1:
+        grade = "弱资产垫"
+    else:
+        grade = "无资产垫"
+
+    return {
+        "t0_net_debt_ebitda": t0_ratio,
+        "t0_safe": t0_safe,
+        "t1_net_cash_pct": t1_ratio,
+        "t2_ncav_pct": t2_ratio,
+        "score": score,
+        "grade": grade,
+    }
+
+
 # ══════════════════════════════════════════════════════════════
 # 文字总结
 # ══════════════════════════════════════════════════════════════
@@ -296,5 +385,11 @@ def _build_summary(result: dict) -> str:
             parts.append(f"EV/EBITDA约{ev_val:.0f}倍，估值合理。")
         else:
             parts.append(f"EV/EBITDA约{ev_val:.0f}倍，估值偏高。")
+
+    # 烟蒂股资产垫
+    cig = result.get("cigbutt")
+    if cig:
+        grade = cig.get("grade", "")
+        parts.append(f"资产垫评级: {grade}。")
 
     return "".join(parts) if parts else "估值数据不足，无法生成完整评估。"

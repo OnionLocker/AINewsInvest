@@ -156,6 +156,43 @@ _NEWS_SUMMARY_PROMPT = """你是一位资深金融新闻分析师。请分析以
 {news_list}
 """
 
+_CIGBUTT_ANALYSIS_PROMPT = """你是一位深度价值投资分析师，请按照烟蒂股分析框架评估该标的。
+
+## 标的: {ticker} ({name})
+
+## 三支柱评估
+请对以下三支柱逐一评估:
+1. **资产垫**: T0(净有息负债/EBITDA<3) T1(净现金/市值>0) T2(NCAV/市值, Ben Graham公式)
+2. **低维护CAPEX**: 资本开支/折旧 < 1.2 且 资本开支/营收 < 5%
+3. **资产变现逻辑**: A(分红提升) B(回购/减资) C(并购/私有化) 是否存在催化剂
+
+## Fact Check (逐项回答 是/否/不确定):
+1. 净有息负债/EBITDA < 3?
+2. 近3年审计意见为标准无保留?
+3. 近3年无重大违规/立案/大额诉讼?
+4. 控股股东质押比例 < 50%?
+5. 是否存在大额商誉(商誉/净资产>20%)?
+6. 近3年是否有异常关联交易?
+7. 经营活动现金流净额是否持续为正?
+8. 应收账款占营收比例是否合理(<30%)?
+9. 管理层是否有增持/回购动作?
+10. 是否存在明确的价值释放催化剂(分红提升、资产注入等)?
+
+## 数据
+{data}
+
+## 综合结论
+- 是否符合烟蒂股标准 (是/否/边缘)
+- 核心投资逻辑 (3句话)
+- 主要风险 (2-3个)
+- 建议操作 (买入区间/仓位建议/持有条件)
+
+## 要求
+- 中文回答，简洁专业，600字以内
+- 数据不足的项目标注"数据不足"，不要编造
+"""
+
+
 
 # ══════════════════════════════════════════════════════════════
 # 高层业务接口
@@ -230,6 +267,57 @@ def llm_summarize_news(news_items: list[dict]) -> str | None:
         {"role": "user", "content": prompt},
     ]
     return chat_completion(messages)
+
+
+def llm_cigbutt_analyze(
+    ticker: str,
+    name: str,
+    fundamental_data: dict | None = None,
+    valuation_data: dict | None = None,
+) -> dict | None:
+    """
+    用烟蒂股专用 Prompt 对 A股低PB标的做深度价值分析。
+    仅在 deep_analysis + A股 + PB<1.5 时调用。
+
+    返回: {"cigbutt_analysis": str, "available": True} 或 None
+    """
+    if not _is_enabled():
+        return None
+
+    data_lines = []
+    if fundamental_data:
+        data_lines.append("### 基本面\n" + _format_fundamental(fundamental_data))
+    if valuation_data:
+        data_lines.append("### 估值\n" + _format_valuation(valuation_data))
+        cig = valuation_data.get("cigbutt")
+        if cig:
+            data_lines.append(
+                f"### 资产垫量化\n"
+                f"T0(净有息负债/EBITDA): {_fmt(cig.get('t0_net_debt_ebitda'))} (安全: {cig.get('t0_safe')})\n"
+                f"T1(净现金/市值): {_fmt(cig.get('t1_net_cash_pct'))}%\n"
+                f"T2(NCAV/市值): {_fmt(cig.get('t2_ncav_pct'))}%\n"
+                f"综合评级: {cig.get('grade', 'N/A')}"
+            )
+
+    if not data_lines:
+        return None
+
+    prompt = _CIGBUTT_ANALYSIS_PROMPT.format(
+        ticker=ticker,
+        name=name,
+        data="\n\n".join(data_lines),
+    )
+
+    messages = [
+        {"role": "system", "content": "你是 Alpha Vault 的深度价值投资分析引擎，专注烟蒂股分析。"},
+        {"role": "user", "content": prompt},
+    ]
+
+    reply = chat_completion(messages, max_tokens=3072)
+    if reply:
+        return {"cigbutt_analysis": reply.strip(), "available": True}
+    return None
+
 
 
 def llm_health_check() -> dict:
@@ -331,6 +419,9 @@ def _format_valuation(data: dict | None) -> str:
         f"EV/EBITDA: {_fmt(ev.get('value'))}",
         f"地板价明细: 净流动资产={_fmt(fp.get('net_current_asset'))}  BVPS={_fmt(fp.get('bvps'))}  股息折现={_fmt(fp.get('dividend_discount'))}  悲观FCF={_fmt(fp.get('pessimistic_fcf'))}",
     ]
+    cig = data.get("cigbutt")
+    if cig:
+        lines.append(f"资产垫评级: {cig.get('grade', 'N/A')}  T0(净有息负债/EBITDA)={_fmt(cig.get('t0_net_debt_ebitda'))}  T1(净现金/市值)={_fmt(cig.get('t1_net_cash_pct'))}%  T2(NCAV/市值)={_fmt(cig.get('t2_ncav_pct'))}%")
     return "\n".join(lines)
 
 

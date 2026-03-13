@@ -444,9 +444,13 @@ def deep_analysis():
 @app.route("/api/deep-analysis", methods=["POST"])
 @login_required
 def api_deep_analysis():
+    import json as _json
+    from models import DeepAnalysisCache
+
     data = request.get_json(silent=True) or {}
     ticker = data.get("ticker", "").strip()
     market = data.get("market", "").strip()
+    force = data.get("force", False)
 
     if not ticker or not market:
         return jsonify(error="参数不完整"), 400
@@ -455,13 +459,106 @@ def api_deep_analysis():
     if market not in valid_markets:
         return jsonify(error="深度分析不支持该市场类型"), 400
 
+    CACHE_TTL = 4 * 3600
+    if not force:
+        cached = DeepAnalysisCache.query.filter_by(
+            ticker=ticker, market=market).first()
+        if cached:
+            age = (datetime.utcnow() - cached.created_at).total_seconds()
+            if age < CACHE_TTL:
+                app_logger.info(f"深度分析命中缓存 {market}:{ticker}")
+                return jsonify(_json.loads(cached.data))
+
     try:
         result = _run_deep_analysis(ticker, market)
+        _save_deep_cache(ticker, market, result)
         app_logger.info(f"用户 {current_user.username} 深度分析 {market}:{ticker}")
         return jsonify(result)
     except Exception as e:
         app_logger.error(f"深度分析失败 {market}:{ticker}: {e}")
         return jsonify(error=str(e)), 500
+
+
+
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+@app.route("/api/upload-report", methods=["POST"])
+@login_required
+def api_upload_report():
+    """上传年报 PDF，提取关键章节信息，可选联合 LLM 分析。"""
+    from analysis.pdf_parser import parse_annual_report, format_for_llm
+    from analysis.llm_client import chat_completion, _is_enabled
+
+    if "pdf" not in request.files:
+        return jsonify(error="请选择 PDF 文件"), 400
+
+    file = request.files["pdf"]
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        return jsonify(error="仅支持 PDF 格式"), 400
+
+    save_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(save_path)
+    app_logger.info(f"用户 {current_user.username} 上传年报: {file.filename}")
+
+    try:
+        parsed = parse_annual_report(save_path)
+        if not parsed:
+            return jsonify(error="PDF 解析失败"), 500
+
+        llm_summary = None
+        if _is_enabled() and parsed["extracted_count"] > 0:
+            llm_text = format_for_llm(parsed)
+            prompt = (
+                "以下是一份 A 股年报的关键章节提取内容，请做综合分析:\n"
+                "1. 是否存在隐性风险（受限资产过高、应收账龄老化、关联交易异常等）\n"
+                "2. 经营亮点与隐忧\n"
+                "3. 一句话总结该年报质量\n\n"
+                f"{llm_text}"
+            )
+            messages = [
+                {"role": "system", "content": "你是 Alpha Vault 的年报分析助手。"},
+                {"role": "user", "content": prompt},
+            ]
+            llm_summary = chat_completion(messages, max_tokens=2048)
+
+        return jsonify({
+            "file_name": parsed["file_name"],
+            "total_pages": parsed["total_pages"],
+            "extracted_count": parsed["extracted_count"],
+            "sections": parsed["sections"],
+            "llm_summary": llm_summary,
+        })
+    except Exception as e:
+        app_logger.error(f"年报分析失败: {e}")
+        return jsonify(error=str(e)), 500
+    finally:
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
+
+
+def _save_deep_cache(ticker: str, market: str, result: dict):
+    import json as _json
+    from models import DeepAnalysisCache
+    try:
+        existing = DeepAnalysisCache.query.filter_by(
+            ticker=ticker, market=market).first()
+        if existing:
+            existing.data = _json.dumps(result, ensure_ascii=False, default=str)
+            existing.created_at = datetime.utcnow()
+        else:
+            cache = DeepAnalysisCache(
+                ticker=ticker, market=market,
+                data=_json.dumps(result, ensure_ascii=False, default=str))
+            db.session.add(cache)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app_logger.warning(f"深度分析缓存保存失败: {e}")
 
 
 def _run_deep_analysis(ticker: str, market: str) -> dict:
@@ -470,7 +567,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
     from analysis.fundamental import analyze as fund_analyze
     from analysis.valuation import valuate
     from data.financial import get_financial_data
-    from analysis.llm_client import llm_analyze_stock, _is_enabled
+    from analysis.llm_client import llm_analyze_stock, llm_cigbutt_analyze, _is_enabled
 
     tech = tech_analyze(ticker, market)
     news = fetch_news(ticker, market, limit=10)
@@ -492,6 +589,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
             app_logger.warning(f"深度分析-估值失败 {ticker}: {e}")
 
     llm_result = None
+    cigbutt_result = None
     if _is_enabled():
         try:
             llm_result = llm_analyze_stock(
@@ -499,6 +597,13 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
                 fundamental_data=fund_data, valuation_data=val_data)
         except Exception as e:
             app_logger.warning(f"深度分析-LLM失败 {ticker}: {e}")
+
+        if market == "a_share" and val_data and val_data.get("cigbutt"):
+            try:
+                cigbutt_result = llm_cigbutt_analyze(
+                    ticker, "", fund_data, val_data)
+            except Exception as e:
+                app_logger.warning(f"深度分析-烟蒂股分析失败 {ticker}: {e}")
 
     return {
         "ticker": ticker,
@@ -508,6 +613,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
         "fundamental": fund_data,
         "valuation": val_data,
         "llm_analysis": llm_result,
+        "cigbutt_analysis": cigbutt_result,
         "generated_at": datetime.now().isoformat(),
     }
 

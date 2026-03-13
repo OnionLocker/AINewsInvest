@@ -112,3 +112,17 @@ class RecommendationTrack(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DeepAnalysisCache(db.Model):
+    """个股深度分析缓存（避免短时间重复计算）"""
+    __tablename__ = "deep_analysis_cache"
+    __table_args__ = (
+        db.UniqueConstraint("ticker", "market", name="uq_deep_ticker_market"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(20), nullable=False, index=True)
+    market = db.Column(db.String(20), nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

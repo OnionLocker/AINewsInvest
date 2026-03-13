@@ -391,7 +391,7 @@ def _calc_penetration_return(financial_data: dict, market_cap: float) -> dict: .
 #   < 0%: 溢价 → 不建议
 ```
 
-- [ ] **4.1.5** 烟蒂股资产垫分析（可选，A股增强）
+- [x] **4.1.5** 烟蒂股资产垫分析（可选，A股增强）
 
 ```python
 # 参考烟蒂股 Prompt 的资产垫体系:
@@ -637,7 +637,7 @@ def _format_valuation_for_prompt(data: dict) -> str:
 
 ### 6.2 新增烟蒂股专用 Prompt（可选，A股深度分析时使用）
 
-- [ ] **6.2.1** 新增 `_CIGBUTT_ANALYSIS_PROMPT`
+- [x] **6.2.1** 新增 `_CIGBUTT_ANALYSIS_PROMPT`
 
 ```python
 # 参考烟蒂股分析 Prompt v1.8 的 22 项 Fact Check 清单
@@ -801,7 +801,7 @@ def _deep_analyze(ticker: str, market: str) -> dict:
 
 ### 7.3 models.py 可选扩展
 
-- [ ] **7.3.1** 新增 `DeepAnalysisCache` 模型（可选）
+- [x] **7.3.1** 新增 `DeepAnalysisCache` 模型（可选）
 
 ```python
 class DeepAnalysisCache(db.Model):
@@ -853,7 +853,7 @@ class DeepAnalysisCache(db.Model):
 
 ### 8.2 PDF 年报解析（可选，A股增强）
 
-- [ ] **8.2.1** 新建 `analysis/pdf_parser.py`
+- [x] **8.2.1** 新建 `analysis/pdf_parser.py`
 
 ```python
 """
@@ -882,7 +882,7 @@ SECTION_KEYWORDS = {
 def parse_annual_report(pdf_path: str) -> dict: ...
 ```
 
-- [ ] **8.2.2** 在 `app.py` 新增 PDF 上传端点
+- [x] **8.2.2** 在 `app.py` 新增 PDF 上传端点
 
 ```python
 @app.route("/api/upload-report", methods=["POST"])
@@ -894,7 +894,7 @@ def api_upload_report():
     ...
 ```
 
-- [ ] **8.2.3** requirements.txt 新增
+- [x] **8.2.3** requirements.txt 新增
 
 ```
 pdfplumber>=0.10.0
@@ -921,7 +921,7 @@ pdfplumber>=0.10.0
 - [x] 4.1.2 地板价计算 (5种方法)
 - [x] 4.1.3 穿透回报率计算
 - [x] 4.1.4 安全边际计算
-- [ ] 4.1.5 烟蒂股资产垫分析 (可选)
+- [x] 4.1.5 烟蒂股资产垫分析 (可选)
 
 ### Phase 3: 筛选器升级
 - [x] 5.1.1 `screen_market` 新增模式参数
@@ -935,21 +935,21 @@ pdfplumber>=0.10.0
 - [x] 6.1.2 升级 `llm_analyze_stock` 函数签名
 - [x] 6.1.3 新增 `_format_fundamental_for_prompt`
 - [x] 6.1.4 新增 `_format_valuation_for_prompt`
-- [ ] 6.2.1 烟蒂股专用 Prompt (可选)
+- [x] 6.2.1 烟蒂股专用 Prompt (可选)
 
 ### Phase 5: 报告结构升级 + 深度分析 API
 - [x] 7.1.1 `_analyze_one` 增加基本面和估值
 - [x] 7.1.2 报告卡片新增字段
 - [x] 7.1.3 综合置信度公式升级
 - [x] 7.2.1 新增 `/api/deep-analysis` 端点
-- [ ] 7.3.1 `DeepAnalysisCache` 模型 (可选)
+- [x] 7.3.1 `DeepAnalysisCache` 模型 (可选)
 
 ### Phase 6: 前端 + PDF (可选)
 - [x] 8.1.1 报告卡片 UI 升级
 - [x] 8.1.2 深度分析页面
-- [ ] 8.2.1 PDF 年报解析器
-- [ ] 8.2.2 PDF 上传端点
-- [ ] 8.2.3 pdfplumber 依赖
+- [x] 8.2.1 PDF 年报解析器
+- [x] 8.2.2 PDF 上传端点
+- [x] 8.2.3 pdfplumber 依赖
 
 ---
 
