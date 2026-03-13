@@ -34,6 +34,10 @@
                 </button>
 
                 {% if current_user.is_authenticated %}
+                <a href="{{ url_for('deep_analysis') }}" class="av-nav-btn {% if request.endpoint == 'deep_analysis' %}active{% endif %}"
+                   title="深度分析">
+                    <i class="bi bi-search-heart"></i>
+                </a>
                 <a href="{{ url_for('history') }}" class="av-nav-btn {% if request.endpoint == 'history' %}active{% endif %}"
                    title="历史报告">
                     <i class="bi bi-clock-history"></i>

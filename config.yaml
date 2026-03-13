@@ -35,11 +35,21 @@ llm:
   max_tokens: 2048            # 单次最大生成 token
   timeout: 60                 # 请求超时（秒）
 
+# 基本面分析
+fundamental:
+  enabled: true                 # 是否启用基本面分析
+  cache_ttl: 86400              # 财务数据缓存TTL（秒），默认24小时
+
 # 股票筛选参数
 screener:
   vol_multiplier: 2.0         # 量能放大倍数阈值
   price_change_threshold: 3.0 # 日涨跌幅异常阈值 (%)
   max_screened_per_market: 10 # 每市场最多筛出标的数
+  # 基本面筛选参数
+  pe_range: [3, 25]           # PE(TTM) 范围
+  pb_range: [0.3, 3.0]        # PB 范围
+  min_roe: 5.0                # 最低ROE(%)
+  min_dividend_yield: 2.0     # 最低股息率(%)
 
 # 准确率追踪
 tracking:

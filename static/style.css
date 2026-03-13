@@ -1109,3 +1109,166 @@ body {
     .av-metric-value { font-size: 18px; }
     .av-auth-card    { padding: 28px 20px; }
 }
+
+
+/* ── 基本面/估值标签 & 风险标记 ──────────────────────────────────── */
+
+.av-fund-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.av-badge-quality, .av-badge-margin, .av-badge-pr {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.av-badge-quality.good, .av-badge-margin.good, .av-badge-pr.good {
+    color: var(--av-success);
+    background: var(--av-success-bg);
+    border: 1px solid var(--av-success-border);
+}
+
+.av-badge-quality.mid, .av-badge-margin.mid, .av-badge-pr.mid {
+    color: var(--av-warning);
+    background: var(--av-warning-bg);
+    border: 1px solid #d97706;
+}
+
+.av-badge-quality.low, .av-badge-margin.low, .av-badge-pr.low {
+    color: var(--av-danger);
+    background: var(--av-danger-bg);
+    border: 1px solid var(--av-danger-border);
+}
+
+.av-risk-flags {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--av-danger);
+    background: var(--av-danger-bg);
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    border: 1px solid var(--av-danger-border);
+}
+
+.av-analysis-tag.fund { color: #059669; background: #ecfdf5; }
+.av-analysis-tag.val  { color: #7c3aed; background: #f5f3ff; }
+
+[data-theme="dark"] .av-analysis-tag.fund { color: #34d399; background: #064e3b; }
+[data-theme="dark"] .av-analysis-tag.val  { color: #a78bfa; background: #1e1533; }
+
+/* ── 深度分析页面 ──────────────────────────────────────────────── */
+
+.av-deep-search {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 28px;
+}
+
+.av-deep-search .av-search-input { flex: 1; }
+
+.av-deep-search select {
+    padding: 10px 14px;
+    border: 1px solid var(--av-border);
+    border-radius: 10px;
+    background: var(--av-surface);
+    color: var(--av-text);
+    font-size: 14px;
+    outline: none;
+    min-width: 100px;
+}
+
+.av-deep-search select:focus {
+    border-color: var(--av-primary);
+    box-shadow: 0 0 0 3px var(--av-focus-ring);
+}
+
+.av-deep-btn {
+    padding: 10px 24px;
+    background: var(--av-primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.av-deep-btn:hover { background: var(--av-primary-hover); }
+.av-deep-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.av-deep-section {
+    background: var(--av-surface);
+    border: 1px solid var(--av-border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.av-deep-section-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--av-border);
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--av-text);
+}
+
+.av-deep-section-body { padding: 20px; }
+
+.av-deep-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.av-deep-metric {
+    text-align: center;
+    padding: 12px 8px;
+    background: var(--av-bg);
+    border-radius: 8px;
+}
+
+.av-deep-metric-label {
+    font-size: 11px;
+    color: var(--av-text-muted);
+    margin-bottom: 4px;
+}
+
+.av-deep-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--av-text);
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.av-deep-summary {
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--av-text-secondary);
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: var(--av-bg);
+    border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    .av-deep-search { flex-wrap: wrap; }
+    .av-deep-search .av-search-input { min-width: 100%; }
+    .av-deep-grid { grid-template-columns: repeat(2, 1fr); }
+}

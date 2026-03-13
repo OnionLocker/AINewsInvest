@@ -376,6 +376,18 @@ async function loadReport(market) {
                 </div>
             </div>
             ` : ''}
+            ${(item.qualityScore != null || item.safetyMargin != null || item.penetrationReturn != null) ? `
+            <div class="av-fund-badges">
+                ${item.qualityScore != null ? `<span class="av-badge-quality ${item.qualityScore>=60?'good':item.qualityScore>=40?'mid':'low'}"><i class="bi bi-clipboard-data me-1"></i>质量 ${item.qualityScore}</span>` : ''}
+                ${item.safetyMargin != null ? `<span class="av-badge-margin ${item.safetyMargin>=30?'good':item.safetyMargin>=0?'mid':'low'}"><i class="bi bi-shield me-1"></i>安全边际 ${item.safetyMargin.toFixed(0)}%</span>` : ''}
+                ${item.penetrationReturn != null ? `<span class="av-badge-pr ${item.penetrationReturn>=15?'good':item.penetrationReturn>=8?'mid':'low'}"><i class="bi bi-bullseye me-1"></i>穿透回报 ${item.penetrationReturn.toFixed(1)}%</span>` : ''}
+            </div>
+            ` : ''}
+            ${item.riskFlags && item.riskFlags.length > 0 ? `
+            <div class="av-risk-flags">
+                <i class="bi bi-exclamation-triangle me-1"></i>${item.riskFlags.join('、')}
+            </div>
+            ` : ''}
             <div class="av-rec-analysis">
                 <div class="av-analysis-block">
                     <div class="av-analysis-tag news"><i class="bi bi-newspaper me-1"></i>新闻面</div>
@@ -386,6 +398,18 @@ async function loadReport(market) {
                     <p>${item.techReason || '暂无分析'}</p>
                 </div>
             </div>
+            ${item.fundamentalReason ? `
+            <div class="av-analysis-block" style="margin-top:12px;">
+                <div class="av-analysis-tag fund"><i class="bi bi-bar-chart-line me-1"></i>基本面</div>
+                <p>${item.fundamentalReason}</p>
+            </div>
+            ` : ''}
+            ${item.valuationReason ? `
+            <div class="av-analysis-block" style="margin-top:12px;">
+                <div class="av-analysis-tag val"><i class="bi bi-calculator me-1"></i>估值面</div>
+                <p>${item.valuationReason}</p>
+            </div>
+            ` : ''}
             ${item.llmReason ? `
             <div class="av-analysis-block" style="margin-top:12px;">
                 <div class="av-analysis-tag" style="color:var(--av-primary);background:var(--av-primary-light);">

@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Alpha Vault - 深度分析{% endblock %}
+
+{% block content %}
+<div class="av-container">
+
+    <div class="av-section-header">
+        <h6><i class="bi bi-search-heart me-2"></i>个股深度分析</h6>
+        <span class="av-section-sub">技术面 + 基本面 + 估值 + AI 综合研判</span>
+    </div>
+
+    <div class="av-deep-search">
+        <input type="text" id="deepTicker" class="av-search-input" placeholder="输入股票代码，如 600519、AAPL、0700">
+        <select id="deepMarket">
+            <option value="a_share">A 股</option>
+            <option value="us_stock">美股</option>
+            <option value="hk_stock">港股</option>
+        </select>
+        <button class="av-deep-btn" id="btnDeep" onclick="runDeepAnalysis()">
+            <i class="bi bi-lightning-charge"></i>开始分析
+        </button>
+    </div>
+
+    <div id="deepLoading" style="display:none;">
+        <div class="av-empty">
+            <div class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p style="margin-top:20px;">深度分析中，请稍候...</p>
+            <span>正在采集技术面、基本面、估值数据并调用 AI 研判</span>
+        </div>
+    </div>
+
+    <div id="deepResult" style="display:none;">
+
+        <!-- 概览 -->
+        <div class="av-deep-section">
+            <div class="av-deep-section-head">
+                <i class="bi bi-info-circle"></i>分析概览
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-grid" id="overviewGrid"></div>
+            </div>
+        </div>
+
+        <!-- 技术面 -->
+        <div class="av-deep-section">
+            <div class="av-deep-section-head">
+                <i class="bi bi-graph-up" style="color:var(--av-tag-tech)"></i>技术面分析
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-grid" id="techGrid"></div>
+                <div class="av-deep-summary" id="techSummary"></div>
+            </div>
+        </div>
+
+        <!-- 基本面 -->
+        <div class="av-deep-section" id="fundSection">
+            <div class="av-deep-section-head">
+                <i class="bi bi-bar-chart-line" style="color:#059669"></i>基本面分析
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-grid" id="fundGrid"></div>
+                <div class="av-deep-summary" id="fundSummary"></div>
+            </div>
+        </div>
+
+        <!-- 估值面 -->
+        <div class="av-deep-section" id="valSection">
+            <div class="av-deep-section-head">
+                <i class="bi bi-calculator" style="color:#7c3aed"></i>估值分析
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-grid" id="valGrid"></div>
+                <div class="av-deep-summary" id="valSummary"></div>
+            </div>
+        </div>
+
+        <!-- 新闻面 -->
+        <div class="av-deep-section">
+            <div class="av-deep-section-head">
+                <i class="bi bi-newspaper" style="color:var(--av-tag-news)"></i>新闻舆情
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-grid" id="newsGrid"></div>
+                <div id="newsList" style="margin-top:12px;"></div>
+            </div>
+        </div>
+
+        <!-- AI 深度分析 -->
+        <div class="av-deep-section" id="llmSection">
+            <div class="av-deep-section-head">
+                <i class="bi bi-robot" style="color:var(--av-primary)"></i>AI 综合研判
+            </div>
+            <div class="av-deep-section-body">
+                <div class="av-deep-summary" id="llmContent" style="white-space:pre-wrap;"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="deepEmpty" class="av-empty" style="display:flex;">
+        <i class="bi bi-search-heart"></i>
+        <p>输入股票代码开始深度分析</p>
+        <span>系统将从技术面、基本面、估值面和新闻面四个维度进行全方位分析</span>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmt(v, suffix) {
+    if (v == null || v === '' || v !== v) return '--';
+    if (typeof v === 'number') return v.toFixed(2) + (suffix || '');
+    return String(v) + (suffix || '');
+}
+
+function metricHtml(label, value) {
+    return `<div class="av-deep-metric"><div class="av-deep-metric-label">${label}</div><div class="av-deep-metric-value">${value}</div></div>`;
+}
+
+async function runDeepAnalysis() {
+    const ticker = document.getElementById('deepTicker').value.trim();
+    const market = document.getElementById('deepMarket').value;
+    if (!ticker) { alert('请输入股票代码'); return; }
+
+    const btn = document.getElementById('btnDeep');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 分析中...';
+    document.getElementById('deepEmpty').style.display = 'none';
+    document.getElementById('deepResult').style.display = 'none';
+    document.getElementById('deepLoading').style.display = '';
+
+    try {
+        const resp = await fetch('/api/deep-analysis', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ticker, market})
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || '分析失败'); return; }
+        renderDeepResult(data);
+    } catch(e) {
+        alert('网络错误: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-lightning-charge"></i>开始分析';
+        document.getElementById('deepLoading').style.display = 'none';
+    }
+}
+
+function renderDeepResult(data) {
+    document.getElementById('deepResult').style.display = '';
+
+    // 概览
+    const tech = data.technical || {};
+    const fund = data.fundamental || {};
+    const val = data.valuation || {};
+    let overviewHtml = '';
+    overviewHtml += metricHtml('当前价格', fmt(tech.price));
+    overviewHtml += metricHtml('涨跌幅', fmt(tech.change_pct, '%'));
+    if (fund.quality_score != null) overviewHtml += metricHtml('质量评分', fmt(fund.quality_score, '分'));
+    if (val.safety_margin != null) overviewHtml += metricHtml('安全边际', fmt(val.safety_margin, '%'));
+    if (val.penetration_return) overviewHtml += metricHtml('穿透回报', fmt(val.penetration_return.rate, '%'));
+    overviewHtml += metricHtml('分析时间', data.generated_at ? data.generated_at.slice(0,16).replace('T',' ') : '--');
+    document.getElementById('overviewGrid').innerHTML = overviewHtml;
+
+    // 技术面
+    let techHtml = '';
+    if (tech.indicators) {
+        const ind = tech.indicators;
+        techHtml += metricHtml('RSI(14)', fmt(ind.rsi));
+        techHtml += metricHtml('MACD', fmt(ind.macd));
+        techHtml += metricHtml('MA5', fmt(ind.ma5));
+        techHtml += metricHtml('MA20', fmt(ind.ma20));
+        techHtml += metricHtml('MA60', fmt(ind.ma60));
+        if (ind.bollinger_upper) techHtml += metricHtml('布林上轨', fmt(ind.bollinger_upper));
+        if (ind.bollinger_lower) techHtml += metricHtml('布林下轨', fmt(ind.bollinger_lower));
+    }
+    techHtml += metricHtml('成交量', fmt(tech.volume));
+    document.getElementById('techGrid').innerHTML = techHtml;
+    document.getElementById('techSummary').innerHTML = tech.signal_summary || tech.summary || '暂无技术面总结';
+
+    // 基本面
+    const fundSection = document.getElementById('fundSection');
+    if (fund && fund.quality_score != null) {
+        fundSection.style.display = '';
+        let fundHtml = '';
+        const sc = fund.scores || {};
+        fundHtml += metricHtml('质量总分', fmt(fund.quality_score, '分'));
+        fundHtml += metricHtml('盈利能力', fmt(sc.profitability, '分'));
+        fundHtml += metricHtml('成长性', fmt(sc.growth, '分'));
+        fundHtml += metricHtml('安全性', fmt(sc.safety, '分'));
+        fundHtml += metricHtml('盈利质量', fmt(sc.earnings_quality, '分'));
+        const mk = fund.market_info || {};
+        if (mk.pe) fundHtml += metricHtml('PE', fmt(mk.pe));
+        if (mk.pb) fundHtml += metricHtml('PB', fmt(mk.pb));
+        if (mk.market_cap) fundHtml += metricHtml('市值(亿)', fmt(mk.market_cap));
+        document.getElementById('fundGrid').innerHTML = fundHtml;
+
+        let fundSumText = fund.summary || '';
+        if (fund.risk_flags && fund.risk_flags.length > 0) {
+            fundSumText += '<br><span style="color:var(--av-danger);font-weight:600;">风险提示: ' + fund.risk_flags.join('、') + '</span>';
+        }
+        document.getElementById('fundSummary').innerHTML = fundSumText;
+    } else {
+        fundSection.style.display = 'none';
+    }
+
+    // 估值面
+    const valSection = document.getElementById('valSection');
+    if (val && val.floor_price != null) {
+        valSection.style.display = '';
+        let valHtml = '';
+        valHtml += metricHtml('地板价', fmt(val.floor_price));
+        valHtml += metricHtml('安全边际', fmt(val.safety_margin, '%'));
+        const pr = val.penetration_return || {};
+        valHtml += metricHtml('穿透回报率', fmt(pr.rate, '%'));
+        valHtml += metricHtml('穿透评级', pr.grade || '--');
+        if (val.ev_ebitda) valHtml += metricHtml('EV/EBITDA', fmt(val.ev_ebitda));
+        valHtml += metricHtml('安全结论', val.verdict || '--');
+        document.getElementById('valGrid').innerHTML = valHtml;
+
+        let valSum = val.summary || '';
+        if (val.methods) {
+            valSum += '<br><small style="color:var(--av-text-muted);">';
+            val.methods.forEach(m => {
+                valSum += m.name + ': ' + fmt(m.value) + '　';
+            });
+            valSum += '</small>';
+        }
+        document.getElementById('valSummary').innerHTML = valSum;
+    } else {
+        valSection.style.display = 'none';
+    }
+
+    // 新闻
+    const newsData = data.news || {};
+    const senti = newsData.sentiment || {};
+    let newsGridHtml = '';
+    newsGridHtml += metricHtml('情绪评分', fmt(senti.score));
+    newsGridHtml += metricHtml('情绪倾向', senti.label || '--');
+    newsGridHtml += metricHtml('新闻数量', (newsData.items || []).length);
+    document.getElementById('newsGrid').innerHTML = newsGridHtml;
+
+    const newsItems = newsData.items || [];
+    if (newsItems.length > 0) {
+        document.getElementById('newsList').innerHTML = newsItems.slice(0, 8).map(n => `
+            <div style="padding:8px 0;border-bottom:1px solid var(--av-border);font-size:13px;">
+                <a href="${n.url || '#'}" target="_blank" style="color:var(--av-text);text-decoration:none;">${n.title || '无标题'}</a>
+                <span style="color:var(--av-text-muted);font-size:11px;margin-left:8px;">${n.source || ''} ${n.date || ''}</span>
+            </div>
+        `).join('');
+    } else {
+        document.getElementById('newsList').innerHTML = '<p style="color:var(--av-text-muted);font-size:13px;">暂无相关新闻</p>';
+    }
+
+    // LLM
+    const llmSection = document.getElementById('llmSection');
+    if (data.llm_analysis) {
+        llmSection.style.display = '';
+        const llm = data.llm_analysis;
+        let content = '';
+        if (typeof llm === 'string') {
+            content = llm;
+        } else if (llm.analysis) {
+            content = llm.analysis;
+        } else if (llm.content) {
+            content = llm.content;
+        } else {
+            content = JSON.stringify(llm, null, 2);
+        }
+        document.getElementById('llmContent').textContent = content;
+    } else {
+        llmSection.style.display = 'none';
+    }
+}
+
+document.getElementById('deepTicker').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runDeepAnalysis();
+});
+</script>
+{% endblock %}

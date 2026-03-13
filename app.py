@@ -432,6 +432,86 @@ def api_llm_status():
     return jsonify(llm_health_check())
 
 
+
+# ────────────────────────── API: 个股深度分析 ──────────────────────────
+
+@app.route("/deep-analysis")
+@login_required
+def deep_analysis():
+    return render_template("deep_analysis.html")
+
+
+@app.route("/api/deep-analysis", methods=["POST"])
+@login_required
+def api_deep_analysis():
+    data = request.get_json(silent=True) or {}
+    ticker = data.get("ticker", "").strip()
+    market = data.get("market", "").strip()
+
+    if not ticker or not market:
+        return jsonify(error="参数不完整"), 400
+
+    valid_markets = {"a_share", "us_stock", "hk_stock"}
+    if market not in valid_markets:
+        return jsonify(error="深度分析不支持该市场类型"), 400
+
+    try:
+        result = _run_deep_analysis(ticker, market)
+        app_logger.info(f"用户 {current_user.username} 深度分析 {market}:{ticker}")
+        return jsonify(result)
+    except Exception as e:
+        app_logger.error(f"深度分析失败 {market}:{ticker}: {e}")
+        return jsonify(error=str(e)), 500
+
+
+def _run_deep_analysis(ticker: str, market: str) -> dict:
+    from analysis.technical import analyze as tech_analyze
+    from analysis.news_fetcher import fetch_news, analyze_sentiment
+    from analysis.fundamental import analyze as fund_analyze
+    from analysis.valuation import valuate
+    from data.financial import get_financial_data
+    from analysis.llm_client import llm_analyze_stock, _is_enabled
+
+    tech = tech_analyze(ticker, market)
+    news = fetch_news(ticker, market, limit=10)
+    sentiment = analyze_sentiment(news)
+
+    fund_data = None
+    val_data = None
+    try:
+        fund_data = fund_analyze(ticker, market)
+    except Exception as e:
+        app_logger.warning(f"深度分析-基本面失败 {ticker}: {e}")
+
+    if fund_data and tech:
+        try:
+            fin = get_financial_data(ticker, market)
+            if fin:
+                val_data = valuate(fin, tech["price"])
+        except Exception as e:
+            app_logger.warning(f"深度分析-估值失败 {ticker}: {e}")
+
+    llm_result = None
+    if _is_enabled():
+        try:
+            llm_result = llm_analyze_stock(
+                ticker, "", market, tech or {}, news,
+                fundamental_data=fund_data, valuation_data=val_data)
+        except Exception as e:
+            app_logger.warning(f"深度分析-LLM失败 {ticker}: {e}")
+
+    return {
+        "ticker": ticker,
+        "market": market,
+        "technical": tech,
+        "news": {"items": news, "sentiment": sentiment},
+        "fundamental": fund_data,
+        "valuation": val_data,
+        "llm_analysis": llm_result,
+        "generated_at": datetime.now().isoformat(),
+    }
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
