@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}推送设置 - Alpha Vault{% endblock %}
+{% block title %}鎺ㄩ€佽缃� - Alpha Vault{% endblock %}
 
 {% block content %}
 <div class="av-container" style="max-width:600px; margin:0 auto;">
 
     <div class="av-settings-card">
         <div class="av-settings-header">
-            <i class="bi bi-telegram text-primary"></i> Telegram 推送设置
+            <i class="bi bi-telegram text-primary"></i> Telegram 鎺ㄩ€佽缃�
         </div>
         <div class="av-settings-body">
 
             {% if current_user.tg_configured %}
             <div class="alert alert-success py-2 mb-3" style="font-size:13px; border-radius:6px;">
                 <i class="bi bi-shield-lock me-1"></i>
-                已配置（Token 已加密存储）：{{ token_display }}
+                宸查厤缃紙Token 宸插姞瀵嗗瓨鍌級锛歿{ token_display }}
             </div>
             {% endif %}
 
@@ -22,9 +22,9 @@
                     <label for="tg_bot_token" class="form-label">Bot Token</label>
                     <input type="text" class="form-control" id="tg_bot_token"
                            name="tg_bot_token"
-                           placeholder="粘贴新的 Token 以覆盖">
+                           placeholder="绮樿创鏂扮殑 Token 浠ヨ鐩�">
                     <div class="form-text">
-                        通过 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 创建机器人后获取
+                        閫氳繃 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 鍒涘缓鏈哄櫒浜哄悗鑾峰彇
                     </div>
                 </div>
 
@@ -33,34 +33,84 @@
                     <input type="text" class="form-control" id="tg_chat_id"
                            name="tg_chat_id"
                            value="{{ chat_id_display }}"
-                           placeholder="例如: 987654321">
+                           placeholder="渚嬪: 987654321">
                     <div class="form-text">
-                        访问 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 获取
+                        璁块棶 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 鑾峰彇
                     </div>
                 </div>
 
                 <div class="d-flex gap-2">
                     <button type="submit" name="action" value="save" class="av-btn primary flex-fill">
-                        <i class="bi bi-shield-lock"></i> 加密保存
+                        <i class="bi bi-shield-lock"></i> 鍔犲瘑淇濆瓨
                     </button>
                     <button type="submit" name="action" value="test" class="av-btn outline-success flex-fill">
-                        <i class="bi bi-send"></i> 发送测试
+                        <i class="bi bi-send"></i> 鍙戦€佹祴璇�
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- 鍛婅瑙勫垯绠＄悊 -->
+    <div class="av-settings-card" style="margin-top:20px;">
+        <div class="av-settings-header">
+            <i class="bi bi-bell text-warning"></i> 鍛婅瑙勫垯绠＄悊
+        </div>
+        <div class="av-settings-body">
+            <div id="settingsAlertList" style="font-size:13px;">鍔犺浇涓�...</div>
+        </div>
+    </div>
+
     <div class="av-info-card">
-        <h6><i class="bi bi-info-circle me-1"></i> 配置指南</h6>
+        <h6><i class="bi bi-info-circle me-1"></i> 閰嶇疆鎸囧崡</h6>
         <ol class="mb-0 ps-3">
-            <li>在 Telegram 搜索 <strong>@BotFather</strong>，发送 <code>/newbot</code></li>
-            <li>复制 BotFather 回复的 <strong>Bot Token</strong></li>
-            <li>向你的机器人发送任意消息</li>
-            <li>浏览器访问 <code>https://api.telegram.org/bot你的Token/getUpdates</code></li>
-            <li>找到 JSON 中的 <code>chat.id</code> 填入上方</li>
+            <li>鍦� Telegram 鎼滅储 <strong>@BotFather</strong>锛屽彂閫� <code>/newbot</code></li>
+            <li>澶嶅埗 BotFather 鍥炲鐨� <strong>Bot Token</strong></li>
+            <li>鍚戜綘鐨勬満鍣ㄤ汉鍙戦€佷换鎰忔秷鎭�</li>
+            <li>娴忚鍣ㄨ闂� <code>https://api.telegram.org/bot浣犵殑Token/getUpdates</code></li>
+            <li>鎵惧埌 JSON 涓殑 <code>chat.id</code> 濉叆涓婃柟</li>
         </ol>
     </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadSettingsAlerts() {
+    const resp = await fetch('/api/alerts');
+    const rules = await resp.json();
+    const el = document.getElementById('settingsAlertList');
+    if (rules.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--av-text-muted);padding:12px;">暂无告警规则，请在仪表盘自选卡片中添加</div>';
+        return;
+    }
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
+        '<tr style="border-bottom:1px solid var(--av-border);font-size:12px;color:var(--av-text-muted);">' +
+        '<th style="padding:6px 4px;">标的</th><th>类型</th><th>阈值</th><th>状态</th><th>操作</th></tr>' +
+        rules.map(r => `<tr style="border-bottom:1px solid var(--av-border);">
+            <td style="padding:6px 4px;">${r.ticker} ${r.name||''}</td>
+            <td>${r.type_label}</td>
+            <td>${r.threshold}</td>
+            <td><span style="color:${r.enabled?'var(--av-success)':'var(--av-text-muted)'}">${r.enabled?'启用':'禁用'}</span></td>
+            <td>
+                <button onclick="toggleSettingsAlert(${r.id},${!r.enabled})" style="border:none;background:none;color:var(--av-primary);cursor:pointer;font-size:13px;"><i class="bi bi-${r.enabled?'toggle-on':'toggle-off'}"></i></button>
+                <button onclick="deleteSettingsAlert(${r.id})" style="border:none;background:none;color:var(--av-danger);cursor:pointer;font-size:13px;"><i class="bi bi-trash3"></i></button>
+            </td>
+        </tr>`).join('') + '</table>';
+}
+
+async function toggleSettingsAlert(id, enabled) {
+    await fetch('/api/alerts/' + id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled})});
+    loadSettingsAlerts();
+}
+
+async function deleteSettingsAlert(id) {
+    if (!confirm('确定删除该告警规则？')) return;
+    await fetch('/api/alerts/' + id, {method:'DELETE'});
+    loadSettingsAlerts();
+}
+
+loadSettingsAlerts();
+</script>
 {% endblock %}

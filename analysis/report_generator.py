@@ -252,3 +252,132 @@ def _empty_report(market: str) -> dict:
         "llm_enabled": False,
         "fundamental_enabled": False,
     }
+
+
+def generate_weekly_report(market: str) -> dict:
+    """
+    生成本周复盘周报。
+
+    汇总本周所有日报推荐的表现，生成结构化周报。
+    返回 dict: {market, week_start, week_end, content, stats}
+    """
+    from datetime import timedelta
+    from models import db, DailyReport, RecommendationTrack
+
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = today
+
+    reports = DailyReport.query.filter(
+        DailyReport.market == market,
+        DailyReport.report_date >= week_start,
+        DailyReport.report_date <= week_end,
+    ).all()
+
+    if not reports:
+        return {
+            "market": market,
+            "week_start": week_start.isoformat(),
+            "week_end": week_end.isoformat(),
+            "content": "\u672c\u5468\u65e0\u65e5\u62a5\u6570\u636e\u3002",
+            "stats": {},
+        }
+
+    report_ids = [r.id for r in reports]
+    tracks = RecommendationTrack.query.filter(
+        RecommendationTrack.report_id.in_(report_ids)
+    ).all()
+
+    total = len(tracks)
+    wins = sum(1 for t in tracks if t.outcome in ("win", "partial"))
+    losses = sum(1 for t in tracks if t.outcome == "loss")
+    pending = total - wins - losses
+    decided = wins + losses
+    win_rate = round(wins / decided * 100, 1) if decided > 0 else 0
+
+    returns = []
+    best_rec = None
+    worst_rec = None
+    best_ret = -999
+    worst_ret = 999
+
+    for t in tracks:
+        final = t.price_after_5d or t.price_after_3d or t.price_after_1d
+        if final and t.entry_price and t.entry_price > 0:
+            ret = (final - t.entry_price) / t.entry_price * 100
+            if t.direction == "sell":
+                ret = -ret
+            returns.append(ret)
+            if ret > best_ret:
+                best_ret = ret
+                best_rec = t
+            if ret < worst_ret:
+                worst_ret = ret
+                worst_rec = t
+
+    avg_return = round(sum(returns) / len(returns), 2) if returns else 0
+
+    daily_sentiments = []
+    for r in sorted(reports, key=lambda x: x.report_date):
+        try:
+            import json as _json
+            data = _json.loads(r.data)
+            metrics = data.get("metrics", {})
+            daily_sentiments.append({
+                "date": r.report_date.isoformat(),
+                "sentiment": metrics.get("sentiment", "N/A"),
+                "count": metrics.get("count", 0),
+                "bull": metrics.get("bull", 0),
+                "bear": metrics.get("bear", 0),
+            })
+        except Exception:
+            pass
+
+    market_labels = {"a_share": "A\u80a1", "us_stock": "\u7f8e\u80a1", "hk_stock": "\u6e2f\u80a1", "fund": "\u57fa\u91d1"}
+    ml = market_labels.get(market, market)
+
+    lines = []
+    lines.append(f"\u25a0 {ml} \u5468\u62a5\u590d\u76d8 ({week_start.isoformat()} ~ {week_end.isoformat()})")
+    lines.append("")
+    lines.append(f"\u2501 \u7edf\u8ba1\u6982\u89c8")
+    lines.append(f"  \u603b\u63a8\u8350: {total} \u53ea | \u80dc\u7387: {win_rate}% | \u5e73\u5747\u6536\u76ca: {avg_return}%")
+    lines.append(f"  \u76c8\u5229: {wins} | \u4e8f\u635f: {losses} | \u5f85\u5b9a: {pending}")
+
+    if best_rec:
+        lines.append(f"  \u6700\u4f73\u63a8\u8350: {best_rec.ticker} {best_rec.name} +{best_ret:.1f}%")
+    if worst_rec:
+        lines.append(f"  \u6700\u5dee\u63a8\u8350: {worst_rec.ticker} {worst_rec.name} {worst_ret:.1f}%")
+
+    lines.append("")
+    lines.append("\u2501 \u6bcf\u65e5\u60c5\u7eea\u53d8\u5316")
+    for ds in daily_sentiments:
+        lines.append(f"  {ds['date']}: {ds['sentiment']} (\u591a{ds['bull']} / \u7a7a{ds['bear']})")
+
+    lines.append("")
+    lines.append("\u2501 \u672c\u5468\u63a8\u8350\u660e\u7ec6")
+    for t in sorted(tracks, key=lambda x: x.created_at or x.id):
+        final = t.price_after_5d or t.price_after_3d or t.price_after_1d
+        ret_str = "\u5f85\u5b9a"
+        if final and t.entry_price and t.entry_price > 0:
+            ret = (final - t.entry_price) / t.entry_price * 100
+            if t.direction == "sell":
+                ret = -ret
+            sign = "+" if ret > 0 else ""
+            ret_str = f"{sign}{ret:.1f}%"
+        outcome_icon = "\u2705" if t.outcome in ("win", "partial") else "\u274c" if t.outcome == "loss" else "\u23f3"
+        lines.append(f"  {outcome_icon} {t.ticker} {t.name} | {t.direction} {t.entry_price} -> {ret_str} | {t.outcome or 'pending'}")
+
+    content_text = "\n".join(lines)
+
+    app_logger.info(f"[\u5468\u62a5] {market} \u5468\u62a5\u751f\u6210\u5b8c\u6bd5\uff0c{total} \u6761\u63a8\u8350")
+
+    return {
+        "market": market,
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "content": content_text,
+        "stats": {
+            "total": total, "wins": wins, "losses": losses, "pending": pending,
+            "win_rate": win_rate, "avg_return": avg_return,
+        },
+    }

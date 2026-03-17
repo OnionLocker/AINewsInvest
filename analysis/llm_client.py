@@ -206,6 +206,8 @@ def llm_analyze_stock(
     news_items: list[dict],
     fundamental_data: dict | None = None,
     valuation_data: dict | None = None,
+    announcements: list | None = None,
+    fund_flow: dict | None = None,
 ) -> dict | None:
     """
     用 LLM 对单只股票做深度综合分析。
@@ -230,12 +232,26 @@ def llm_analyze_stock(
     if has_extra:
         fund_text = _format_fundamental(fundamental_data)
         val_text = _format_valuation(valuation_data)
+        extra_sections = ""
+        if announcements:
+            from data.announcement import format_for_llm as fmt_ann
+            ann_text = fmt_ann(announcements)
+            if ann_text:
+                extra_sections += "\n\n" + ann_text
+        if fund_flow:
+            from data.fund_flow import format_for_llm as fmt_flow
+            flow_text = fmt_flow(fund_flow)
+            if flow_text:
+                extra_sections += "\n\n" + flow_text
+
         prompt = _PROMPT_V2.format(
             ticker=ticker, name=name,
             market=market_labels.get(market, market),
             tech_data=tech_text, news_data=news_text,
             fundamental_data=fund_text, valuation_data=val_text,
         )
+        if extra_sections:
+            prompt += extra_sections
     else:
         prompt = _PROMPT_V1.format(
             ticker=ticker, name=name,

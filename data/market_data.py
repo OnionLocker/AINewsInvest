@@ -159,3 +159,29 @@ def _quote_fund(ticker: str) -> dict | None:
         }
     except Exception:
         return None
+
+
+def get_recent_prices(ticker: str, market: str, days: int = 20) -> list:
+    """Return list of recent closing prices (oldest first)."""
+    try:
+        if market == "a_share":
+            df = ak.stock_zh_a_hist(symbol=ticker, period="daily", adjust="qfq")
+            if df is not None and not df.empty:
+                return df["收盘"].tail(days).tolist()
+        elif market == "hk_stock":
+            df = ak.stock_hk_hist(symbol=ticker, period="daily", adjust="qfq")
+            if df is not None and not df.empty:
+                col = "收盘" if "收盘" in df.columns else "Close"
+                return df[col].tail(days).tolist()
+        elif market == "us_stock":
+            t = yf.Ticker(ticker)
+            hist = t.history(period="1mo")
+            if hist is not None and not hist.empty:
+                return hist["Close"].tail(days).tolist()
+        elif market == "fund":
+            df = ak.fund_open_fund_info_em(symbol=ticker, indicator="单位净值走势")
+            if df is not None and not df.empty:
+                return df["单位净值"].tail(days).astype(float).tolist()
+    except Exception as e:
+        app_logger.warning(f"近期价格获取失败 [{market}:{ticker}]: {e}")
+    return []

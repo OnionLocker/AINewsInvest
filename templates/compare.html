@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Alpha Vault - 多股对比{% endblock %}
+
+{% block content %}
+<div class="av-container">
+
+    <div class="av-section-header">
+        <h6><i class="bi bi-columns-gap me-2"></i>多股对比</h6>
+        <span class="av-section-sub">对比 2-4 只股票的基本面、估值与技术面</span>
+    </div>
+
+    <div class="av-compare-input">
+        <div class="av-compare-slots" id="compareSlots">
+            <div class="av-compare-slot">
+                <input type="text" class="av-search-input compare-ticker" placeholder="代码1" data-idx="0">
+                <select class="compare-market" data-idx="0">
+                    <option value="a_share">A股</option>
+                    <option value="us_stock">美股</option>
+                    <option value="hk_stock">港股</option>
+                </select>
+            </div>
+            <div class="av-compare-slot">
+                <input type="text" class="av-search-input compare-ticker" placeholder="代码2" data-idx="1">
+                <select class="compare-market" data-idx="1">
+                    <option value="a_share">A股</option>
+                    <option value="us_stock">美股</option>
+                    <option value="hk_stock">港股</option>
+                </select>
+            </div>
+            <div class="av-compare-slot">
+                <input type="text" class="av-search-input compare-ticker" placeholder="代码3（可选）" data-idx="2">
+                <select class="compare-market" data-idx="2">
+                    <option value="a_share">A股</option>
+                    <option value="us_stock">美股</option>
+                    <option value="hk_stock">港股</option>
+                </select>
+            </div>
+            <div class="av-compare-slot">
+                <input type="text" class="av-search-input compare-ticker" placeholder="代码4（可选）" data-idx="3">
+                <select class="compare-market" data-idx="3">
+                    <option value="a_share">A股</option>
+                    <option value="us_stock">美股</option>
+                    <option value="hk_stock">港股</option>
+                </select>
+            </div>
+        </div>
+        <button class="av-deep-btn" id="btnCompare" onclick="runCompare()">
+            <i class="bi bi-columns-gap"></i>开始对比
+        </button>
+    </div>
+
+    <div id="compareLoading" style="display:none;">
+        <div class="av-empty">
+            <div class="spinner-border text-primary" role="status" style="width:2.5rem;height:2.5rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p style="margin-top:16px;">对比分析中...</p>
+        </div>
+    </div>
+
+    <div id="compareResult" style="display:none;margin-top:24px;">
+        <div class="av-compare-table-wrap">
+            <table class="av-compare-table" id="compareTable"></table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function runCompare() {
+    const tickers = [];
+    document.querySelectorAll('.compare-ticker').forEach((input, i) => {
+        const ticker = input.value.trim();
+        if (ticker) {
+            const market = document.querySelectorAll('.compare-market')[i].value;
+            tickers.push({ticker, market});
+        }
+    });
+
+    if (tickers.length < 2) { alert('请至少输入 2 只股票代码'); return; }
+
+    const btn = document.getElementById('btnCompare');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 对比中...';
+    document.getElementById('compareLoading').style.display = '';
+    document.getElementById('compareResult').style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/compare', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tickers})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            renderCompare(data);
+        } else {
+            alert(data.error || '对比失败');
+        }
+    } catch(e) {
+        alert('网络错误: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-columns-gap"></i>开始对比';
+        document.getElementById('compareLoading').style.display = 'none';
+    }
+}
+
+function fmt(v, suffix) {
+    if (v == null || v === undefined) return '<span style="color:var(--av-text-muted)">N/A</span>';
+    suffix = suffix || '';
+    return v + suffix;
+}
+
+function colorVal(v, suffix, higherBetter) {
+    if (v == null || v === undefined) return '<span style="color:var(--av-text-muted)">N/A</span>';
+    suffix = suffix || '';
+    return `<span>${v}${suffix}</span>`;
+}
+
+function renderCompare(data) {
+    if (!data || data.length < 2) return;
+    document.getElementById('compareResult').style.display = '';
+
+    const signalLabels = {
+        'strong_buy': '强烈看多', 'buy': '看多', 'weak_buy': '偏多',
+        'neutral': '中性', 'weak_sell': '偏空', 'sell': '看空', 'strong_sell': '强烈看空',
+        'N/A': 'N/A'
+    };
+    const signalColors = {
+        'strong_buy': 'var(--av-success)', 'buy': 'var(--av-success)', 'weak_buy': '#059669',
+        'neutral': 'var(--av-text-muted)',
+        'weak_sell': 'var(--av-danger)', 'sell': 'var(--av-danger)', 'strong_sell': 'var(--av-danger)',
+    };
+
+    const rows = [
+        {label: '当前价', key: 'price', suffix: ''},
+        {label: 'RSI', key: 'rsi', suffix: ''},
+        {label: '技术信号', key: 'signal', format: v => `<span style="font-weight:600;color:${signalColors[v]||'inherit'}">${signalLabels[v]||v}</span>`},
+        {label: '质量评分', key: 'quality_score', suffix: ''},
+        {label: 'ROE', key: 'roe', suffix: '%'},
+        {label: '毛利率', key: 'gross_margin', suffix: '%'},
+        {label: '负债率', key: 'debt_ratio', suffix: '%'},
+        {label: '营收增速', key: 'revenue_growth', suffix: '%'},
+        {label: 'PE (TTM)', key: 'pe_ttm', suffix: ''},
+        {label: 'PB', key: 'pb', suffix: ''},
+        {label: '安全边际', key: 'safety_margin', suffix: '%'},
+        {label: '穿透回报', key: 'penetration_return', suffix: '%'},
+    ];
+
+    let html = '<thead><tr><th></th>';
+    data.forEach(d => {
+        html += `<th><div style="font-weight:700;">${d.ticker}</div><div style="font-size:11px;color:var(--av-text-muted)">${d.name||''}</div></th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    rows.forEach(row => {
+        html += `<tr><td style="font-weight:600;color:var(--av-text-secondary);">${row.label}</td>`;
+        let vals = data.map(d => d[row.key]);
+        let best = null;
+        if (!row.format) {
+            let numVals = vals.filter(v => v != null && !isNaN(v));
+            if (numVals.length > 0) {
+                if (['debt_ratio', 'pe_ttm', 'pb'].includes(row.key)) {
+                    best = Math.min(...numVals);
+                } else {
+                    best = Math.max(...numVals);
+                }
+            }
+        }
+
+        data.forEach(d => {
+            const v = d[row.key];
+            if (row.format) {
+                html += `<td>${row.format(v)}</td>`;
+            } else if (v == null || v === undefined) {
+                html += '<td style="color:var(--av-text-muted)">N/A</td>';
+            } else {
+                const isBest = v === best && vals.filter(x => x === best).length === 1;
+                const style = isBest ? 'font-weight:700;color:var(--av-success);' : '';
+                html += `<td style="${style}">${typeof v === 'number' ? v.toFixed ? v.toFixed(2) : v : v}${row.suffix}</td>`;
+            }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody>';
+
+    document.getElementById('compareTable').innerHTML = html;
+}
+
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('tickers');
+    if (t) {
+        const pairs = t.split(',');
+        pairs.forEach((p, i) => {
+            const [ticker, market] = p.split(':');
+            const inputs = document.querySelectorAll('.compare-ticker');
+            const selects = document.querySelectorAll('.compare-market');
+            if (inputs[i] && ticker) {
+                inputs[i].value = ticker;
+                if (market && selects[i]) selects[i].value = market;
+            }
+        });
+        runCompare();
+    }
+})();
+</script>
+{% endblock %}

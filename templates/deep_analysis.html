@@ -22,14 +22,15 @@
     </div>
 
     <div id="deepLoading" style="display:none;">
-        <div class="av-empty">
-            <div class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;">
-                <span class="visually-hidden">Loading...</span>
+        <div class="av-deep-progress">
+            <div class="av-deep-progress-bar">
+                <div class="av-deep-progress-fill" id="progressFill"></div>
             </div>
-            <p style="margin-top:20px;">娣卞害鍒嗘瀽涓紝璇风◢鍊�...</p>
-            <span>姝ｅ湪閲囬泦鎶€鏈潰銆佸熀鏈潰銆佷及鍊兼暟鎹苟璋冪敤 AI 鐮斿垽</span>
+            <div class="av-deep-progress-text" id="progressText"></div>
         </div>
     </div>
+
+
 
     <div id="deepResult" style="display:none;">
 
@@ -61,6 +62,13 @@
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="fundGrid"></div>
+                <div id="fundCharts" style="display:none;margin-top:16px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div style="position:relative;height:220px;"><canvas id="chartProfitability"></canvas></div>
+                        <div style="position:relative;height:220px;"><canvas id="chartGrowth"></canvas></div>
+                    </div>
+                    <div style="position:relative;height:200px;margin-top:12px;"><canvas id="chartSafety"></canvas></div>
+                </div>
                 <div class="av-deep-summary" id="fundSummary"></div>
             </div>
         </div>
@@ -72,6 +80,9 @@
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="valGrid"></div>
+                <div id="valChart" style="display:none;margin-top:16px;">
+                    <div style="position:relative;height:100px;"><canvas id="chartValBand"></canvas></div>
+                </div>
                 <div class="av-deep-summary" id="valSummary"></div>
             </div>
         </div>
@@ -154,35 +165,68 @@ function metricHtml(label, value) {
 async function runDeepAnalysis() {
     const ticker = document.getElementById('deepTicker').value.trim();
     const market = document.getElementById('deepMarket').value;
-    if (!ticker) { alert('璇疯緭鍏ヨ偂绁ㄤ唬鐮�'); return; }
+    if (!ticker) { alert('请输入股票代码'); return; }
 
     const btn = document.getElementById('btnDeep');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 鍒嗘瀽涓�...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 分析中...';
     document.getElementById('deepEmpty').style.display = 'none';
     document.getElementById('deepResult').style.display = 'none';
     document.getElementById('deepLoading').style.display = '';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressText').textContent = '准备中...';
 
     try {
-        const resp = await fetch('/api/deep-analysis', {
+        const resp = await fetch('/api/deep-analysis-stream', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ticker, market})
         });
-        const data = await resp.json();
-        if (!resp.ok) { alert(data.error || '鍒嗘瀽澶辫触'); return; }
-        renderDeepResult(data);
+
+        if (!resp.ok) {
+            const err = await resp.json();
+            alert(err.error || '分析失败');
+            document.getElementById('deepLoading').style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-lightning-charge"></i>开始分析';
+            return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const {value, done} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const evt = JSON.parse(line.slice(6));
+                    const pct = Math.round((evt.step / evt.total) * 100);
+                    document.getElementById('progressFill').style.width = pct + '%';
+                    document.getElementById('progressText').textContent = evt.msg;
+                    if (evt.done && evt.result) {
+                        renderDeepResult(evt.result);
+                    }
+                } catch(e) {}
+            }
+        }
     } catch(e) {
-        alert('缃戠粶閿欒: ' + e.message);
+        alert('网络错误: ' + e.message);
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-lightning-charge"></i>寮€濮嬪垎鏋�';
+        btn.innerHTML = '<i class="bi bi-lightning-charge"></i>开始分析';
         document.getElementById('deepLoading').style.display = 'none';
     }
 }
 
 function renderDeepResult(data) {
     document.getElementById('deepResult').style.display = '';
+    renderCharts(data);
 
     // 姒傝
     const tech = data.technical || {};
@@ -391,5 +435,131 @@ function renderPdfResult(data) {
 document.getElementById('deepTicker').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') runDeepAnalysis();
 });
+
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const ticker = params.get('ticker');
+    const market = params.get('market');
+    if (ticker) {
+        document.getElementById('deepTicker').value = ticker;
+        if (market) document.getElementById('deepMarket').value = market;
+        runDeepAnalysis();
+    }
+})();
+
+
+let _charts = {};
+function _destroyChart(id) { if(_charts[id]) { _charts[id].destroy(); delete _charts[id]; } }
+
+function renderCharts(data) {
+    const cd = data.chart_data;
+    if (!cd || !cd.years || cd.years.length < 2) {
+        document.getElementById('fundCharts').style.display = 'none';
+        document.getElementById('valChart').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('fundCharts').style.display = '';
+    const labels = cd.years;
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--av-primary').trim() || '#6366f1';
+    const success = '#059669';
+    const warning = '#d97706';
+    const danger  = '#dc2626';
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--av-text-secondary').trim() || '#6b7280';
+    const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--av-border').trim() || '#e5e7eb';
+
+    const baseOpts = {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor, font: {size:11} } } },
+        scales: {
+            x: { ticks: {color: textColor, font:{size:10}}, grid: {color: gridColor} },
+            y: { ticks: {color: textColor, font:{size:10}}, grid: {color: gridColor} }
+        }
+    };
+
+    _destroyChart('chartProfitability');
+    _charts['chartProfitability'] = new Chart(document.getElementById('chartProfitability'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'ROE (%)', data: cd.roe, borderColor: primary, backgroundColor: primary+'33', tension: 0.3, fill: false, pointRadius: 3 },
+                { label: '\u6bdb\u5229\u7387 (%)', data: cd.gross_margin, borderColor: success, backgroundColor: success+'33', tension: 0.3, fill: false, pointRadius: 3 },
+                { label: '\u51c0\u5229\u7387 (%)', data: cd.net_margin, borderColor: warning, backgroundColor: warning+'33', tension: 0.3, fill: false, pointRadius: 3 }
+            ]
+        },
+        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '\u76c8\u5229\u80fd\u529b', color: textColor, font:{size:12} } } }
+    });
+
+    _destroyChart('chartGrowth');
+    _charts['chartGrowth'] = new Chart(document.getElementById('chartGrowth'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: '\u8425\u6536\u589e\u901f (%)', data: cd.revenue_growth, backgroundColor: primary+'99', borderColor: primary, borderWidth: 1 },
+                { label: '\u5229\u6da6\u589e\u901f (%)', data: cd.profit_growth, backgroundColor: success+'99', borderColor: success, borderWidth: 1 }
+            ]
+        },
+        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '\u6210\u957f\u6027', color: textColor, font:{size:12} } } }
+    });
+
+    _destroyChart('chartSafety');
+    _charts['chartSafety'] = new Chart(document.getElementById('chartSafety'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: '\u8d1f\u503a\u7387 (%)', data: cd.debt_ratio, borderColor: danger, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y' },
+                { label: '\u6d41\u52a8\u6bd4\u7387', data: cd.current_ratio, borderColor: primary, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            ...baseOpts,
+            plugins: { ...baseOpts.plugins, title: { display: true, text: '\u8d22\u52a1\u5b89\u5168\u6027', color: textColor, font:{size:12} } },
+            scales: {
+                ...baseOpts.scales,
+                y: { ...baseOpts.scales.y, position: 'left', title: { display: true, text: '\u8d1f\u503a\u7387 %', color: textColor } },
+                y1: { position: 'right', ticks: {color: textColor}, grid: {drawOnChartArea: false}, title: { display: true, text: '\u6d41\u52a8\u6bd4\u7387', color: textColor } }
+            }
+        }
+    });
+
+    // Valuation band chart
+    const v = cd.valuation;
+    if (v && v.current_price) {
+        document.getElementById('valChart').style.display = '';
+        const price = v.current_price;
+        const ncav = v.ncav_per_share || 0;
+        const bvps = v.bvps || 0;
+        const target = v.target_price || price * 1.3;
+        const max = Math.max(price, target, bvps) * 1.2;
+
+        _destroyChart('chartValBand');
+        _charts['chartValBand'] = new Chart(document.getElementById('chartValBand'), {
+            type: 'bar',
+            data: {
+                labels: ['\u4f30\u503c\u533a\u95f4'],
+                datasets: [
+                    { label: 'NCAV', data: [ncav], backgroundColor: '#059669cc', barPercentage: 0.6 },
+                    { label: 'BVPS (\u6bcf\u80a1\u51c0\u8d44\u4ea7)', data: [bvps], backgroundColor: '#6366f1cc', barPercentage: 0.6 },
+                    { label: '\u5f53\u524d\u4ef7', data: [price], backgroundColor: '#d97706cc', barPercentage: 0.6 },
+                    { label: '\u76ee\u6807\u4ef7', data: [target], backgroundColor: '#dc2626cc', barPercentage: 0.6 }
+                ]
+            },
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: textColor, font:{size:11} } }, title: { display: true, text: '\u4f30\u503c\u533a\u95f4\u5bf9\u6bd4', color: textColor, font:{size:12} } },
+                scales: {
+                    x: { max: max, ticks: {color: textColor}, grid: {color: gridColor} },
+                    y: { ticks: {color: textColor}, grid: {color: gridColor} }
+                }
+            }
+        });
+    } else {
+        document.getElementById('valChart').style.display = 'none';
+    }
+}
+
 </script>
 {% endblock %}

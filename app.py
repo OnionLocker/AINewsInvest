@@ -15,7 +15,7 @@ from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user,
 )
 from config import Config
-from models import db, User, Watchlist, DailyReport, RecommendationTrack
+from models import db, User, Watchlist, DailyReport, RecommendationTrack, AlertRule
 from utils.logger import app_logger
 from utils.notifier import test_notify
 
@@ -55,6 +55,62 @@ def load_user(user_id):
 @app.route("/api/health")
 def health():
     return jsonify(status="ok", time=datetime.now().isoformat())
+
+
+@app.route("/api/market-overview")
+@login_required
+def api_market_overview():
+    """返回主要市场指数行情"""
+    indices = []
+    try:
+        import akshare as ak
+        spot = ak.stock_zh_index_spot_em()
+        targets = {
+            "上证指数": "上证",
+            "深证成指": "深证",
+            "创业板指": "创业板",
+        }
+        for _, row in spot.iterrows():
+            name = str(row.get("名称", ""))
+            if name in targets:
+                try:
+                    indices.append({
+                        "name": targets[name],
+                        "price": round(float(row.get("最新价", 0)), 2),
+                        "change_pct": round(float(row.get("涨跌幅", 0)), 2),
+                    })
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        app_logger.warning(f"A股指数获取失败: {e}")
+
+    try:
+        import yfinance as yf
+        us_hk = {
+            "^IXIC": "纳斯达克",
+            "^GSPC": "标普500",
+            "^HSI": "恒生",
+        }
+        for symbol, label in us_hk.items():
+            try:
+                t = yf.Ticker(symbol)
+                info = t.fast_info
+                price = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
+                prev = getattr(info, "previous_close", None) or getattr(info, "regular_market_previous_close", None)
+                if price and prev and prev > 0:
+                    pct = (price - prev) / prev * 100
+                    indices.append({
+                        "name": label,
+                        "price": round(float(price), 2),
+                        "change_pct": round(float(pct), 2),
+                    })
+            except Exception:
+                pass
+    except Exception as e:
+        app_logger.warning(f"美/港指数获取失败: {e}")
+
+    return jsonify(indices)
+
 
 
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 閴存潈璺敱 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -263,6 +319,15 @@ def api_watchlist_quotes():
             q["name"] = name_map[key]
         q["watchlist_id"] = id_map.get(key)
 
+    if request.args.get("sparkline") == "1":
+        from data.market_data import get_recent_prices
+        for q in quotes:
+            try:
+                prices = get_recent_prices(q["ticker"], q["market"], 20)
+                q["sparkline"] = [round(float(p), 2) for p in prices] if prices else []
+            except Exception:
+                q["sparkline"] = []
+
     return jsonify(quotes)
 
 
@@ -440,6 +505,13 @@ def api_llm_status():
 def deep_analysis():
     return render_template("deep_analysis.html")
 
+@app.route("/compare")
+@login_required
+def compare():
+    return render_template("compare.html")
+
+
+
 
 @app.route("/api/deep-analysis", methods=["POST"])
 @login_required
@@ -541,6 +613,98 @@ def api_upload_report():
             pass
 
 
+
+@app.route("/api/deep-analysis-stream", methods=["POST"])
+@login_required
+def api_deep_analysis_stream():
+    """SSE streaming deep analysis with step-by-step progress."""
+    import json as _json
+    from flask import Response
+
+    data = request.get_json(silent=True) or {}
+    ticker = data.get("ticker", "").strip()
+    market = data.get("market", "").strip()
+
+    if not ticker or not market:
+        return jsonify(error="missing params"), 400
+    if market not in {"a_share", "us_stock", "hk_stock"}:
+        return jsonify(error="invalid market"), 400
+
+    def generate():
+        from analysis.technical import analyze as tech_analyze
+        from analysis.news_fetcher import fetch_news, analyze_sentiment
+        from analysis.fundamental import analyze as fund_analyze
+        from analysis.valuation import valuate
+        from data.financial import get_financial_data
+        from analysis.llm_client import llm_analyze_stock, llm_cigbutt_analyze, _is_enabled
+
+        steps_total = 6
+
+        yield f"data: {_json.dumps({'step':1,'total':steps_total,'msg':'获取行情数据...'}, ensure_ascii=False)}\n\n"
+        tech = tech_analyze(ticker, market)
+
+        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'分析技术面...'}, ensure_ascii=False)}\n\n"
+        news = fetch_news(ticker, market, limit=10)
+        sentiment = analyze_sentiment(news)
+
+        yield f"data: {_json.dumps({'step':3,'total':steps_total,'msg':'分析基本面...'}, ensure_ascii=False)}\n\n"
+        fund_data = None
+        try:
+            fund_data = fund_analyze(ticker, market)
+        except Exception as e:
+            app_logger.warning(f"SSE deep - fundamental fail {ticker}: {e}")
+
+        yield f"data: {_json.dumps({'step':4,'total':steps_total,'msg':'估值分析...'}, ensure_ascii=False)}\n\n"
+        val_data = None
+        if fund_data and tech:
+            try:
+                fin = get_financial_data(ticker, market)
+                if fin:
+                    val_data = valuate(fin, tech["price"])
+            except Exception as e:
+                app_logger.warning(f"SSE deep - valuation fail {ticker}: {e}")
+
+        yield f"data: {_json.dumps({'step':5,'total':steps_total,'msg':'AI 研判中...'}, ensure_ascii=False)}\n\n"
+        llm_result = None
+        cigbutt_result = None
+        if _is_enabled():
+            try:
+                llm_result = llm_analyze_stock(
+                    ticker, "", market, tech or {}, news,
+                    fundamental_data=fund_data, valuation_data=val_data)
+            except Exception as e:
+                app_logger.warning(f"SSE deep - LLM fail {ticker}: {e}")
+            if market == "a_share" and val_data and val_data.get("cigbutt"):
+                try:
+                    cigbutt_result = llm_cigbutt_analyze(ticker, "", fund_data, val_data)
+                except Exception:
+                    pass
+
+        result = {
+            "ticker": ticker, "market": market,
+            "technical": tech,
+            "news": {"items": news, "sentiment": sentiment},
+            "fundamental": fund_data,
+            "valuation": val_data,
+            "llm_analysis": llm_result,
+            "cigbutt_analysis": cigbutt_result,
+            "generated_at": datetime.now().isoformat(),
+        }
+
+        try:
+            fin_for_chart = get_financial_data(ticker, market)
+            result["chart_data"] = _build_chart_data(fin_for_chart, val_data)
+        except Exception:
+            result["chart_data"] = None
+
+        _save_deep_cache(ticker, market, result)
+
+        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'完成','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
 def _save_deep_cache(ticker: str, market: str, result: dict):
     import json as _json
     from models import DeepAnalysisCache
@@ -559,6 +723,292 @@ def _save_deep_cache(ticker: str, market: str, result: dict):
     except Exception as e:
         db.session.rollback()
         app_logger.warning(f"深度分析缓存保存失败: {e}")
+
+
+
+# ======================== API: 告警规则 CRUD ========================
+
+@app.route("/api/alerts", methods=["GET"])
+@login_required
+def api_alerts_list():
+    rules = AlertRule.query.filter_by(user_id=current_user.id).order_by(AlertRule.created_at.desc()).all()
+    return jsonify([{
+        "id": r.id, "ticker": r.ticker, "name": r.name, "market": r.market,
+        "rule_type": r.rule_type, "threshold": r.threshold,
+        "enabled": r.enabled,
+        "type_label": AlertRule.RULE_TYPES.get(r.rule_type, r.rule_type),
+        "last_triggered": r.last_triggered.isoformat() if r.last_triggered else None,
+        "created_at": r.created_at.isoformat(),
+    } for r in rules])
+
+
+@app.route("/api/alerts", methods=["POST"])
+@login_required
+def api_alerts_create():
+    data = request.get_json(silent=True) or {}
+    ticker = data.get("ticker", "").strip()
+    market = data.get("market", "").strip()
+    rule_type = data.get("rule_type", "").strip()
+    threshold = data.get("threshold")
+    name = data.get("name", "")
+
+    if not ticker or not market or not rule_type:
+        return jsonify(error="missing params"), 400
+    if rule_type not in AlertRule.RULE_TYPES:
+        return jsonify(error="invalid rule_type"), 400
+    if threshold is None:
+        return jsonify(error="missing threshold"), 400
+
+    rule = AlertRule(
+        user_id=current_user.id, ticker=ticker, name=name,
+        market=market, rule_type=rule_type, threshold=float(threshold)
+    )
+    db.session.add(rule)
+    db.session.commit()
+    return jsonify(id=rule.id, msg="created"), 201
+
+
+@app.route("/api/alerts/<int:rule_id>", methods=["PUT"])
+@login_required
+def api_alerts_update(rule_id):
+    rule = AlertRule.query.filter_by(id=rule_id, user_id=current_user.id).first()
+    if not rule:
+        return jsonify(error="not found"), 404
+    data = request.get_json(silent=True) or {}
+    if "enabled" in data:
+        rule.enabled = bool(data["enabled"])
+    if "threshold" in data:
+        rule.threshold = float(data["threshold"])
+    if "rule_type" in data and data["rule_type"] in AlertRule.RULE_TYPES:
+        rule.rule_type = data["rule_type"]
+    db.session.commit()
+    return jsonify(msg="updated")
+
+
+@app.route("/api/alerts/<int:rule_id>", methods=["DELETE"])
+@login_required
+def api_alerts_delete(rule_id):
+    rule = AlertRule.query.filter_by(id=rule_id, user_id=current_user.id).first()
+    if not rule:
+        return jsonify(error="not found"), 404
+    db.session.delete(rule)
+    db.session.commit()
+    return jsonify(msg="deleted")
+
+
+
+# ======================== API: 绩效统计 ========================
+
+@app.route("/api/performance")
+@login_required
+def api_performance():
+    """统计推荐绩效：胜率、盈亏比、平均收益、按日走势。"""
+    market = request.args.get("market", "a_share")
+    days = int(request.args.get("days", "90"))
+
+    from datetime import timedelta
+    cutoff = date.today() - timedelta(days=days)
+
+    tracks = RecommendationTrack.query.join(DailyReport).filter(
+        DailyReport.market == market,
+        DailyReport.report_date >= cutoff,
+    ).all()
+
+    total = len(tracks)
+    if total == 0:
+        return jsonify({
+            "total": 0, "win": 0, "loss": 0, "pending": 0,
+            "win_rate": 0, "avg_return": 0, "max_win": 0, "max_loss": 0,
+            "profit_factor": 0, "daily_stats": [], "recent": [],
+        })
+
+    wins, losses, pending_count = 0, 0, 0
+    returns = []
+    win_amounts, loss_amounts = [], []
+
+    for t in tracks:
+        if t.outcome == "win" or t.outcome == "partial":
+            wins += 1
+            final_price = t.price_after_5d or t.price_after_3d or t.price_after_1d or t.entry_price
+            ret = ((final_price - t.entry_price) / t.entry_price * 100) if t.entry_price else 0
+            if t.direction == "sell":
+                ret = -ret
+            returns.append(ret)
+            win_amounts.append(abs(ret))
+        elif t.outcome == "loss":
+            losses += 1
+            final_price = t.price_after_5d or t.price_after_3d or t.price_after_1d or t.entry_price
+            ret = ((final_price - t.entry_price) / t.entry_price * 100) if t.entry_price else 0
+            if t.direction == "sell":
+                ret = -ret
+            returns.append(ret)
+            loss_amounts.append(abs(ret))
+        else:
+            pending_count += 1
+
+    decided = wins + losses
+    win_rate = round(wins / decided * 100, 1) if decided > 0 else 0
+    avg_return = round(sum(returns) / len(returns), 2) if returns else 0
+    max_win = round(max(returns), 2) if returns else 0
+    max_loss = round(min(returns), 2) if returns else 0
+    avg_win = sum(win_amounts) / len(win_amounts) if win_amounts else 0
+    avg_loss = sum(loss_amounts) / len(loss_amounts) if loss_amounts else 1
+    profit_factor = round(avg_win / avg_loss, 2) if avg_loss > 0 else 0
+
+    daily_map = {}
+    for t in tracks:
+        report = DailyReport.query.get(t.report_id)
+        if not report:
+            continue
+        d = report.report_date.isoformat()
+        if d not in daily_map:
+            daily_map[d] = {"date": d, "win": 0, "loss": 0, "total": 0}
+        daily_map[d]["total"] += 1
+        if t.outcome in ("win", "partial"):
+            daily_map[d]["win"] += 1
+        elif t.outcome == "loss":
+            daily_map[d]["loss"] += 1
+    daily_stats = sorted(daily_map.values(), key=lambda x: x["date"])
+    for ds in daily_stats:
+        decided_d = ds["win"] + ds["loss"]
+        ds["win_rate"] = round(ds["win"] / decided_d * 100, 1) if decided_d > 0 else 0
+
+    recent = []
+    for t in sorted(tracks, key=lambda x: x.created_at or datetime.min, reverse=True)[:10]:
+        final_price = t.price_after_5d or t.price_after_3d or t.price_after_1d
+        ret_pct = 0
+        if final_price and t.entry_price:
+            ret_pct = round((final_price - t.entry_price) / t.entry_price * 100, 2)
+            if t.direction == "sell":
+                ret_pct = -ret_pct
+        recent.append({
+            "ticker": t.ticker, "name": t.name, "market": t.market,
+            "direction": t.direction, "outcome": t.outcome or "pending",
+            "return_pct": ret_pct,
+            "entry_price": t.entry_price,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        })
+
+    return jsonify({
+        "total": total, "win": wins, "loss": losses, "pending": pending_count,
+        "win_rate": win_rate, "avg_return": avg_return,
+        "max_win": max_win, "max_loss": max_loss,
+        "profit_factor": profit_factor,
+        "daily_stats": daily_stats,
+        "recent": recent,
+    })
+
+
+# ======================== API: 多股对比 ========================
+
+@app.route("/api/compare", methods=["POST"])
+@login_required
+def api_compare():
+    """对比 2-4 只股票的基本面/估值/技术面。"""
+    data = request.get_json(silent=True) or {}
+    tickers = data.get("tickers", [])
+
+    if not tickers or len(tickers) < 2 or len(tickers) > 4:
+        return jsonify(error="need 2-4 tickers"), 400
+
+    from analysis.technical import analyze as tech_analyze
+    from analysis.fundamental import analyze as fund_analyze
+    from analysis.valuation import valuate
+    from data.financial import get_financial_data
+
+    results = []
+    for item in tickers:
+        ticker = item.get("ticker", "").strip()
+        market = item.get("market", "").strip()
+        if not ticker or not market:
+            continue
+
+        entry = {"ticker": ticker, "market": market, "name": item.get("name", ticker)}
+        try:
+            tech = tech_analyze(ticker, market)
+            entry["price"] = tech.get("price") if tech else None
+            entry["signal"] = tech.get("signal", "neutral") if tech else "N/A"
+            entry["rsi"] = tech.get("rsi") if tech else None
+        except Exception:
+            entry["price"] = None
+            entry["signal"] = "N/A"
+
+        try:
+            fund = fund_analyze(ticker, market)
+            if fund:
+                entry["quality_score"] = fund.get("quality_score")
+                entry["roe"] = fund.get("roe")
+                entry["gross_margin"] = fund.get("gross_margin")
+                entry["debt_ratio"] = fund.get("debt_ratio")
+                entry["revenue_growth"] = fund.get("revenue_growth")
+        except Exception:
+            pass
+
+        try:
+            fin = get_financial_data(ticker, market)
+            if fin and entry.get("price"):
+                val = valuate(fin, entry["price"])
+                if val:
+                    entry["pe_ttm"] = val.get("pe_ttm")
+                    entry["pb"] = val.get("pb")
+                    entry["safety_margin"] = val.get("safety_margin")
+                    entry["penetration_return"] = val.get("penetration_return")
+        except Exception:
+            pass
+
+        results.append(entry)
+
+    return jsonify(results)
+
+
+
+@app.route("/api/weekly-report")
+@login_required
+def api_weekly_report():
+    """获取最新周报（从缓存或实时生成）。"""
+    market = request.args.get("market", "a_share")
+    cache_key = f"weekly_{market}"
+
+    cached = app.config.get("_weekly_cache", {}).get(cache_key)
+    if cached:
+        return jsonify(cached)
+
+    try:
+        from analysis.report_generator import generate_weekly_report
+        report = generate_weekly_report(market)
+        app.config.setdefault("_weekly_cache", {})[cache_key] = report
+        return jsonify(report)
+    except Exception as e:
+        app_logger.warning(f"周报生成失败: {e}")
+        return jsonify(content=None), 404
+
+
+def _build_chart_data(fin_data, val_data):
+    """Extract multi-year series from financial data for Chart.js."""
+    if not fin_data or not fin_data.get("indicators"):
+        return None
+    indicators = fin_data["indicators"]
+    indicators_sorted = sorted(indicators, key=lambda x: x.get("year", 0))
+    chart = {
+        "years": [str(d.get("year", "")) for d in indicators_sorted],
+        "roe": [d.get("roe") for d in indicators_sorted],
+        "gross_margin": [d.get("gross_margin") for d in indicators_sorted],
+        "net_margin": [d.get("net_margin") for d in indicators_sorted],
+        "revenue_growth": [d.get("revenue_growth") for d in indicators_sorted],
+        "profit_growth": [d.get("profit_growth") for d in indicators_sorted],
+        "debt_ratio": [d.get("debt_ratio") for d in indicators_sorted],
+        "current_ratio": [d.get("current_ratio") for d in indicators_sorted],
+    }
+    if val_data:
+        chart["valuation"] = {
+            "current_price": val_data.get("current_price"),
+            "ncav_per_share": val_data.get("ncav_per_share"),
+            "bvps": val_data.get("bvps"),
+            "target_price": val_data.get("target_price"),
+            "pe_ttm": val_data.get("pe_ttm"),
+            "pb": val_data.get("pb"),
+        }
+    return chart
 
 
 def _run_deep_analysis(ticker: str, market: str) -> dict:
@@ -592,9 +1042,22 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
     cigbutt_result = None
     if _is_enabled():
         try:
+            ann_data = None
+            flow_data = None
+            try:
+                from data.announcement import fetch_announcements
+                ann_data = fetch_announcements(ticker, market)
+            except Exception:
+                pass
+            try:
+                from data.fund_flow import get_fund_flow
+                flow_data = get_fund_flow(ticker, market)
+            except Exception:
+                pass
             llm_result = llm_analyze_stock(
                 ticker, "", market, tech or {}, news,
-                fundamental_data=fund_data, valuation_data=val_data)
+                fundamental_data=fund_data, valuation_data=val_data,
+                announcements=ann_data, fund_flow=flow_data)
         except Exception as e:
             app_logger.warning(f"深度分析-LLM失败 {ticker}: {e}")
 
@@ -605,6 +1068,13 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
             except Exception as e:
                 app_logger.warning(f"深度分析-烟蒂股分析失败 {ticker}: {e}")
 
+    fin_for_chart = None
+    try:
+        fin_for_chart = get_financial_data(ticker, market)
+    except Exception:
+        pass
+    chart_data = _build_chart_data(fin_for_chart, val_data)
+
     return {
         "ticker": ticker,
         "market": market,
@@ -614,6 +1084,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
         "valuation": val_data,
         "llm_analysis": llm_result,
         "cigbutt_analysis": cigbutt_result,
+        "chart_data": chart_data,
         "generated_at": datetime.now().isoformat(),
     }
 
@@ -622,5 +1093,12 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         _load_symbols()
-    app_logger.info("Alpha Vault 鍚姩")
+
+    try:
+        from scripts.scheduler import init_scheduler
+        init_scheduler(app)
+    except Exception as e:
+        app_logger.warning(f"\u8c03\u5ea6\u5668\u542f\u52a8\u5931\u8d25: {e}")
+
+    app_logger.info("Alpha Vault \u542f\u52a8")
     app.run(host="0.0.0.0", port=5000, debug=True)

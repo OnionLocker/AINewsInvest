@@ -41,6 +41,38 @@
         </div>
     </div>
 
+        <!-- 绩效仪表板 -->
+    <div id="perfDashboard" style="margin-bottom:24px;">
+        <div class="av-metrics">
+            <div class="av-metric-card">
+                <div class="av-metric-label">盈亏比</div>
+                <div class="av-metric-value" id="perfPF">--</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">平均收益</div>
+                <div class="av-metric-value" id="perfAvgRet">--%</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">最大盈利</div>
+                <div class="av-metric-value text-success" id="perfMaxWin">--%</div>
+            </div>
+            <div class="av-metric-card">
+                <div class="av-metric-label">最大亏损</div>
+                <div class="av-metric-value text-danger" id="perfMaxLoss">--%</div>
+            </div>
+        </div>
+        <div style="position:relative;height:200px;margin-bottom:16px;"><canvas id="chartWinRate"></canvas></div>
+        <div id="perfRecent" style="font-size:13px;"></div>
+    </div>
+
+    <!-- 周报展示 -->
+    <div id="weeklyReportSection" style="display:none;margin-bottom:24px;">
+        <div class="av-section-header">
+            <h6><i class="bi bi-calendar-week me-2"></i>\u5468\u62a5\u590d\u76d8</h6>
+        </div>
+        <div id="weeklyReportContent" class="av-deep-summary" style="white-space:pre-wrap;"></div>
+    </div>
+
     <div class="av-section-header">
         <h6><i class="bi bi-clock-history me-2"></i>历史报告列表</h6>
         <span class="av-section-sub" id="histInfo">点击查看某日报告详情</span>
@@ -85,6 +117,8 @@ document.querySelectorAll('#histTabs .av-tab').forEach(tab => {
         currentMarket = this.dataset.market;
         loadHistory(currentMarket);
         loadStats(currentMarket);
+        loadPerformance(currentMarket);
+        loadWeeklyReport(currentMarket);
         closeDetail();
     });
 });
@@ -246,5 +280,87 @@ function closeDetail() {
 // ═══════════════════════════════════════════════════════════════
 loadHistory('a_share');
 loadStats('a_share');
+loadPerformance('a_share');
+loadWeeklyReport('a_share');
+
+
+let _perfChart = null;
+
+async function loadPerformance(market) {
+    try {
+        const resp = await fetch('/api/performance?market=' + market);
+        const data = await resp.json();
+        document.getElementById('perfPF').textContent = data.profit_factor || '--';
+        document.getElementById('perfAvgRet').textContent = (data.avg_return || 0) + '%';
+        document.getElementById('perfMaxWin').textContent = '+' + (data.max_win || 0) + '%';
+        document.getElementById('perfMaxLoss').textContent = (data.max_loss || 0) + '%';
+
+        // Win rate trend chart
+        if (data.daily_stats && data.daily_stats.length > 0 && typeof Chart !== 'undefined') {
+            if (_perfChart) _perfChart.destroy();
+            const ctx = document.getElementById('chartWinRate');
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--av-text-secondary').trim() || '#6b7280';
+            _perfChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.daily_stats.map(d => d.date.slice(5)),
+                    datasets: [{
+                        label: '\u80dc\u7387 (%)',
+                        data: data.daily_stats.map(d => d.win_rate),
+                        borderColor: '#059669',
+                        backgroundColor: '#05966933',
+                        tension: 0.3, fill: true, pointRadius: 2,
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: true, text: '\u6bcf\u65e5\u80dc\u7387\u8d70\u52bf', color: textColor, font:{size:12} } },
+                    scales: {
+                        x: { ticks: {color: textColor, maxTicksLimit: 10} },
+                        y: { min: 0, max: 100, ticks: {color: textColor} }
+                    }
+                }
+            });
+        }
+
+        // Recent recommendations
+        const recentEl = document.getElementById('perfRecent');
+        if (data.recent && data.recent.length > 0) {
+            recentEl.innerHTML = '<div style="font-weight:600;margin-bottom:8px;color:var(--av-text-secondary);">\u6700\u8fd1\u63a8\u8350\u8868\u73b0:</div>' +
+                data.recent.map(r => {
+                    const icon = r.outcome === 'win' || r.outcome === 'partial' ? '<i class="bi bi-check-circle-fill" style="color:var(--av-success)"></i>' :
+                                 r.outcome === 'loss' ? '<i class="bi bi-x-circle-fill" style="color:var(--av-danger)"></i>' :
+                                 '<i class="bi bi-hourglass-split" style="color:var(--av-text-muted)"></i>';
+                    const retStr = r.return_pct > 0 ? '+' + r.return_pct + '%' : r.return_pct + '%';
+                    const retColor = r.return_pct > 0 ? 'var(--av-success)' : r.return_pct < 0 ? 'var(--av-danger)' : 'var(--av-text-muted)';
+                    return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--av-border);">
+                        ${icon} <span style="font-weight:600;">${r.ticker}</span> <span style="color:var(--av-text-secondary)">${r.name}</span>
+                        <span style="margin-left:auto;font-weight:600;color:${retColor};font-family:monospace;">${retStr}</span>
+                    </div>`;
+                }).join('');
+        } else {
+            recentEl.innerHTML = '<div style="text-align:center;color:var(--av-text-muted);padding:12px;">\u6682\u65e0\u63a8\u8350\u8ddf\u8e2a\u6570\u636e</div>';
+        }
+    } catch(e) {
+        console.warn('Performance load failed', e);
+    }
+}
+
+async function loadWeeklyReport(market) {
+    try {
+        const resp = await fetch('/api/weekly-report?market=' + market);
+        if (!resp.ok) { document.getElementById('weeklyReportSection').style.display = 'none'; return; }
+        const data = await resp.json();
+        if (data && data.content) {
+            document.getElementById('weeklyReportContent').textContent = data.content;
+            document.getElementById('weeklyReportSection').style.display = '';
+        } else {
+            document.getElementById('weeklyReportSection').style.display = 'none';
+        }
+    } catch(e) {
+        document.getElementById('weeklyReportSection').style.display = 'none';
+    }
+}
+
 </script>
 {% endblock %}

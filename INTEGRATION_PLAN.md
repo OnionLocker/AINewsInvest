@@ -998,3 +998,373 @@ pdfplumber>=0.10.0
 4. **LLM Token 消耗**：V2 prompt 比 V1 长约 2-3 倍，max_tokens 建议从 2048 调到 3072。如果用本地模型（Ollama/vLLM），影响不大；如果用 ChatGPT/DeepSeek API，需关注成本。
 
 5. **Phase 顺序**：Phase 1 → 2 → 4 → 5 有严格依赖关系；Phase 3 依赖 Phase 1 但可与 Phase 2 并行；Phase 6 依赖 Phase 5 但优先级最低。
+
+
+---
+
+## Phase 7-11: 体验优化 & 功能丰富 (v2.0 规划)
+
+---
+
+## 十三、Phase 7: 交互体验提升 [P0]
+
+**目标**：提升核心操作路径的流畅度，让用户"进来就能用、一键就到位"。
+
+### 7.1 自选 → 深度分析一键跳转
+
+- [x] **7.1.1** `templates/dashboard.html` 自选卡片增加"深度分析"按钮
+
+```
+自选卡片右侧添加图标按钮:
+onclick -> window.location = '/deep-analysis?ticker=XXX&market=YYY'
+```
+
+- [x] **7.1.2** `templates/dashboard.html` 报告卡片增加"深度分析"链接
+
+```
+在报告卡片的 ticker 标签旁加一个小按钮:
+点击 -> 跳转到深度分析页，自动填入代码和市场
+```
+
+- [x] **7.1.3** `templates/deep_analysis.html` 支持 URL 参数自动填入
+
+```javascript
+const params = new URLSearchParams(window.location.search);
+if (params.get('ticker')) {
+    document.getElementById('deepTicker').value = params.get('ticker');
+    document.getElementById('deepMarket').value = params.get('market') || 'a_share';
+    runDeepAnalysis();
+}
+```
+
+### 7.2 市场大盘概览条
+
+- [x] **7.2.1** `app.py` 新增 `/api/market-overview` 端点
+
+```python
+# 返回主要指数行情: 上证/深证/创业板/纳斯达克/标普/恒生
+# 使用 akshare stock_zh_index_spot_em 获取 A 股指数
+# 使用 yfinance 获取 ^IXIC, ^GSPC, ^HSI
+```
+
+- [x] **7.2.2** `templates/dashboard.html` 顶部添加大盘指数横条
+
+```
+上证 3245.67 +0.45%  深证 10523.12 -0.21%  创业板 2156 +0.33%
+纳斯达克 18234 +1.2%  标普 5432 +0.8%  恒生 21345 -0.3%
+```
+
+- [x] **7.2.3** `static/style.css` 大盘概览条样式（滚动/固定两种模式）
+
+### 7.3 分步进度条
+
+- [x] **7.3.1** `app.py` 深度分析接口改为 SSE (Server-Sent Events) 流式返回
+
+```python
+# 每完成一步推送一次进度:
+# step 1: 获取行情数据...
+# step 2: 分析技术面...
+# step 3: 分析基本面...
+# step 4: 估值分析...
+# step 5: AI 研判中...
+# step 6: 完成
+```
+
+- [x] **7.3.2** `templates/deep_analysis.html` 前端接收 SSE 并渐进式渲染
+
+```
+进度条: [========....] 正在分析基本面...
+每完成一步，对应板块先行渲染，不用等到全部完成
+```
+
+### 7.4 报告卡片展开/收起
+
+- [x] **7.4.1** `templates/dashboard.html` 报告卡片默认收起，只显示摘要
+
+```
+默认显示: 代码 + 名称 + 方向 + 置信度 + 一行摘要
+点击展开: 完整的交易计划 + 四维分析 + AI 深度
+```
+
+- [x] **7.4.2** `static/style.css` 展开/收起动画
+
+---
+
+## 十四、Phase 8: 财务数据可视化 [P1]
+
+**目标**：让数字变成图表，关键趋势一目了然。
+
+### 8.1 引入图表库
+
+- [x] **8.1.1** `templates/base.html` 引入 Chart.js CDN
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+```
+
+### 8.2 深度分析页 — 财务趋势图
+
+- [x] **8.2.1** `app.py` 深度分析返回数据增加多年指标序列
+
+```python
+# _run_deep_analysis 中，把 financial_data['indicators'] 的多年数据
+# 提取为适合图表的格式:
+# "chart_data": {
+#     "years": ["2020", "2021", "2022", "2023", "2024"],
+#     "roe": [15.2, 16.8, 14.3, 12.1, 13.5],
+#     "gross_margin": [45.2, 44.8, 43.1, 42.5, 43.8],
+#     ...
+# }
+```
+
+- [x] **8.2.2** `templates/deep_analysis.html` 基本面板块添加趋势图
+
+```
+三行图表:
+1. 盈利能力: ROE + 毛利率 双轴折线图
+2. 成长性: 营收增速 + 利润增速 柱状图
+3. 安全性: 负债率 + 流动比率 折线图
+```
+
+- [x] **8.2.3** `templates/deep_analysis.html` 估值板块添加区间图
+
+```
+估值区间图:
+-----[地板价]=======[当前价]===[高估区]-----
+     ^ NCAV    ^ BVPS    ^ 当前    ^ 目标价
+```
+
+### 8.3 自选列表 — 迷你 K 线火花图
+
+- [x] **8.3.1** `app.py` `/api/watchlist/quotes` 返回近 20 日收盘价序列
+
+- [x] **8.3.2** `templates/dashboard.html` 自选卡片用 Canvas 绘制 sparkline
+
+---
+
+## 十五、Phase 9: 自选监控告警 [P1]
+
+**目标**：从"被动看报告"升级为"主动推信号"。
+
+### 9.1 告警规则模型
+
+- [x] **9.1.1** `models.py` 新增 `AlertRule` 模型
+
+```python
+class AlertRule(db.Model):
+    __tablename__ = "alert_rules"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    ticker = db.Column(db.String(20), nullable=False)
+    market = db.Column(db.String(20), nullable=False)
+    rule_type = db.Column(db.String(30), nullable=False)
+    # rule_type: "price_below", "price_above", "rsi_oversold",
+    #            "rsi_overbought", "pe_below", "volume_surge", "macd_cross"
+    threshold = db.Column(db.Float)
+    enabled = db.Column(db.Boolean, default=True)
+    last_triggered = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+- [x] **9.1.2** `app.py` 告警规则 CRUD API
+
+```
+POST   /api/alerts          创建告警规则
+GET    /api/alerts          获取用户所有规则
+PUT    /api/alerts/<id>     修改规则
+DELETE /api/alerts/<id>     删除规则
+```
+
+### 9.2 告警检测引擎
+
+- [x] **9.2.1** 新建 `scripts/alert_checker.py`
+
+```python
+# check_alerts():
+#   遍历所有启用的告警规则
+#   检测是否触发条件
+#   触发后推送 Telegram 通知
+#   更新 last_triggered 时间戳
+```
+
+- [x] **9.2.2** `scripts/scheduler.py` 添加告警检测定时任务（每 30 分钟一次）
+
+### 9.3 告警管理 UI
+
+- [x] **9.3.1** `templates/dashboard.html` 自选卡片添加"设置告警"按钮
+- [x] **9.3.2** 告警设置弹窗（选择规则类型 + 输入阈值）
+- [x] **9.3.3** `templates/settings.html` 添加告警规则列表管理区
+
+---
+
+## 十六、Phase 10: 回测与绩效面板 [P2]
+
+**目标**：用数据证明系统有效性，建立信任。
+
+### 10.1 推荐绩效统计
+
+- [x] **10.1.1** `app.py` 新增 `/api/performance` 端点
+
+```python
+# 统计指定时间范围内的推荐绩效:
+# total_recommendations, win_rate, avg_return,
+# max_win, max_loss, profit_factor,
+# daily_stats (按日胜率走势)
+```
+
+- [x] **10.1.2** `templates/history.html` 绩效仪表板
+
+```
+总推荐 245  |  胜率 62.4%  |  盈亏比 1.85
+         [胜率走势折线图]
+最近推荐表现:
+  V 600519 贵州茅台 +5.2% (3天)
+  X TSLA 特斯拉 -3.1% (5天)
+  V 0700 腾讯 +2.8% (1天)
+```
+
+### 10.2 多股对比
+
+- [x] **10.2.1** `app.py` 新增 `/api/compare` 端点
+
+```python
+# 对比 2-4 只股票的基本面/估值/技术面
+# 输入: tickers = [{ticker, market}, ...]
+# 输出: 各标的指标并排数据
+```
+
+- [x] **10.2.2** 新建 `templates/compare.html` 对比页面
+
+```
+         | 贵州茅台  | 五粮液   | 泸州老窖
+---------+----------+---------+----------
+质量评分  |   85     |   72    |   68
+ROE      |  28.5%   |  22.1%  |  19.8%
+安全边际  |  -15%    |  +12%   |  +25%
+穿透回报  |  8.2%    |  10.5%  |  12.1%
+技术信号  |  看多    |  中性    |  看多
+```
+
+- [x] **10.2.3** `base.html` 导航栏添加"对比"入口
+
+---
+
+## 十七、Phase 11: 周报 & 数据源扩展 [P3]
+
+**目标**：定期复盘 + 拓宽信息面。
+
+### 11.1 周度复盘报告
+
+- [x] **11.1.1** `analysis/report_generator.py` 新增 `generate_weekly_report(market)`
+
+```python
+# 汇总本周所有日报推荐的表现:
+# 统计: 胜率、平均收益、最佳/最差推荐
+# 市场热点变化: 本周 vs 上周情绪对比
+# 信号质量评估: 各维度贡献度
+```
+
+- [x] **11.1.2** `scripts/scheduler.py` 每周五 18:00 自动生成并推送周报
+- [x] **11.1.3** `templates/history.html` 周报展示卡片
+
+### 11.2 数据源扩展
+
+- [x] **11.2.1** `data/announcement.py` 公告/研报摘要采集（可选）
+
+```python
+# fetch_announcements(ticker, market, days=30):
+#   从东方财富/巨潮资讯获取公告标题列表
+#   akshare.stock_notice_report 或爬虫
+```
+
+- [x] **11.2.2** `data/fund_flow.py` 资金流向数据（可选）
+
+```python
+# get_fund_flow(ticker, market):
+#   获取主力/散户资金流向
+#   akshare.stock_individual_fund_flow
+```
+
+- [x] **11.2.3** 将公告和资金流向数据集成到 LLM Prompt
+
+---
+
+## 十八、Phase 7-11 实施检查清单
+
+### Phase 7: 交互体验提升 [P0]
+- [x] 7.1.1 自选卡片"深度分析"按钮
+- [x] 7.1.2 报告卡片"深度分析"链接
+- [x] 7.1.3 深度分析页 URL 参数自动填入
+- [x] 7.2.1 `/api/market-overview` 大盘指数端点
+- [x] 7.2.2 仪表盘大盘概览条 UI
+- [x] 7.2.3 大盘概览条样式
+- [x] 7.3.1 深度分析 SSE 流式接口
+- [x] 7.3.2 前端分步进度条渲染
+- [x] 7.4.1 报告卡片展开/收起
+- [x] 7.4.2 展开/收起动画
+
+### Phase 8: 财务数据可视化 [P1]
+- [x] 8.1.1 引入 Chart.js
+- [x] 8.2.1 深度分析返回多年指标序列
+- [x] 8.2.2 基本面趋势图
+- [x] 8.2.3 估值区间图
+- [x] 8.3.1 自选行情返回近 20 日价格
+- [x] 8.3.2 自选卡片 sparkline
+
+### Phase 9: 自选监控告警 [P1]
+- [x] 9.1.1 `AlertRule` 数据模型
+- [x] 9.1.2 告警 CRUD API
+- [x] 9.2.1 `alert_checker.py` 检测引擎
+- [x] 9.2.2 定时任务集成 (30分钟)
+- [x] 9.3.1 自选卡片"设置告警"按钮
+- [x] 9.3.2 告警设置弹窗
+- [x] 9.3.3 设置页告警列表管理
+
+### Phase 10: 回测与绩效面板 [P2]
+- [x] 10.1.1 `/api/performance` 绩效统计端点
+- [x] 10.1.2 绩效仪表板 UI
+- [x] 10.2.1 `/api/compare` 多股对比端点
+- [x] 10.2.2 `compare.html` 对比页面
+- [x] 10.2.3 导航栏添加"对比"入口
+
+### Phase 11: 周报 & 数据源扩展 [P3]
+- [x] 11.1.1 `generate_weekly_report` 周报生成
+- [x] 11.1.2 定时任务: 周五 18:00 周报
+- [x] 11.1.3 周报展示卡片
+- [x] 11.2.1 公告/研报摘要采集 (可选)
+- [x] 11.2.2 资金流向数据 (可选)
+- [x] 11.2.3 集成到 LLM Prompt
+
+---
+
+## 十九、Phase 7-11 依赖关系
+
+```
+Phase 7 (交互体验)   --> 无依赖，可立即开始
+Phase 8 (数据可视化)  --> 依赖 Chart.js 引入
+Phase 9 (监控告警)    --> 依赖 AlertRule 模型 + scheduler 集成
+Phase 10 (回测绩效)   --> 依赖 RecommendationTrack 有足够数据积累
+Phase 11 (周报/数据源) --> 依赖 Phase 10 绩效统计 + 新数据源接口
+
+推荐实施顺序: Phase 7 -> Phase 8 -> Phase 9 -> Phase 10 -> Phase 11
+其中 Phase 7 的 4 个子模块可以独立并行实施。
+```
+
+## 二十、Phase 7-11 文件变更预估
+
+| 操作 | 文件路径 | Phase | 说明 |
+|------|----------|-------|------|
+| **修改** | `templates/dashboard.html` | 7, 8 | 深度分析跳转、大盘条、卡片收起、sparkline |
+| **修改** | `templates/deep_analysis.html` | 7, 8 | URL 参数、SSE 进度条、趋势图 |
+| **修改** | `templates/history.html` | 10, 11 | 绩效面板、周报卡片 |
+| **修改** | `templates/base.html` | 8, 10 | Chart.js CDN、对比入口 |
+| **修改** | `templates/settings.html` | 9 | 告警规则管理 |
+| **修改** | `app.py` | 7-11 | 新增 API 端点 |
+| **修改** | `models.py` | 9 | AlertRule 模型 |
+| **修改** | `static/style.css` | 7-11 | 新组件样式 |
+| **修改** | `analysis/report_generator.py` | 11 | 周报生成 |
+| **修改** | `scripts/scheduler.py` | 9, 11 | 告警检测、周报定时 |
+| **新建** | `templates/compare.html` | 10 | 多股对比页 |
+| **新建** | `scripts/alert_checker.py` | 9 | 告警检测引擎 |
+| **新建** | `data/announcement.py` | 11 | 公告采集 (可选) |
+| **新建** | `data/fund_flow.py` | 11 | 资金流向 (可选) |

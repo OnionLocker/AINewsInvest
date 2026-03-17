@@ -114,6 +114,30 @@ class RecommendationTrack(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AlertRule(db.Model):
+    """用户自选告警规则"""
+    __tablename__ = "alert_rules"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    ticker = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(100), default="")
+    market = db.Column(db.String(20), nullable=False)
+    rule_type = db.Column(db.String(30), nullable=False)
+    threshold = db.Column(db.Float)
+    enabled = db.Column(db.Boolean, default=True)
+    last_triggered = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    RULE_TYPES = {
+        "price_above": "价格高于",
+        "price_below": "价格低于",
+        "change_pct_above": "涨幅超过(%)",
+        "change_pct_below": "跌幅超过(%)",
+        "volume_surge": "成交量放大(倍)",
+    }
+
+
 class DeepAnalysisCache(db.Model):
     """个股深度分析缓存（避免短时间重复计算）"""
     __tablename__ = "deep_analysis_cache"
