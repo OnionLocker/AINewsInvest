@@ -1,23 +1,26 @@
 """
-analysis/technical.py - 技术面分析引擎
+analysis/technical.py - \u6280\u672f\u9762\u5206\u6790\u5f15\u64ce
 
-流程：拉取 K 线 → 计算指标 → 判断趋势 → 给出入场/止损/止盈点位
+\u6d41\u7a0b\uff1a\u62c9\u53d6 K \u7ebf \u2192 \u8ba1\u7b97\u6307\u6807 \u2192 \u5224\u65ad\u8d8b\u52bf \u2192 \u7ed9\u51fa\u5165\u573a/\u6b62\u635f/\u6b62\u76c8\u70b9\u4f4d
 
-支持市场：A股(akshare) / 美股(yfinance) / 港股(akshare) / 基金(akshare)
+\u6570\u636e\u6e90\u7b56\u7565\uff08\u7f8e\u56fd\u670d\u52a1\u5668\u4f18\u5316\uff09\uff1a
+  - A\u80a1\uff1a\u4e3b yfinance (ticker.SS/SZ) \u2192 fallback akshare
+  - \u6e2f\u80a1\uff1a\u4e3b yfinance (ticker.HK) \u2192 fallback akshare
+  - \u7f8e\u80a1\uff1ayfinance
+  - \u57fa\u91d1\uff1a\u4e3b yfinance (ticker.SS/SZ) \u2192 fallback akshare
 
-超时控制使用 ThreadPoolExecutor，兼容 gunicorn gthread worker。
+\u8d85\u65f6\u63a7\u5236\u4f7f\u7528 ThreadPoolExecutor\uff0c\u517c\u5bb9 gunicorn gthread worker\u3002
 """
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import numpy as np
 import pandas as pd
-import akshare as ak
 import yfinance as yf
 from utils.logger import app_logger
 
 LOOKBACK_DAYS = 120
-_KLINE_TIMEOUT_SECONDS = 30
+_KLINE_TIMEOUT_SECONDS = 20
 _KLINE_CACHE_TTL_SECONDS = 1800
 _kline_cache: dict[str, tuple[pd.DataFrame | None, float]] = {}
 
@@ -38,14 +41,68 @@ def _cache_set(key: str, value: pd.DataFrame | None):
     _kline_cache[key] = (value, time.time())
 
 
-# ══════════════════════════════════════════════════════════════
-# K 线数据获取（线程安全超时）
-# ══════════════════════════════════════════════════════════════
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# Ticker \u8f6c\u6362\uff1a\u5c06\u56fd\u5185\u4ee3\u7801\u8f6c\u6362\u4e3a yfinance \u53ef\u8bc6\u522b\u7684\u683c\u5f0f
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+def _to_yf_ticker_ashare(ticker: str) -> str:
+    """A\u80a1\u4ee3\u7801 \u2192 yfinance: 6\u5f00\u5934=\u6caa(.SS), 0/3\u5f00\u5934=\u6df1(.SZ)"""
+    t = ticker.strip()
+    if t.startswith("6") or t.startswith("9"):
+        return f"{t}.SS"
+    else:
+        return f"{t}.SZ"
+
+
+def _to_yf_ticker_hk(ticker: str) -> str:
+    """\u6e2f\u80a1\u4ee3\u7801 \u2192 yfinance: \u53bb\u6389\u524d\u5bfc0, \u52a0.HK"""
+    t = ticker.strip().lstrip("0") or "0"
+    return f"{t}.HK"
+
+
+def _to_yf_ticker_fund(ticker: str) -> str:
+    """\u57fa\u91d1/ETF\u4ee3\u7801 \u2192 yfinance: \u540c A\u80a1\u89c4\u5219"""
+    return _to_yf_ticker_ashare(ticker)
+
+
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# yfinance \u7edf\u4e00 K \u7ebf\u83b7\u53d6
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+def _yf_download(yf_ticker: str) -> pd.DataFrame | None:
+    """yfinance \u83b7\u53d6\u65e5K\u7ebf\uff0c\u8fd4\u56de\u6807\u51c6\u5316 DataFrame"""
+    t = yf.Ticker(yf_ticker)
+    df = t.history(period="6mo")
+    if df is None or df.empty:
+        return None
+    df = df.reset_index()
+    df = df.rename(columns={
+        "Date": "date", "Open": "open", "High": "high",
+        "Low": "low", "Close": "close", "Volume": "volume",
+    })
+    cols = ["date", "open", "high", "low", "close", "volume"]
+    for c in cols:
+        if c not in df.columns:
+            return None
+    df = df[cols].copy()
+    df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
+    for c in ["open", "high", "low", "close", "volume"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=["close"])
+    if df.empty:
+        return None
+    return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+
+
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# K \u7ebf\u6570\u636e\u83b7\u53d6\uff08\u7ebf\u7a0b\u5b89\u5168\u8d85\u65f6\uff09
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 def fetch_kline(ticker: str, market: str) -> pd.DataFrame | None:
     """
-    拉取日K线，返回标准化 DataFrame。
-    超时控制用 ThreadPoolExecutor 替代 signal.alarm，兼容 gunicorn。
+    \u62c9\u53d6\u65e5K\u7ebf\uff0c\u8fd4\u56de\u6807\u51c6\u5316 DataFrame\u3002
+    A\u80a1/\u6e2f\u80a1/\u57fa\u91d1\uff1a\u4e3b yfinance \u2192 fallback akshare
+    \u7f8e\u80a1\uff1ayfinance
     """
     cache_key = f"{market}:{ticker}"
     cached = _cache_get(cache_key)
@@ -72,87 +129,110 @@ def fetch_kline(ticker: str, market: str) -> pd.DataFrame | None:
         return df
     except FuturesTimeoutError:
         app_logger.warning(
-            f"K线获取超时 [{market}:{ticker}]，已跳过（>{_KLINE_TIMEOUT_SECONDS}s）"
+            f"K\u7ebf\u83b7\u53d6\u8d85\u65f6 [{market}:{ticker}]\uff0c\u5df2\u8df3\u8fc7\uff08>{_KLINE_TIMEOUT_SECONDS}s\uff09"
         )
         _cache_set(cache_key, None)
         return None
     except Exception as e:
-        app_logger.warning(f"K线获取失败 [{market}:{ticker}]: {type(e).__name__}: {e}")
+        app_logger.warning(f"K\u7ebf\u83b7\u53d6\u5931\u8d25 [{market}:{ticker}]: {type(e).__name__}: {e}")
         _cache_set(cache_key, None)
         return None
 
 
 def _kline_a_share(ticker: str) -> pd.DataFrame | None:
-    df = ak.stock_zh_a_hist(symbol=ticker, period="daily", adjust="qfq")
-    if df is None or df.empty:
-        return None
-    df = df.rename(columns={
-        "日期": "date", "开盘": "open", "最高": "high",
-        "最低": "low", "收盘": "close", "成交量": "volume",
-    })
-    df = df[["date", "open", "high", "low", "close", "volume"]].copy()
-    df["date"] = pd.to_datetime(df["date"])
-    for c in ["open", "high", "low", "close", "volume"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    """A\u80a1: \u4e3b yfinance \u2192 fallback akshare"""
+    yf_sym = _to_yf_ticker_ashare(ticker)
+    df = _yf_download(yf_sym)
+    if df is not None and len(df) >= 20:
+        app_logger.info(f"A\u80a1 K\u7ebf [{ticker}] \u4f7f\u7528 yfinance({yf_sym}) \u6210\u529f")
+        return df
+
+    app_logger.info(f"A\u80a1 K\u7ebf [{ticker}] yfinance \u5931\u8d25\uff0c\u5c1d\u8bd5 akshare fallback")
+    try:
+        import akshare as ak
+        df2 = ak.stock_zh_a_hist(symbol=ticker, period="daily", adjust="qfq")
+        if df2 is not None and not df2.empty:
+            df2 = df2.rename(columns={
+                "\u65e5\u671f": "date", "\u5f00\u76d8": "open", "\u6700\u9ad8": "high",
+                "\u6700\u4f4e": "low", "\u6536\u76d8": "close", "\u6210\u4ea4\u91cf": "volume",
+            })
+            df2 = df2[["date", "open", "high", "low", "close", "volume"]].copy()
+            df2["date"] = pd.to_datetime(df2["date"])
+            for c in ["open", "high", "low", "close", "volume"]:
+                df2[c] = pd.to_numeric(df2[c], errors="coerce")
+            app_logger.info(f"A\u80a1 K\u7ebf [{ticker}] akshare fallback \u6210\u529f")
+            return df2.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    except Exception as e:
+        app_logger.warning(f"A\u80a1 K\u7ebf [{ticker}] akshare fallback \u5931\u8d25: {type(e).__name__}: {e}")
+    return None
 
 
 def _kline_hk(ticker: str) -> pd.DataFrame | None:
-    df = ak.stock_hk_hist(symbol=ticker, period="daily", adjust="qfq")
-    if df is None or df.empty:
-        return None
-    df = df.rename(columns={
-        "日期": "date", "开盘": "open", "最高": "high",
-        "最低": "low", "收盘": "close", "成交量": "volume",
-    })
-    df = df[["date", "open", "high", "low", "close", "volume"]].copy()
-    df["date"] = pd.to_datetime(df["date"])
-    for c in ["open", "high", "low", "close", "volume"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    """\u6e2f\u80a1: \u4e3b yfinance \u2192 fallback akshare"""
+    yf_sym = _to_yf_ticker_hk(ticker)
+    df = _yf_download(yf_sym)
+    if df is not None and len(df) >= 20:
+        app_logger.info(f"\u6e2f\u80a1 K\u7ebf [{ticker}] \u4f7f\u7528 yfinance({yf_sym}) \u6210\u529f")
+        return df
+
+    app_logger.info(f"\u6e2f\u80a1 K\u7ebf [{ticker}] yfinance \u5931\u8d25\uff0c\u5c1d\u8bd5 akshare fallback")
+    try:
+        import akshare as ak
+        df2 = ak.stock_hk_hist(symbol=ticker, period="daily", adjust="qfq")
+        if df2 is not None and not df2.empty:
+            df2 = df2.rename(columns={
+                "\u65e5\u671f": "date", "\u5f00\u76d8": "open", "\u6700\u9ad8": "high",
+                "\u6700\u4f4e": "low", "\u6536\u76d8": "close", "\u6210\u4ea4\u91cf": "volume",
+            })
+            df2 = df2[["date", "open", "high", "low", "close", "volume"]].copy()
+            df2["date"] = pd.to_datetime(df2["date"])
+            for c in ["open", "high", "low", "close", "volume"]:
+                df2[c] = pd.to_numeric(df2[c], errors="coerce")
+            app_logger.info(f"\u6e2f\u80a1 K\u7ebf [{ticker}] akshare fallback \u6210\u529f")
+            return df2.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    except Exception as e:
+        app_logger.warning(f"\u6e2f\u80a1 K\u7ebf [{ticker}] akshare fallback \u5931\u8d25: {type(e).__name__}: {e}")
+    return None
 
 
 def _kline_us(ticker: str) -> pd.DataFrame | None:
-    t = yf.Ticker(ticker)
-    df = t.history(period="6mo")
-    if df is None or df.empty:
-        return None
-    df = df.reset_index()
-    df = df.rename(columns={
-        "Date": "date", "Open": "open", "High": "high",
-        "Low": "low", "Close": "close", "Volume": "volume",
-    })
-    df = df[["date", "open", "high", "low", "close", "volume"]].copy()
-    df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
-    return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    """\u7f8e\u80a1: \u76f4\u63a5 yfinance"""
+    return _yf_download(ticker)
 
 
 def _kline_fund(ticker: str) -> pd.DataFrame | None:
-    """基金 K 线：用单位净值走势构建简化 K 线。"""
+    """\u57fa\u91d1/ETF: \u4e3b yfinance \u2192 fallback akshare \u51c0\u503c\u8d70\u52bf"""
+    yf_sym = _to_yf_ticker_fund(ticker)
+    df = _yf_download(yf_sym)
+    if df is not None and len(df) >= 10:
+        app_logger.info(f"\u57fa\u91d1 K\u7ebf [{ticker}] \u4f7f\u7528 yfinance({yf_sym}) \u6210\u529f")
+        return df
+
+    app_logger.info(f"\u57fa\u91d1 K\u7ebf [{ticker}] yfinance \u5931\u8d25\uff0c\u5c1d\u8bd5 akshare fallback")
     try:
-        df = ak.fund_open_fund_info_em(symbol=ticker, indicator="单位净值走势")
-        if df is None or df.empty:
-            return None
-        df = df.rename(columns={"净值日期": "date", "单位净值": "close"})
-        df["date"] = pd.to_datetime(df["date"])
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
-        df["open"] = df["close"]
-        df["high"] = df["close"]
-        df["low"] = df["close"]
-        df["volume"] = 0
-        df = df[["date", "open", "high", "low", "close", "volume"]].copy()
-        return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+        import akshare as ak
+        df2 = ak.fund_open_fund_info_em(symbol=ticker, indicator="\u5355\u4f4d\u51c0\u503c\u8d70\u52bf")
+        if df2 is not None and not df2.empty:
+            df2 = df2.rename(columns={"\u51c0\u503c\u65e5\u671f": "date", "\u5355\u4f4d\u51c0\u503c": "close"})
+            df2["date"] = pd.to_datetime(df2["date"])
+            df2["close"] = pd.to_numeric(df2["close"], errors="coerce")
+            df2["open"] = df2["close"]
+            df2["high"] = df2["close"]
+            df2["low"] = df2["close"]
+            df2["volume"] = 0
+            df2 = df2[["date", "open", "high", "low", "close", "volume"]].copy()
+            app_logger.info(f"\u57fa\u91d1 K\u7ebf [{ticker}] akshare fallback \u6210\u529f")
+            return df2.tail(LOOKBACK_DAYS).reset_index(drop=True)
     except Exception as e:
-        app_logger.warning(f"基金K线获取失败 [{ticker}]: {type(e).__name__}: {e}")
-        return None
+        app_logger.warning(f"\u57fa\u91d1 K\u7ebf [{ticker}] akshare fallback \u5931\u8d25: {type(e).__name__}: {e}")
+    return None
 
 
-# ══════════════════════════════════════════════════════════════
-# 技术指标计算
-# ══════════════════════════════════════════════════════════════
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# \u6280\u672f\u6307\u6807\u8ba1\u7b97
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """在 DataFrame 上计算全套技术指标"""
     c = df["close"]
     h = df["high"]
     l = df["low"]
@@ -197,12 +277,11 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ══════════════════════════════════════════════════════════════
-# 支撑/阻力位识别
-# ══════════════════════════════════════════════════════════════
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# \u652f\u6491/\u963b\u529b\u4f4d\u8bc6\u522b
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 def find_support_resistance(df: pd.DataFrame, n: int = 20) -> dict:
-    """基于近 N 日高低点和均线识别关键价位"""
     recent = df.tail(n)
     close = df["close"].iloc[-1]
 
@@ -222,9 +301,9 @@ def find_support_resistance(df: pd.DataFrame, n: int = 20) -> dict:
     return {"supports": supports[:3], "resistances": resistances[:3]}
 
 
-# ══════════════════════════════════════════════════════════════
-# 综合技术面分析（核心）
-# ══════════════════════════════════════════════════════════════
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# \u7efc\u5408\u6280\u672f\u9762\u5206\u6790\uff08\u6838\u5fc3\uff09
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 def analyze(ticker: str, market: str) -> dict | None:
     df = fetch_kline(ticker, market)
@@ -362,50 +441,50 @@ def analyze(ticker: str, market: str) -> dict | None:
 
 def _build_summary(trend, signal_dir, close, mas, last, prev, rsi, sr, atr, entry, sl, tp1, tp2) -> str:
     parts = []
-    trend_zh = {"bullish": "多头", "bearish": "空头", "ranging": "震荡"}
-    parts.append(f"当前趋势 {trend_zh[trend]}。")
+    trend_zh = {"bullish": "\u591a\u5934", "bearish": "\u7a7a\u5934", "ranging": "\u9707\u8361"}
+    parts.append(f"\u5f53\u524d\u8d8b\u52bf {trend_zh[trend]}\u3002")
 
     if mas.get(5) and mas.get(20) and mas.get(60):
         if mas[5] > mas[20] > mas[60]:
-            parts.append("均线多头排列（MA5>MA20>MA60），中期趋势向上。")
+            parts.append("\u5747\u7ebf\u591a\u5934\u6392\u5217\uff08MA5>MA20>MA60\uff09\uff0c\u4e2d\u671f\u8d8b\u52bf\u5411\u4e0a\u3002")
         elif mas[5] < mas[20] < mas[60]:
-            parts.append("均线空头排列（MA5<MA20<MA60），中期趋势向下。")
+            parts.append("\u5747\u7ebf\u7a7a\u5934\u6392\u5217\uff08MA5<MA20<MA60\uff09\uff0c\u4e2d\u671f\u8d8b\u52bf\u5411\u4e0b\u3002")
         else:
-            parts.append("均线交织，趋势不明朗。")
+            parts.append("\u5747\u7ebf\u4ea4\u7ec7\uff0c\u8d8b\u52bf\u4e0d\u660e\u6717\u3002")
         if close > mas[20]:
-            parts.append(f"股价站上20日均线（{mas[20]:.2f}）。")
+            parts.append(f"\u80a1\u4ef7\u7ad9\u4e0a20\u65e5\u5747\u7ebf\uff08{mas[20]:.2f}\uff09\u3002")
         else:
-            parts.append(f"股价运行在20日均线（{mas[20]:.2f}）下方。")
+            parts.append(f"\u80a1\u4ef7\u8fd0\u884c\u572820\u65e5\u5747\u7ebf\uff08{mas[20]:.2f}\uff09\u4e0b\u65b9\u3002")
 
     if pd.notna(last["dif"]) and pd.notna(last["dea"]):
         if last["dif"] > last["dea"] and prev["dif"] <= prev["dea"]:
-            parts.append("MACD 刚刚形成金叉，短期动能转强。")
+            parts.append("MACD \u521a\u521a\u5f62\u6210\u91d1\u53c9\uff0c\u77ed\u671f\u52a8\u80fd\u8f6c\u5f3a\u3002")
         elif last["dif"] < last["dea"] and prev["dif"] >= prev["dea"]:
-            parts.append("MACD 形成死叉，短期动能减弱。")
+            parts.append("MACD \u5f62\u6210\u6b7b\u53c9\uff0c\u77ed\u671f\u52a8\u80fd\u51cf\u5f31\u3002")
         elif last["dif"] > last["dea"]:
-            parts.append("MACD 多头运行中。")
+            parts.append("MACD \u591a\u5934\u8fd0\u884c\u4e2d\u3002")
         else:
-            parts.append("MACD 空头运行中。")
+            parts.append("MACD \u7a7a\u5934\u8fd0\u884c\u4e2d\u3002")
 
     if rsi > 75:
-        parts.append(f"RSI({rsi:.0f}) 进入超买区域，注意回调风险。")
+        parts.append(f"RSI({rsi:.0f}) \u8fdb\u5165\u8d85\u4e70\u533a\u57df\uff0c\u6ce8\u610f\u56de\u8c03\u98ce\u9669\u3002")
     elif rsi < 25:
-        parts.append(f"RSI({rsi:.0f}) 进入超卖区域，可能存在反弹机会。")
+        parts.append(f"RSI({rsi:.0f}) \u8fdb\u5165\u8d85\u5356\u533a\u57df\uff0c\u53ef\u80fd\u5b58\u5728\u53cd\u5f39\u673a\u4f1a\u3002")
     elif rsi > 55:
-        parts.append(f"RSI({rsi:.0f}) 偏强。")
+        parts.append(f"RSI({rsi:.0f}) \u504f\u5f3a\u3002")
     elif rsi < 45:
-        parts.append(f"RSI({rsi:.0f}) 偏弱。")
+        parts.append(f"RSI({rsi:.0f}) \u504f\u5f31\u3002")
 
     if sr["supports"]:
-        parts.append(f"下方支撑：{', '.join(str(s) for s in sr['supports'][:2])}。")
+        parts.append(f"\u4e0b\u65b9\u652f\u6491\uff1a{', '.join(str(s) for s in sr['supports'][:2])}\u3002")
     if sr["resistances"]:
-        parts.append(f"上方阻力：{', '.join(str(r) for r in sr['resistances'][:2])}。")
+        parts.append(f"\u4e0a\u65b9\u963b\u529b\uff1a{', '.join(str(r) for r in sr['resistances'][:2])}\u3002")
 
     if signal_dir == "buy":
-        parts.append(f"建议入场 {entry}，止损 {sl}（-{abs(entry-sl):.2f}），第一止盈 {tp1}（+{abs(tp1-entry):.2f}），第二止盈 {tp2}（+{abs(tp2-entry):.2f}）。")
+        parts.append(f"\u5efa\u8bae\u5165\u573a {entry}\uff0c\u6b62\u635f {sl}\uff08-{abs(entry-sl):.2f}\uff09\uff0c\u7b2c\u4e00\u6b62\u76c8 {tp1}\uff08+{abs(tp1-entry):.2f}\uff09\uff0c\u7b2c\u4e8c\u6b62\u76c8 {tp2}\uff08+{abs(tp2-entry):.2f}\uff09\u3002")
     elif signal_dir == "sell":
-        parts.append(f"建议做空/减仓入场 {entry}，止损 {sl}（+{abs(sl-entry):.2f}），第一止盈 {tp1}（+{abs(entry-tp1):.2f}），第二止盈 {tp2}（+{abs(entry-tp2):.2f}）。")
+        parts.append(f"\u5efa\u8bae\u505a\u7a7a/\u51cf\u4ed3\u5165\u573a {entry}\uff0c\u6b62\u635f {sl}\uff08+{abs(sl-entry):.2f}\uff09\uff0c\u7b2c\u4e00\u6b62\u76c8 {tp1}\uff08+{abs(entry-tp1):.2f}\uff09\uff0c\u7b2c\u4e8c\u6b62\u76c8 {tp2}\uff08+{abs(entry-tp2):.2f}\uff09\u3002")
     else:
-        parts.append(f"当前更适合观望，若试探性参与，可参考入场 {entry}，止损 {sl}，止盈 {tp1}/{tp2}。")
+        parts.append(f"\u5f53\u524d\u66f4\u9002\u5408\u89c2\u671b\uff0c\u82e5\u8bd5\u63a2\u6027\u53c2\u4e0e\uff0c\u53ef\u53c2\u8003\u5165\u573a {entry}\uff0c\u6b62\u635f {sl}\uff0c\u6b62\u76c8 {tp1}/{tp2}\u3002")
 
     return "".join(parts)

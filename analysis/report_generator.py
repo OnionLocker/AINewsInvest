@@ -137,7 +137,7 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
     if total == 0 and failed_tickers:
         errors = [f.get("error", "") for f in failed_tickers]
         if any("timeout" in e.lower() or "\u8d85\u65f6" in e for e in errors):
-            empty_reason = "\u6240\u6709\u6807\u7684\u6570\u636e\u83b7\u53d6\u8d85\u65f6\uff0c\u670d\u52a1\u5668\u5728\u6d77\u5916\u8bbf\u95ee\u4e2d\u56fd\u6570\u636e\u6e90\u53ef\u80fd\u53d7\u9650"
+            empty_reason = "\u6240\u6709\u6807\u7684\u6570\u636e\u83b7\u53d6\u8d85\u65f6\uff0c\u6570\u636e\u6e90\u53ef\u80fd\u4e0d\u53ef\u7528\u6216\u7f51\u7edc\u5f02\u5e38"
         else:
             empty_reason = "\u6240\u6709\u6807\u7684\u5206\u6790\u5747\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u6570\u636e\u6e90\u53ef\u7528\u6027"
 
