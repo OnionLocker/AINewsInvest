@@ -1599,3 +1599,85 @@ body {
 @media (max-width: 768px) {
     .av-compare-slots { grid-template-columns: 1fr 1fr; }
 }
+
+/* ═══ Greeting Banner ═══ */
+.av-greeting-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, var(--av-primary, #4f46e5) 0%, #6366f1 50%, #818cf8 100%);
+    border-radius: 14px;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(79, 70, 229, 0.25);
+}
+.av-greeting-banner h3 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+.av-greeting-banner .av-greeting-sub {
+    margin: 4px 0 0;
+    font-size: 13px;
+    opacity: 0.85;
+    font-weight: 400;
+}
+
+/* ═══ Report Progress Bar ═══ */
+.av-report-progress {
+    margin: 12px 0 16px;
+    padding: 16px 20px;
+    background: var(--av-card-bg, #fff);
+    border: 1px solid var(--av-border, #e5e7eb);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.av-progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--av-text-primary, #111);
+}
+.av-progress-pct {
+    color: var(--av-primary, #4f46e5);
+    font-variant-numeric: tabular-nums;
+    font-size: 15px;
+    font-weight: 700;
+}
+.av-progress-track {
+    height: 10px;
+    background: var(--av-bg-secondary, #e5e7eb);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.av-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--av-primary, #4f46e5) 0%, #818cf8 100%);
+    border-radius: 5px;
+    transition: width 0.6s ease;
+    min-width: 2%;
+}
+.av-progress-detail {
+    font-size: 12px;
+    color: var(--av-text-muted, #9ca3af);
+    line-height: 1.5;
+}
+
+/* dark theme adjustments */
+[data-theme="dark"] .av-greeting-banner {
+    background: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+    box-shadow: 0 4px 16px rgba(67, 56, 202, 0.3);
+}
+[data-theme="dark"] .av-report-progress {
+    background: var(--av-surface, #1f2937);
+    border-color: var(--av-border, #374151);
+}
+[data-theme="dark"] .av-progress-track {
+    background: var(--av-bg-secondary, #374151);
+}

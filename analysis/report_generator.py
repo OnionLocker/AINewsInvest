@@ -1,11 +1,11 @@
 """
-analysis/report_generator.py - 每日报告生成器
+analysis/report_generator.py - \u6bcf\u65e5\u62a5\u544a\u751f\u6210\u5668
 
-流程：
-  1. 从 stock_pool 获取固定标的 + stock_screener 获取异动标的
-  2. 对每只标的：技术分析 → 新闻情绪 → 基本面 → 估值 → LLM
-  3. 综合评分排序
-  4. 生成结构化报告数据
+\u6d41\u7a0b\uff1a
+  1. \u4ece stock_pool \u83b7\u53d6\u56fa\u5b9a\u6807\u7684 + stock_screener \u83b7\u53d6\u5f02\u52a8\u6807\u7684
+  2. \u5bf9\u6bcf\u53ea\u6807\u7684\uff1a\u6280\u672f\u5206\u6790 \u2192 \u65b0\u95fb\u60c5\u7eea \u2192 \u57fa\u672c\u9762 \u2192 \u4f30\u503c \u2192 LLM
+  3. \u7efc\u5408\u8bc4\u5206\u6392\u5e8f
+  4. \u751f\u6210\u7ed3\u6784\u5316\u62a5\u544a\u6570\u636e
 """
 import json
 from datetime import date
@@ -17,10 +17,11 @@ from utils.logger import app_logger
 from utils.config_loader import get_config
 
 
-def generate_report(market: str, use_screener: bool = True, use_news: bool = True) -> dict:
+def generate_report(market: str, use_screener: bool = True, use_news: bool = True,
+                    progress_cb=None) -> dict:
     """
-    生成指定市场的每日报告。
-    返回可直接 json.dumps 存入 DailyReport.data 的 dict。
+    \u751f\u6210\u6307\u5b9a\u5e02\u573a\u7684\u6bcf\u65e5\u62a5\u544a\u3002
+    progress_cb: \u53ef\u9009\u56de\u8c03 fn(dict) \u7528\u4e8e\u6c47\u62a5\u9010\u53ea\u6807\u7684\u5206\u6790\u8fdb\u5ea6\u3002
     """
     pool = get_pool(market)
     pool_tickers = {t for t, _ in pool}
@@ -36,23 +37,25 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
                     pool_tickers.add(ticker)
                 screened_info.append({"ticker": ticker, "name": name, "reason": reason})
             if screened:
-                app_logger.info(f"[报告] 筛选器补充 {len(screened)} 只异动标的")
+                app_logger.info(f"[\u62a5\u544a] \u7b5b\u9009\u5668\u8865\u5145 {len(screened)} \u53ea\u5f02\u52a8\u6807\u7684")
         except Exception as e:
-            app_logger.warning(f"[报告] 筛选器异常: {e}")
+            app_logger.warning(f"[\u62a5\u544a] \u7b5b\u9009\u5668\u5f02\u5e38: {e}")
 
     if not pool:
-        return _empty_report(market)
+        return _empty_report(market, reason="\u6807\u7684\u6c60\u4e3a\u7a7a")
 
-    app_logger.info(f"[报告] 开始生成 {market} 报告，共 {len(pool)} 只标的")
+    total_tickers = len(pool)
+    app_logger.info(f"[\u62a5\u544a] \u5f00\u59cb\u751f\u6210 {market} \u62a5\u544a\uff0c\u5171 {total_tickers} \u53ea\u6807\u7684")
     has_llm = llm_enabled()
     fund_enabled = _is_fundamental_enabled()
 
     if has_llm:
-        app_logger.info("[报告] LLM 已启用")
+        app_logger.info("[\u62a5\u544a] LLM \u5df2\u542f\u7528")
     if fund_enabled:
-        app_logger.info("[报告] 基本面分析已启用")
+        app_logger.info("[\u62a5\u544a] \u57fa\u672c\u9762\u5206\u6790\u5df2\u542f\u7528")
 
     items = []
+    failed_tickers = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import time as _time
 
@@ -61,33 +64,56 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
         try:
             item = _analyze_one(ticker, name, market, has_llm, fund_enabled, use_news)
             elapsed = _time.time() - start
-            app_logger.info(f"[报告] {ticker} 分析完成 ({elapsed:.1f}s)")
+            app_logger.info(f"[\u62a5\u544a] {ticker} \u5206\u6790\u5b8c\u6210 ({elapsed:.1f}s)")
             return item
         except Exception as e:
             elapsed = _time.time() - start
-            app_logger.warning(f"[报告] {ticker} 分析失败 ({elapsed:.1f}s): {type(e).__name__}: {e}")
+            app_logger.warning(f"[\u62a5\u544a] {ticker} \u5206\u6790\u5931\u8d25 ({elapsed:.1f}s): {type(e).__name__}: {e}")
             return None
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        future_to_ticker = {
-            executor.submit(_analyze_with_timeout, ticker, name): (ticker, name)
-            for ticker, name in pool
-        }
-        done_count = 0
-        for future in as_completed(future_to_ticker, timeout=120):
-            ticker, name = future_to_ticker[future]
-            done_count += 1
-            try:
-                item = future.result(timeout=30)
-                if item:
-                    for si in screened_info:
-                        if si["ticker"] == ticker:
-                            item["screened"] = True
-                            item["screenReason"] = si["reason"]
-                            break
-                    items.append(item)
-            except Exception as e:
-                app_logger.warning(f"[报告] {ticker} 超时或异常: {e}")
+    done_count = 0
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_ticker = {
+                executor.submit(_analyze_with_timeout, ticker, name): (ticker, name)
+                for ticker, name in pool
+            }
+            for future in as_completed(future_to_ticker, timeout=300):
+                ticker, name = future_to_ticker[future]
+                done_count += 1
+                try:
+                    item = future.result(timeout=60)
+                    if item:
+                        for si in screened_info:
+                            if si["ticker"] == ticker:
+                                item["screened"] = True
+                                item["screenReason"] = si["reason"]
+                                break
+                        items.append(item)
+                    else:
+                        failed_tickers.append({"ticker": ticker, "name": name, "error": "analysis_returned_none"})
+                except Exception as e:
+                    app_logger.warning(f"[\u62a5\u544a] {ticker} \u8d85\u65f6\u6216\u5f02\u5e38: {e}")
+                    failed_tickers.append({"ticker": ticker, "name": name, "error": str(e)})
+
+                if progress_cb:
+                    try:
+                        progress_cb({
+                            "ticker": ticker,
+                            "name": name,
+                            "completed": done_count,
+                            "total": total_tickers,
+                            "success_count": len(items),
+                            "failed_count": len(failed_tickers),
+                        })
+                    except Exception:
+                        pass
+    except Exception as overall_err:
+        app_logger.warning(f"[\u62a5\u544a] \u6574\u4f53\u8d85\u65f6\u6216\u5f02\u5e38\uff0c\u5df2\u5b8c\u6210 {done_count}/{total_tickers}: {overall_err}")
+        for future, (ticker, name) in future_to_ticker.items():
+            if not future.done():
+                failed_tickers.append({"ticker": ticker, "name": name, "error": "overall_timeout"})
+                future.cancel()
 
     items.sort(key=lambda x: x["confidence"], reverse=True)
 
@@ -95,15 +121,25 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
     sell_count = sum(1 for i in items if i["direction"] == "sell")
     total = len(items)
 
-    if buy_count > sell_count * 1.5:
-        sentiment, sentiment_class = "偏多", "text-success"
+    if total == 0:
+        sentiment, sentiment_class = "\u65e0\u6570\u636e", ""
+    elif buy_count > sell_count * 1.5:
+        sentiment, sentiment_class = "\u504f\u591a", "text-success"
     elif sell_count > buy_count * 1.5:
-        sentiment, sentiment_class = "偏空", "text-danger"
+        sentiment, sentiment_class = "\u504f\u7a7a", "text-danger"
     else:
-        sentiment, sentiment_class = "中性", "text-warning"
+        sentiment, sentiment_class = "\u4e2d\u6027", "text-warning"
 
     tech_failed_count = sum(1 for i in items if i.get("techFailed"))
-    partial = tech_failed_count > 0
+    partial = tech_failed_count > 0 or len(failed_tickers) > 0
+
+    empty_reason = ""
+    if total == 0 and failed_tickers:
+        errors = [f.get("error", "") for f in failed_tickers]
+        if any("timeout" in e.lower() or "\u8d85\u65f6" in e for e in errors):
+            empty_reason = "\u6240\u6709\u6807\u7684\u6570\u636e\u83b7\u53d6\u8d85\u65f6\uff0c\u670d\u52a1\u5668\u5728\u6d77\u5916\u8bbf\u95ee\u4e2d\u56fd\u6570\u636e\u6e90\u53ef\u80fd\u53d7\u9650"
+        else:
+            empty_reason = "\u6240\u6709\u6807\u7684\u5206\u6790\u5747\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u6570\u636e\u6e90\u53ef\u7528\u6027"
 
     return {
         "metrics": {
@@ -116,43 +152,42 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
         "fundamental_enabled": fund_enabled,
         "partial_success": partial,
         "tech_failed_count": tech_failed_count,
+        "total_tickers": total_tickers,
+        "failed_tickers": failed_tickers,
+        "empty_reason": empty_reason,
     }
 
 
 def _analyze_one(ticker: str, name: str, market: str,
                  use_llm: bool = False, use_fundamental: bool = False,
                  use_news: bool = True) -> dict | None:
-    """分析单只标的，返回报告卡片数据"""
-    app_logger.info(f"[报告] 分析 {name}({ticker})...")
+    """\u5206\u6790\u5355\u53ea\u6807\u7684\uff0c\u8fd4\u56de\u62a5\u544a\u5361\u7247\u6570\u636e"""
+    app_logger.info(f"[\u62a5\u544a] \u5206\u6790 {name}({ticker})...")
 
-    # ── 技术面 ──
     tech = None
     tech_failed = False
     try:
         tech = tech_analyze(ticker, market)
     except Exception as e:
-        app_logger.warning(f"[报告] 技术分析异常 {ticker}: {type(e).__name__}: {e}")
+        app_logger.warning(f"[\u62a5\u544a] \u6280\u672f\u5206\u6790\u5f02\u5e38 {ticker}: {type(e).__name__}: {e}")
     if not tech:
         tech_failed = True
-        app_logger.warning(f"[报告] {ticker} 技术分析失败，将输出降级结果")
+        app_logger.warning(f"[\u62a5\u544a] {ticker} \u6280\u672f\u5206\u6790\u5931\u8d25\uff0c\u5c06\u8f93\u51fa\u964d\u7ea7\u7ed3\u679c")
 
-    # ── 新闻面 ──
     if market != "fund" and use_news:
         news = fetch_news(ticker, market, limit=8)
         sentiment = analyze_sentiment(news)
     else:
         news = []
         sentiment = {"score": 0, "label": "N/A", "positive": 0,
-                     "negative": 0, "summary": "已跳过新闻分析。" if market != "fund" else "基金不分析新闻面。"}
+                     "negative": 0, "summary": "\u5df2\u8df3\u8fc7\u65b0\u95fb\u5206\u6790\u3002" if market != "fund" else "\u57fa\u91d1\u4e0d\u5206\u6790\u65b0\u95fb\u9762\u3002"}
 
-    # ── 基本面 + 估值 (可选) ──
     fund_data = None
     val_data = None
     current_price = tech["price"] if tech else None
     if use_fundamental and market != "fund" and current_price:
         fund_data, val_data = _get_fundamental_valuation(ticker, market, current_price)
 
-    # ── 综合置信度 ──
     tech_conf = tech["confidence"] if tech else 30
     news_mod = sentiment["score"] * 10
     if tech and tech["signal"] == "sell":
@@ -172,15 +207,14 @@ def _analyze_one(ticker: str, name: str, market: str,
 
     combined_conf = min(95, max(20, int(tech_conf + news_mod + fund_mod + val_mod)))
 
-    # ── 方向判定 ──
     if tech and tech["signal"] == "buy":
-        direction, dir_label = "buy", "看多"
+        direction, dir_label = "buy", "\u770b\u591a"
     elif tech and tech["signal"] == "sell":
-        direction, dir_label = "sell", "看空"
+        direction, dir_label = "sell", "\u770b\u7a7a"
     else:
         direction = "buy" if sentiment["score"] > 0.2 else (
             "sell" if sentiment["score"] < -0.2 else "buy")
-        dir_label = "观望偏多" if direction == "buy" else "观望偏空"
+        dir_label = "\u89c2\u671b\u504f\u591a" if direction == "buy" else "\u89c2\u671b\u504f\u7a7a"
 
     if tech:
         price_str = _format_price(tech["price"], market)
@@ -204,7 +238,7 @@ def _analyze_one(ticker: str, name: str, market: str,
         "take_profit_1": tech["take_profit_1"] if tech else 0,
         "take_profit_2": tech["take_profit_2"] if tech else 0,
         "risk_reward": tech["risk_reward"] if tech else "N/A",
-        "techReason": tech["tech_summary"] if tech else "技术分析数据获取失败，本次结果仅基于新闻/基本面。",
+        "techReason": tech["tech_summary"] if tech else "\u6280\u672f\u5206\u6790\u6570\u636e\u83b7\u53d6\u5931\u8d25\uff0c\u672c\u6b21\u7ed3\u679c\u4ec5\u57fa\u4e8e\u65b0\u95fb/\u57fa\u672c\u9762\u3002",
         "newsReason": sentiment["summary"],
         "indicators": tech["indicators"] if tech else {},
         "screened": False,
@@ -221,7 +255,6 @@ def _analyze_one(ticker: str, name: str, market: str,
                               if val_data and val_data.get("penetration_return") else None),
     }
 
-    # ── LLM 深度分析 ──
     if use_llm:
         try:
             llm_result = llm_analyze_stock(
@@ -231,28 +264,28 @@ def _analyze_one(ticker: str, name: str, market: str,
             )
             if llm_result and llm_result.get("llm_summary"):
                 item["llmReason"] = llm_result["llm_summary"]
-                if (("看多" in item["llmReason"] or "买入" in item["llmReason"])
+                if (("\u770b\u591a" in item["llmReason"] or "\u4e70\u5165" in item["llmReason"])
                         and direction == "buy"):
                     item["confidence"] = min(95, item["confidence"] + 5)
-                elif (("看空" in item["llmReason"] or "减仓" in item["llmReason"])
+                elif (("\u770b\u7a7a" in item["llmReason"] or "\u51cf\u4ed3" in item["llmReason"])
                       and direction == "sell"):
                     item["confidence"] = min(95, item["confidence"] + 5)
         except Exception as e:
-            app_logger.warning(f"[报告] LLM 分析 {ticker} 失败: {e}")
+            app_logger.warning(f"[\u62a5\u544a] LLM \u5206\u6790 {ticker} \u5931\u8d25: {e}")
 
     return item
 
 
 def _get_fundamental_valuation(ticker: str, market: str,
                                price: float) -> tuple[dict | None, dict | None]:
-    """获取基本面和估值数据, 失败返回 (None, None)"""
+    """\u83b7\u53d6\u57fa\u672c\u9762\u548c\u4f30\u503c\u6570\u636e, \u5931\u8d25\u8fd4\u56de (None, None)"""
     fund_data = None
     val_data = None
     try:
         from analysis.fundamental import analyze as fund_analyze
         fund_data = fund_analyze(ticker, market)
     except Exception as e:
-        app_logger.warning(f"[报告] 基本面 {ticker}: {e}")
+        app_logger.warning(f"[\u62a5\u544a] \u57fa\u672c\u9762 {ticker}: {e}")
 
     if fund_data:
         try:
@@ -262,7 +295,7 @@ def _get_fundamental_valuation(ticker: str, market: str,
             if fin:
                 val_data = valuate(fin, price)
         except Exception as e:
-            app_logger.warning(f"[报告] 估值 {ticker}: {e}")
+            app_logger.warning(f"[\u62a5\u544a] \u4f30\u503c {ticker}: {e}")
 
     return fund_data, val_data
 
@@ -283,23 +316,28 @@ def _format_price(price: float, market: str) -> str:
         return f"{price:,.2f}"
 
 
-def _empty_report(market: str) -> dict:
+def _empty_report(market: str, reason: str = "") -> dict:
     return {
         "metrics": {"count": 0, "bull": 0, "bear": 0,
-                    "sentiment": "无数据", "sentimentClass": ""},
+                    "sentiment": "\u65e0\u6570\u636e", "sentimentClass": ""},
         "items": [],
         "generated_date": date.today().isoformat(),
         "llm_enabled": False,
         "fundamental_enabled": False,
+        "partial_success": False,
+        "tech_failed_count": 0,
+        "total_tickers": 0,
+        "failed_tickers": [],
+        "empty_reason": reason,
     }
 
 
 def generate_weekly_report(market: str) -> dict:
     """
-    生成本周复盘周报。
+    \u751f\u6210\u672c\u5468\u590d\u76d8\u5468\u62a5\u3002
 
-    汇总本周所有日报推荐的表现，生成结构化周报。
-    返回 dict: {market, week_start, week_end, content, stats}
+    \u6c47\u603b\u672c\u5468\u6bcf\u65e5\u62a5\u544a\u4e2d\u7684\u63a8\u8350\u7ed3\u679c\uff0c\u8ba1\u7b97\u80dc\u7387\u3001\u5e73\u5747\u6536\u76ca\u3001\u6bcf\u65e5\u60c5\u7eea\u53d8\u5316\u7b49\u3002
+    \u8fd4\u56de dict: {market, week_start, week_end, content, stats}
     """
     from datetime import timedelta
     from models import db, DailyReport, RecommendationTrack

@@ -17,8 +17,8 @@ import yfinance as yf
 from utils.logger import app_logger
 
 LOOKBACK_DAYS = 120
-_KLINE_TIMEOUT_SECONDS = 12
-_KLINE_CACHE_TTL_SECONDS = 600
+_KLINE_TIMEOUT_SECONDS = 30
+_KLINE_CACHE_TTL_SECONDS = 1800
 _kline_cache: dict[str, tuple[pd.DataFrame | None, float]] = {}
 
 _MISSING = object()
