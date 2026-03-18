@@ -28,7 +28,7 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-login_manager.login_message = "璇峰厛鐧诲綍鍚庡啀璁块棶璇ラ〉闈�"
+login_manager.login_message = "请先登录后再访问该页面"
 
 # 绗﹀彿鏁版嵁搴擄紙鍚姩鏃跺姞杞藉埌鍐呭瓨锛屾悳绱㈢敤锛�
 _SYMBOLS: list[dict] = []
@@ -124,23 +124,23 @@ def register():
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
         if not username or not password:
-            flash("鐢ㄦ埛鍚嶅拰瀵嗙爜涓嶈兘涓虹┖", "danger")
+            flash("用户名和密码不能为空", "danger")
             return redirect(url_for("register"))
         if len(password) < 6:
-            flash("瀵嗙爜闀垮害涓嶈兘灏戜簬 6 浣�", "danger")
+            flash("密码长度不能少于 6 位", "danger")
             return redirect(url_for("register"))
         if password != confirm:
-            flash("涓ゆ杈撳叆鐨勫瘑鐮佷笉涓€鑷�", "danger")
+            flash("两次输入的密码不一致", "danger")
             return redirect(url_for("register"))
         if User.query.filter_by(username=username).first():
-            flash("璇ョ敤鎴峰悕宸茶娉ㄥ唽", "danger")
+            flash("该用户名已被注册", "danger")
             return redirect(url_for("register"))
         user = User(username=username)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
         app_logger.info(f"鏂扮敤鎴锋敞鍐�: {username}")
-        flash("娉ㄥ唽鎴愬姛锛岃鐧诲綍", "success")
+        flash("注册成功，请登录", "success")
         return redirect(url_for("login"))
     return render_template("register.html")
 
@@ -158,7 +158,7 @@ def login():
             app_logger.info(f"鐢ㄦ埛鐧诲綍: {username}")
             return redirect(request.args.get("next") or url_for("dashboard"))
         app_logger.warning(f"鐧诲綍澶辫触: {username}")
-        flash("鐢ㄦ埛鍚嶆垨瀵嗙爜閿欒", "danger")
+        flash("用户名或密码错误", "danger")
         return redirect(url_for("login"))
     return render_template("login.html")
 
@@ -168,7 +168,7 @@ def login():
 def logout():
     app_logger.info(f"鐢ㄦ埛閫€鍑�: {current_user.username}")
     logout_user()
-    flash("宸插畨鍏ㄩ€€鍑虹櫥褰�", "info")
+    flash("已安全退出登录", "info")
     return redirect(url_for("login"))
 
 
@@ -197,10 +197,10 @@ def settings():
             current_user.set_tg_config(bot_token, chat_id)
             db.session.commit()
             app_logger.info(f"鐢ㄦ埛 {current_user.username} 鏇存柊浜� Telegram 閰嶇疆")
-            flash("Telegram 閰嶇疆宸蹭繚瀛橈紙宸插姞瀵嗗瓨鍌級", "success")
+            flash("Telegram 配置已保存（已加密存储）", "success")
         elif action == "test":
             if not current_user.tg_configured:
-                flash("璇峰厛淇濆瓨 Bot Token 鍜� Chat ID", "warning")
+                flash("请先保存 Bot Token 和 Chat ID", "warning")
                 return redirect(url_for("settings"))
             try:
                 token, chat_id = current_user.get_tg_config()
@@ -208,7 +208,7 @@ def settings():
                 flash(msg, "success" if ok else "danger")
             except Exception as e:
                 app_logger.error(f"Telegram 娴嬭瘯澶辫触: {e}")
-                flash(f"閰嶇疆瑙ｅ瘑澶辫触锛岃閲嶆柊淇濆瓨: {e}", "danger")
+                flash(f"配置解密失败，请重新保存: {e}", "danger")
         return redirect(url_for("settings"))
 
     token_display, chat_id_display = "", ""
@@ -218,7 +218,7 @@ def settings():
             token_display = t[:10] + "****" + t[-4:] if len(t) > 14 else "******"
             chat_id_display = c
         except Exception:
-            token_display = "(瑙ｅ瘑澶辫触锛岃閲嶆柊淇濆瓨)"
+            token_display = "(解密失败，请重新保存)"
 
     return render_template("settings.html", token_display=token_display, chat_id_display=chat_id_display)
 
@@ -368,16 +368,20 @@ def api_report():
 @app.route("/api/report/generate", methods=["POST"])
 @login_required
 def api_report_generate():
-    """鎵嬪姩瑙﹀彂鎶ュ憡鐢熸垚锛堝墠绔�"绔嬪嵆鐢熸垚"鎸夐挳锛�"""
+    """手动触发报告生成（前端“立即生成”按钮）。"""
+    import time
     data = request.get_json(silent=True) or {}
     market = data.get("market", "a_share")
+    use_screener = bool(data.get("use_screener", False))
+    use_news = bool(data.get("use_news", False))
     valid_markets = {"a_share", "us_stock", "hk_stock", "fund"}
     if market not in valid_markets:
-        return jsonify(error="鏃犳晥鐨勫競鍦哄弬鏁�"), 400
+        return jsonify(error="无效的市场参数"), 400
 
     try:
+        started_at = time.time()
         from analysis.report_generator import generate_report
-        report_data = generate_report(market)
+        report_data = generate_report(market, use_screener=use_screener, use_news=use_news)
 
         today = date.today()
         existing = DailyReport.query.filter_by(market=market, report_date=today).first()
@@ -398,11 +402,12 @@ def api_report_generate():
         if report_obj:
             _create_tracks(report_obj, report_data)
 
-        app_logger.info(f"鐢ㄦ埛 {current_user.username} 鎵嬪姩鐢熸垚 {market} 鎶ュ憡")
-        return jsonify(status="ok", market=market)
+        elapsed = round(time.time() - started_at, 2)
+        app_logger.info(f"用户 {current_user.username} 手动生成 {market} 报告，耗时 {elapsed}s")
+        return jsonify(status="ok", market=market, elapsed=elapsed, use_screener=use_screener, use_news=use_news)
     except Exception as e:
-        app_logger.error(f"鎵嬪姩鐢熸垚鎶ュ憡澶辫触: {e}")
-        return jsonify(error=str(e)), 500
+        app_logger.error(f"手动生成报告失败: {e}")
+        return jsonify(error=f"生成失败: {e}"), 500
 
 
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鍚姩鍏ュ彛 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

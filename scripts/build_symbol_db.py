@@ -4,17 +4,36 @@ scripts/build_symbol_db.py - 构建股票/基金符号数据库
 从 akshare 拉取 A股、港股、基金列表，从 yfinance 常用美股列表构建，
 写入 data/symbols.json 供搜索 API 使用。
 
+特点：
+- 单个市场拉取失败不会导致整个脚本退出
+- 内置了各市场的最小 fallback 数据，保证 symbols.json 至少可用
+- 会去重并按 market+ticker 排序输出
+
 用法: python scripts/build_symbol_db.py
 """
 import json
 import os
 import sys
+from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 OUTPUT = os.path.join(DATA_DIR, "symbols.json")
+
+
+def _safe_build(label: str, builder: Callable[[], list[dict]], fallback: list[dict]) -> list[dict]:
+    """执行构建，失败时回退到内置最小数据集。"""
+    try:
+        items = builder()
+        if items:
+            return items
+        print(f"[!] {label} 返回空结果，使用 fallback ...")
+    except Exception as e:
+        print(f"[!] {label} 拉取失败: {e}")
+        print(f"[..] {label} 使用 fallback ...")
+    return fallback.copy()
 
 
 def build_a_share() -> list[dict]:
@@ -66,56 +85,94 @@ def build_fund() -> list[dict]:
 
 
 def build_us_stock() -> list[dict]:
-    """美股常用标的（S&P 500 + 热门中概股）"""
+    """美股常用标的（优先 akshare，全失败则由外层 fallback 兜底）"""
     import akshare as ak
     print("[..] 拉取美股列表...")
     items = []
-    try:
-        df = ak.stock_us_spot_em()
-        for _, row in df.iterrows():
-            name = str(row.get("名称", ""))
-            ticker = str(row.get("代码", ""))
-            # akshare 美股代码格式可能带前缀，清理一下
-            ticker_clean = ticker.split(".")[-1] if "." in ticker else ticker
-            items.append({
-                "ticker": ticker_clean,
-                "name": name,
-                "market": "us_stock",
-            })
-    except Exception as e:
-        print(f"[!] akshare 美股拉取失败: {e}")
-        print("[..] 使用内置常用美股列表...")
-        fallback = [
-            ("AAPL", "苹果"), ("MSFT", "微软"), ("GOOGL", "谷歌A"), ("AMZN", "亚马逊"),
-            ("NVDA", "英伟达"), ("META", "Meta"), ("TSLA", "特斯拉"), ("BRK.B", "伯克希尔B"),
-            ("JPM", "摩根大通"), ("V", "Visa"), ("UNH", "联合健康"), ("MA", "万事达"),
-            ("HD", "家得宝"), ("PG", "宝洁"), ("JNJ", "强生"), ("ABBV", "艾伯维"),
-            ("MRK", "默沙东"), ("AVGO", "博通"), ("COST", "好市多"), ("PEP", "百事"),
-            ("KO", "可口可乐"), ("TMO", "赛默飞"), ("ADBE", "Adobe"), ("CRM", "Salesforce"),
-            ("AMD", "AMD"), ("INTC", "英特尔"), ("NFLX", "奈飞"), ("QCOM", "高通"),
-            ("BABA", "阿里巴巴"), ("PDD", "拼多多"), ("JD", "京东"), ("BIDU", "百度"),
-            ("NIO", "蔚来"), ("LI", "理想汽车"), ("XPEV", "小鹏汽车"), ("BILI", "哔哩哔哩"),
-            ("TME", "腾讯音乐"), ("ZTO", "中通快递"), ("VNET", "世纪互联"), ("IQ", "爱奇艺"),
-            ("COIN", "Coinbase"), ("PLTR", "Palantir"), ("SNOW", "Snowflake"),
-            ("SQ", "Block"), ("SHOP", "Shopify"), ("UBER", "Uber"), ("ABNB", "Airbnb"),
-            ("ARM", "ARM"), ("SMCI", "超微电脑"), ("MU", "美光"), ("MRVL", "Marvell"),
-            ("PANW", "Palo Alto"), ("CRWD", "CrowdStrike"), ("DDOG", "Datadog"),
-            ("NET", "Cloudflare"), ("ZS", "Zscaler"), ("OKTA", "Okta"),
-            ("SPY", "标普500ETF"), ("QQQ", "纳指100ETF"), ("DIA", "道琼斯ETF"),
-            ("IWM", "罗素2000ETF"), ("GLD", "黄金ETF"), ("TLT", "20年美债ETF"),
-        ]
-        items = [{"ticker": t, "name": n, "market": "us_stock"} for t, n in fallback]
-
+    df = ak.stock_us_spot_em()
+    for _, row in df.iterrows():
+        name = str(row.get("名称", ""))
+        ticker = str(row.get("代码", ""))
+        ticker_clean = ticker.split(".")[-1] if "." in ticker else ticker
+        items.append({
+            "ticker": ticker_clean,
+            "name": name,
+            "market": "us_stock",
+        })
     print(f"[OK] 美股: {len(items)} 只")
     return items
 
 
+A_SHARE_FALLBACK = [
+    {"ticker": "600519", "name": "贵州茅台", "market": "a_share"},
+    {"ticker": "000858", "name": "五粮液", "market": "a_share"},
+    {"ticker": "300750", "name": "宁德时代", "market": "a_share"},
+    {"ticker": "000333", "name": "美的集团", "market": "a_share"},
+    {"ticker": "601318", "name": "中国平安", "market": "a_share"},
+    {"ticker": "600036", "name": "招商银行", "market": "a_share"},
+    {"ticker": "600900", "name": "长江电力", "market": "a_share"},
+    {"ticker": "002594", "name": "比亚迪", "market": "a_share"},
+]
+
+HK_STOCK_FALLBACK = [
+    {"ticker": "00700", "name": "腾讯控股", "market": "hk_stock"},
+    {"ticker": "09988", "name": "阿里巴巴-W", "market": "hk_stock"},
+    {"ticker": "03690", "name": "美团-W", "market": "hk_stock"},
+    {"ticker": "01810", "name": "小米集团-W", "market": "hk_stock"},
+    {"ticker": "00941", "name": "中国移动", "market": "hk_stock"},
+    {"ticker": "01299", "name": "友邦保险", "market": "hk_stock"},
+]
+
+FUND_FALLBACK = [
+    {"ticker": "510300", "name": "沪深300ETF", "market": "fund"},
+    {"ticker": "510500", "name": "中证500ETF", "market": "fund"},
+    {"ticker": "159919", "name": "沪深300ETF", "market": "fund"},
+    {"ticker": "513100", "name": "纳指ETF", "market": "fund"},
+    {"ticker": "518880", "name": "黄金ETF", "market": "fund"},
+]
+
+US_STOCK_FALLBACK = [
+    {"ticker": "AAPL", "name": "苹果", "market": "us_stock"},
+    {"ticker": "MSFT", "name": "微软", "market": "us_stock"},
+    {"ticker": "GOOGL", "name": "谷歌A", "market": "us_stock"},
+    {"ticker": "AMZN", "name": "亚马逊", "market": "us_stock"},
+    {"ticker": "NVDA", "name": "英伟达", "market": "us_stock"},
+    {"ticker": "META", "name": "Meta", "market": "us_stock"},
+    {"ticker": "TSLA", "name": "特斯拉", "market": "us_stock"},
+    {"ticker": "BABA", "name": "阿里巴巴", "market": "us_stock"},
+    {"ticker": "PDD", "name": "拼多多", "market": "us_stock"},
+    {"ticker": "JD", "name": "京东", "market": "us_stock"},
+    {"ticker": "SPY", "name": "标普500ETF", "market": "us_stock"},
+    {"ticker": "QQQ", "name": "纳指100ETF", "market": "us_stock"},
+]
+
+
+def _dedupe(items: list[dict]) -> list[dict]:
+    seen = set()
+    result = []
+    for item in items:
+        ticker = str(item.get("ticker", "")).strip()
+        name = str(item.get("name", "")).strip()
+        market = str(item.get("market", "")).strip()
+        if not ticker or not name or not market:
+            continue
+        key = (market, ticker)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({"ticker": ticker, "name": name, "market": market})
+    result.sort(key=lambda x: (x["market"], x["ticker"]))
+    return result
+
+
 def main():
     all_symbols = []
-    all_symbols.extend(build_a_share())
-    all_symbols.extend(build_us_stock())
-    all_symbols.extend(build_hk_stock())
-    all_symbols.extend(build_fund())
+    all_symbols.extend(_safe_build("A 股", build_a_share, A_SHARE_FALLBACK))
+    all_symbols.extend(_safe_build("美股", build_us_stock, US_STOCK_FALLBACK))
+    all_symbols.extend(_safe_build("港股", build_hk_stock, HK_STOCK_FALLBACK))
+    all_symbols.extend(_safe_build("基金", build_fund, FUND_FALLBACK))
+
+    all_symbols = _dedupe(all_symbols)
 
     with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(all_symbols, f, ensure_ascii=False)

@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}鎺ㄩ€佽缃� - Alpha Vault{% endblock %}
+{% block title %}推送设置 - Alpha Vault{% endblock %}
 
 {% block content %}
 <div class="av-container" style="max-width:600px; margin:0 auto;">
 
     <div class="av-settings-card">
         <div class="av-settings-header">
-            <i class="bi bi-telegram text-primary"></i> Telegram 鎺ㄩ€佽缃�
+            <i class="bi bi-telegram text-primary"></i> Telegram 推送设置
         </div>
         <div class="av-settings-body">
 
             {% if current_user.tg_configured %}
             <div class="alert alert-success py-2 mb-3" style="font-size:13px; border-radius:6px;">
                 <i class="bi bi-shield-lock me-1"></i>
-                宸查厤缃紙Token 宸插姞瀵嗗瓨鍌級锛歿{ token_display }}
+                已配置（Token 已加密存储）：{{ token_display }}
             </div>
             {% endif %}
 
@@ -22,9 +22,9 @@
                     <label for="tg_bot_token" class="form-label">Bot Token</label>
                     <input type="text" class="form-control" id="tg_bot_token"
                            name="tg_bot_token"
-                           placeholder="绮樿创鏂扮殑 Token 浠ヨ鐩�">
+                           placeholder="粘贴新的 Token 以覆盖">
                     <div class="form-text">
-                        閫氳繃 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 鍒涘缓鏈哄櫒浜哄悗鑾峰彇
+                        通过 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 创建机器人后获取
                     </div>
                 </div>
 
@@ -33,42 +33,41 @@
                     <input type="text" class="form-control" id="tg_chat_id"
                            name="tg_chat_id"
                            value="{{ chat_id_display }}"
-                           placeholder="渚嬪: 987654321">
+                           placeholder="例如: 987654321">
                     <div class="form-text">
-                        璁块棶 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 鑾峰彇
+                        访问 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 获取
                     </div>
                 </div>
 
                 <div class="d-flex gap-2">
                     <button type="submit" name="action" value="save" class="av-btn primary flex-fill">
-                        <i class="bi bi-shield-lock"></i> 鍔犲瘑淇濆瓨
+                        <i class="bi bi-shield-lock"></i> 加密保存
                     </button>
                     <button type="submit" name="action" value="test" class="av-btn outline-success flex-fill">
-                        <i class="bi bi-send"></i> 鍙戦€佹祴璇�
+                        <i class="bi bi-send"></i> 发送测试
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- 鍛婅瑙勫垯绠＄悊 -->
     <div class="av-settings-card" style="margin-top:20px;">
         <div class="av-settings-header">
-            <i class="bi bi-bell text-warning"></i> 鍛婅瑙勫垯绠＄悊
+            <i class="bi bi-bell text-warning"></i> 告警规则管理
         </div>
         <div class="av-settings-body">
-            <div id="settingsAlertList" style="font-size:13px;">鍔犺浇涓�...</div>
+            <div id="settingsAlertList" style="font-size:13px;">加载中...</div>
         </div>
     </div>
 
     <div class="av-info-card">
-        <h6><i class="bi bi-info-circle me-1"></i> 閰嶇疆鎸囧崡</h6>
+        <h6><i class="bi bi-info-circle me-1"></i> 配置指南</h6>
         <ol class="mb-0 ps-3">
-            <li>鍦� Telegram 鎼滅储 <strong>@BotFather</strong>锛屽彂閫� <code>/newbot</code></li>
-            <li>澶嶅埗 BotFather 鍥炲鐨� <strong>Bot Token</strong></li>
-            <li>鍚戜綘鐨勬満鍣ㄤ汉鍙戦€佷换鎰忔秷鎭�</li>
-            <li>娴忚鍣ㄨ闂� <code>https://api.telegram.org/bot浣犵殑Token/getUpdates</code></li>
-            <li>鎵惧埌 JSON 涓殑 <code>chat.id</code> 濉叆涓婃柟</li>
+            <li>在 Telegram 搜索 <strong>@BotFather</strong>，发送 <code>/newbot</code></li>
+            <li>复制 BotFather 回复的 <strong>Bot Token</strong></li>
+            <li>向你的机器人发送任意消息</li>
+            <li>浏览器访问 <code>https://api.telegram.org/bot你的Token/getUpdates</code></li>
+            <li>找到 JSON 里的 <code>chat.id</code>，填入上方</li>
         </ol>
     </div>
 

@@ -17,7 +17,7 @@ from utils.logger import app_logger
 from utils.config_loader import get_config
 
 
-def generate_report(market: str, use_screener: bool = True) -> dict:
+def generate_report(market: str, use_screener: bool = True, use_news: bool = True) -> dict:
     """
     生成指定市场的每日报告。
     返回可直接 json.dumps 存入 DailyReport.data 的 dict。
@@ -55,7 +55,7 @@ def generate_report(market: str, use_screener: bool = True) -> dict:
     items = []
     for ticker, name in pool:
         try:
-            item = _analyze_one(ticker, name, market, has_llm, fund_enabled)
+            item = _analyze_one(ticker, name, market, has_llm, fund_enabled, use_news)
             if item:
                 for si in screened_info:
                     if si["ticker"] == ticker:
@@ -92,7 +92,8 @@ def generate_report(market: str, use_screener: bool = True) -> dict:
 
 
 def _analyze_one(ticker: str, name: str, market: str,
-                 use_llm: bool = False, use_fundamental: bool = False) -> dict | None:
+                 use_llm: bool = False, use_fundamental: bool = False,
+                 use_news: bool = True) -> dict | None:
     """分析单只标的，返回报告卡片数据"""
     app_logger.info(f"[报告] 分析 {name}({ticker})...")
 
@@ -102,13 +103,13 @@ def _analyze_one(ticker: str, name: str, market: str,
         return None
 
     # ── 新闻面 ──
-    if market != "fund":
+    if market != "fund" and use_news:
         news = fetch_news(ticker, market, limit=8)
         sentiment = analyze_sentiment(news)
     else:
         news = []
         sentiment = {"score": 0, "label": "N/A", "positive": 0,
-                     "negative": 0, "summary": "基金不分析新闻面。"}
+                     "negative": 0, "summary": "已跳过新闻分析。" if market != "fund" else "基金不分析新闻面。"}
 
     # ── 基本面 + 估值 (可选) ──
     fund_data = None

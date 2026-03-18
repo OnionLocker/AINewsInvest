@@ -54,7 +54,7 @@ def init_scheduler(app):
         misfire_grace_time=600,
     )
 
-_scheduler.start()
+    _scheduler.start()
     app_logger.info("[调度器] APScheduler 已启动，告警检测每 30 分钟执行")
     return _scheduler
 

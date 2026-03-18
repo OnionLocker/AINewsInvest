@@ -506,16 +506,17 @@ async function generateReport() {
         const resp = await fetch('/api/report/generate', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({market: currentTab})
+            body: JSON.stringify({market: currentTab, use_screener: false, use_news: false})
         });
         const result = await resp.json();
         if (resp.ok) {
-            loadReport(currentTab);
+            await loadReport(currentTab);
         } else {
             alert(result.error || '生成失败');
         }
     } catch(e) {
-        alert('网络错误');
+        alert('生成请求失败：可能是接口超时、返回异常，或后端数据源太慢。请稍后重试。');
+        console.error(e);
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
