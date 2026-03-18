@@ -102,6 +102,9 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
     else:
         sentiment, sentiment_class = "中性", "text-warning"
 
+    tech_failed_count = sum(1 for i in items if i.get("techFailed"))
+    partial = tech_failed_count > 0
+
     return {
         "metrics": {
             "count": total, "bull": buy_count, "bear": sell_count,
@@ -111,6 +114,8 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
         "generated_date": date.today().isoformat(),
         "llm_enabled": has_llm,
         "fundamental_enabled": fund_enabled,
+        "partial_success": partial,
+        "tech_failed_count": tech_failed_count,
     }
 
 
@@ -120,10 +125,16 @@ def _analyze_one(ticker: str, name: str, market: str,
     """分析单只标的，返回报告卡片数据"""
     app_logger.info(f"[报告] 分析 {name}({ticker})...")
 
-    # ── 技术面 (必须) ──
-    tech = tech_analyze(ticker, market)
+    # ── 技术面 ──
+    tech = None
+    tech_failed = False
+    try:
+        tech = tech_analyze(ticker, market)
+    except Exception as e:
+        app_logger.warning(f"[报告] 技术分析异常 {ticker}: {type(e).__name__}: {e}")
     if not tech:
-        return None
+        tech_failed = True
+        app_logger.warning(f"[报告] {ticker} 技术分析失败，将输出降级结果")
 
     # ── 新闻面 ──
     if market != "fund" and use_news:
@@ -137,13 +148,14 @@ def _analyze_one(ticker: str, name: str, market: str,
     # ── 基本面 + 估值 (可选) ──
     fund_data = None
     val_data = None
-    if use_fundamental and market != "fund":
-        fund_data, val_data = _get_fundamental_valuation(ticker, market, tech["price"])
+    current_price = tech["price"] if tech else None
+    if use_fundamental and market != "fund" and current_price:
+        fund_data, val_data = _get_fundamental_valuation(ticker, market, current_price)
 
     # ── 综合置信度 ──
-    tech_conf = tech["confidence"]
+    tech_conf = tech["confidence"] if tech else 30
     news_mod = sentiment["score"] * 10
-    if tech["signal"] == "sell":
+    if tech and tech["signal"] == "sell":
         news_mod = -news_mod
 
     fund_mod = 0
@@ -161,17 +173,21 @@ def _analyze_one(ticker: str, name: str, market: str,
     combined_conf = min(95, max(20, int(tech_conf + news_mod + fund_mod + val_mod)))
 
     # ── 方向判定 ──
-    if tech["signal"] == "buy":
+    if tech and tech["signal"] == "buy":
         direction, dir_label = "buy", "看多"
-    elif tech["signal"] == "sell":
+    elif tech and tech["signal"] == "sell":
         direction, dir_label = "sell", "看空"
     else:
         direction = "buy" if sentiment["score"] > 0.2 else (
             "sell" if sentiment["score"] < -0.2 else "buy")
         dir_label = "观望偏多" if direction == "buy" else "观望偏空"
 
-    price_str = _format_price(tech["price"], market)
-    change_str = f"+{tech['change_pct']}%" if tech["change_pct"] >= 0 else f"{tech['change_pct']}%"
+    if tech:
+        price_str = _format_price(tech["price"], market)
+        change_str = f"+{tech['change_pct']}%" if tech["change_pct"] >= 0 else f"{tech['change_pct']}%"
+    else:
+        price_str = "--"
+        change_str = "--"
 
     item = {
         "ticker": ticker,
@@ -179,22 +195,22 @@ def _analyze_one(ticker: str, name: str, market: str,
         "direction": direction,
         "dirLabel": dir_label,
         "price": price_str,
-        "price_raw": tech["price"],
+        "price_raw": tech["price"] if tech else 0,
         "change": change_str,
-        "change_pct": tech["change_pct"],
+        "change_pct": tech["change_pct"] if tech else 0,
         "confidence": combined_conf,
-        "entry": tech["entry"],
-        "stop_loss": tech["stop_loss"],
-        "take_profit_1": tech["take_profit_1"],
-        "take_profit_2": tech["take_profit_2"],
-        "risk_reward": tech["risk_reward"],
-        "techReason": tech["tech_summary"],
+        "entry": tech["entry"] if tech else 0,
+        "stop_loss": tech["stop_loss"] if tech else 0,
+        "take_profit_1": tech["take_profit_1"] if tech else 0,
+        "take_profit_2": tech["take_profit_2"] if tech else 0,
+        "risk_reward": tech["risk_reward"] if tech else "N/A",
+        "techReason": tech["tech_summary"] if tech else "技术分析数据获取失败，本次结果仅基于新闻/基本面。",
         "newsReason": sentiment["summary"],
-        "indicators": tech["indicators"],
+        "indicators": tech["indicators"] if tech else {},
         "screened": False,
         "screenReason": "",
         "llmReason": "",
-        # ── 新增字段 ──
+        "techFailed": tech_failed,
         "fundamentalReason": fund_data["fundamental_summary"] if fund_data else "",
         "valuationReason": val_data["valuation_summary"] if val_data else "",
         "riskFlags": fund_data["risk_flags"] if fund_data else [],
@@ -209,7 +225,7 @@ def _analyze_one(ticker: str, name: str, market: str,
     if use_llm:
         try:
             llm_result = llm_analyze_stock(
-                ticker, name, market, tech, news,
+                ticker, name, market, tech or {}, news,
                 fundamental_data=fund_data,
                 valuation_data=val_data,
             )

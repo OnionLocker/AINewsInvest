@@ -3,15 +3,12 @@ analysis/technical.py - 技术面分析引擎
 
 流程：拉取 K 线 → 计算指标 → 判断趋势 → 给出入场/止损/止盈点位
 
-支持市场：A股(akshare) / 美股(yfinance) / 港股(akshare)
+支持市场：A股(akshare) / 美股(yfinance) / 港股(akshare) / 基金(akshare)
 
-优化：
-- K 线请求增加本地内存缓存
-- 对单次抓取设置硬超时，避免某只标的卡很久
-- 抓取失败时快速返回 None，不拖垮整批报告生成
+超时控制使用 ThreadPoolExecutor，兼容 gunicorn gthread worker。
 """
-import signal
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import numpy as np
 import pandas as pd
@@ -19,14 +16,12 @@ import akshare as ak
 import yfinance as yf
 from utils.logger import app_logger
 
-LOOKBACK_DAYS = 120  # 回看交易日数
-_KLINE_TIMEOUT_SECONDS = 8
+LOOKBACK_DAYS = 120
+_KLINE_TIMEOUT_SECONDS = 12
 _KLINE_CACHE_TTL_SECONDS = 600
 _kline_cache: dict[str, tuple[pd.DataFrame | None, float]] = {}
 
-
-class KlineTimeoutError(TimeoutError):
-    pass
+_MISSING = object()
 
 
 def _cache_get(key: str) -> pd.DataFrame | None | object:
@@ -43,17 +38,14 @@ def _cache_set(key: str, value: pd.DataFrame | None):
     _kline_cache[key] = (value, time.time())
 
 
-_MISSING = object()
-
-
 # ══════════════════════════════════════════════════════════════
-# K 线数据获取
+# K 线数据获取（线程安全超时）
 # ══════════════════════════════════════════════════════════════
 
 def fetch_kline(ticker: str, market: str) -> pd.DataFrame | None:
     """
-    拉取日K线，返回标准化 DataFrame:
-    columns = [date, open, high, low, close, volume]
+    拉取日K线，返回标准化 DataFrame。
+    超时控制用 ThreadPoolExecutor 替代 signal.alarm，兼容 gunicorn。
     """
     cache_key = f"{market}:{ticker}"
     cached = _cache_get(cache_key)
@@ -67,34 +59,27 @@ def fetch_kline(ticker: str, market: str) -> pd.DataFrame | None:
             return _kline_hk(ticker)
         elif market == "us_stock":
             return _kline_us(ticker)
+        elif market == "fund":
+            return _kline_fund(ticker)
         else:
             return None
 
-    def _alarm_handler(signum, frame):
-        raise KlineTimeoutError()
-
-    old_handler = signal.getsignal(signal.SIGALRM)
     try:
-        signal.signal(signal.SIGALRM, _alarm_handler)
-        signal.alarm(_KLINE_TIMEOUT_SECONDS)
-        df = _load()
-        signal.alarm(0)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load)
+            df = future.result(timeout=_KLINE_TIMEOUT_SECONDS)
         _cache_set(cache_key, df)
         return df
-    except KlineTimeoutError:
-        signal.alarm(0)
+    except FuturesTimeoutError:
         app_logger.warning(
             f"K线获取超时 [{market}:{ticker}]，已跳过（>{_KLINE_TIMEOUT_SECONDS}s）"
         )
         _cache_set(cache_key, None)
         return None
     except Exception as e:
-        signal.alarm(0)
-        app_logger.warning(f"K线获取失败 [{market}:{ticker}]: {e}")
+        app_logger.warning(f"K线获取失败 [{market}:{ticker}]: {type(e).__name__}: {e}")
         _cache_set(cache_key, None)
         return None
-    finally:
-        signal.signal(signal.SIGALRM, old_handler)
 
 
 def _kline_a_share(ticker: str) -> pd.DataFrame | None:
@@ -140,6 +125,26 @@ def _kline_us(ticker: str) -> pd.DataFrame | None:
     df = df[["date", "open", "high", "low", "close", "volume"]].copy()
     df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
     return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+
+
+def _kline_fund(ticker: str) -> pd.DataFrame | None:
+    """基金 K 线：用单位净值走势构建简化 K 线。"""
+    try:
+        df = ak.fund_open_fund_info_em(symbol=ticker, indicator="单位净值走势")
+        if df is None or df.empty:
+            return None
+        df = df.rename(columns={"净值日期": "date", "单位净值": "close"})
+        df["date"] = pd.to_datetime(df["date"])
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df["open"] = df["close"]
+        df["high"] = df["close"]
+        df["low"] = df["close"]
+        df["volume"] = 0
+        df = df[["date", "open", "high", "low", "close", "volume"]].copy()
+        return df.tail(LOOKBACK_DAYS).reset_index(drop=True)
+    except Exception as e:
+        app_logger.warning(f"基金K线获取失败 [{ticker}]: {type(e).__name__}: {e}")
+        return None
 
 
 # ══════════════════════════════════════════════════════════════
@@ -223,7 +228,7 @@ def find_support_resistance(df: pd.DataFrame, n: int = 20) -> dict:
 
 def analyze(ticker: str, market: str) -> dict | None:
     df = fetch_kline(ticker, market)
-    if df is None or len(df) < 60:
+    if df is None or len(df) < 20:
         return None
 
     df = compute_indicators(df)
@@ -232,6 +237,8 @@ def analyze(ticker: str, market: str) -> dict | None:
 
     close = round(float(last["close"]), 2)
     prev_close = float(prev["close"])
+    if prev_close == 0:
+        return None
     change_pct = round((close - prev_close) / prev_close * 100, 2)
     atr = float(last["atr"]) if pd.notna(last["atr"]) else close * 0.02
 
@@ -280,18 +287,18 @@ def analyze(ticker: str, market: str) -> dict | None:
 
     if trend_score >= 3:
         trend = "bullish"
-        signal = "buy"
+        signal_dir = "buy"
     elif trend_score <= -3:
         trend = "bearish"
-        signal = "sell"
+        signal_dir = "sell"
     else:
         trend = "ranging"
-        signal = "neutral"
+        signal_dir = "neutral"
 
     confidence = min(95, max(30, int(50 + trend_score * 5)))
     sr = find_support_resistance(df)
 
-    if signal == "buy":
+    if signal_dir == "buy":
         entry = round(close, 2)
         stop_loss = round(sr["supports"][0] - atr * 0.5, 2) if sr["supports"] else round(entry - atr * 1.5, 2)
         risk = entry - stop_loss
@@ -301,7 +308,7 @@ def analyze(ticker: str, market: str) -> dict | None:
             take_profit_1 = max(take_profit_1, round(sr["resistances"][0], 2))
             if len(sr["resistances"]) > 1:
                 take_profit_2 = max(take_profit_2, round(sr["resistances"][1], 2))
-    elif signal == "sell":
+    elif signal_dir == "sell":
         entry = round(close, 2)
         stop_loss = round(sr["resistances"][0] + atr * 0.5, 2) if sr["resistances"] else round(entry + atr * 1.5, 2)
         risk = stop_loss - entry
@@ -322,7 +329,7 @@ def analyze(ticker: str, market: str) -> dict | None:
     rr = f"1:{round(reward_amt / risk_amt, 1)}" if risk_amt > 0 else "N/A"
 
     tech_summary = _build_summary(
-        trend, signal, close, mas, last, prev, rsi, sr, atr, entry, stop_loss, take_profit_1, take_profit_2
+        trend, signal_dir, close, mas, last, prev, rsi, sr, atr, entry, stop_loss, take_profit_1, take_profit_2
     )
 
     return {
@@ -331,7 +338,7 @@ def analyze(ticker: str, market: str) -> dict | None:
         "price": close,
         "change_pct": change_pct,
         "trend": trend,
-        "signal": signal,
+        "signal": signal_dir,
         "confidence": confidence,
         "entry": entry,
         "stop_loss": stop_loss,
@@ -353,7 +360,7 @@ def analyze(ticker: str, market: str) -> dict | None:
     }
 
 
-def _build_summary(trend, signal, close, mas, last, prev, rsi, sr, atr, entry, sl, tp1, tp2) -> str:
+def _build_summary(trend, signal_dir, close, mas, last, prev, rsi, sr, atr, entry, sl, tp1, tp2) -> str:
     parts = []
     trend_zh = {"bullish": "多头", "bearish": "空头", "ranging": "震荡"}
     parts.append(f"当前趋势 {trend_zh[trend]}。")
@@ -394,9 +401,9 @@ def _build_summary(trend, signal, close, mas, last, prev, rsi, sr, atr, entry, s
     if sr["resistances"]:
         parts.append(f"上方阻力：{', '.join(str(r) for r in sr['resistances'][:2])}。")
 
-    if signal == "buy":
+    if signal_dir == "buy":
         parts.append(f"建议入场 {entry}，止损 {sl}（-{abs(entry-sl):.2f}），第一止盈 {tp1}（+{abs(tp1-entry):.2f}），第二止盈 {tp2}（+{abs(tp2-entry):.2f}）。")
-    elif signal == "sell":
+    elif signal_dir == "sell":
         parts.append(f"建议做空/减仓入场 {entry}，止损 {sl}（+{abs(sl-entry):.2f}），第一止盈 {tp1}（+{abs(entry-tp1):.2f}），第二止盈 {tp2}（+{abs(entry-tp2):.2f}）。")
     else:
         parts.append(f"当前更适合观望，若试探性参与，可参考入场 {entry}，止损 {sl}，止盈 {tp1}/{tp2}。")

@@ -358,7 +358,11 @@ async function loadReport(market) {
 
     emptyEl.style.display = 'none';
     const data = result.data;
-    document.getElementById('rptDate').textContent = `${result.report_date} 生成于 ${result.generated_at.slice(0,16).replace('T',' ')}`;
+    let dateText = `${result.report_date} 生成于 ${result.generated_at.slice(0,16).replace('T',' ')}`;
+    if (data.partial_success) {
+        dateText += ` ⚠️ ${data.tech_failed_count || '部分'}只标的技术分析降级`;
+    }
+    document.getElementById('rptDate').textContent = dateText;
 
     if (data.metrics) {
         document.getElementById('rptCount').textContent = data.metrics.count || 0;
@@ -370,7 +374,7 @@ async function loadReport(market) {
     }
 
     cardsEl.innerHTML = data.items.map(item => {
-        const hasTP = item.entry !== undefined;
+        const hasTP = item.entry !== undefined && item.entry !== 0;
         const isBuy = item.direction === 'buy';
         const changeClass = item.change && item.change.startsWith('+') ? 'up' : 'down';
         return `
@@ -381,6 +385,7 @@ async function loadReport(market) {
                     <span class="av-name">${item.name}</span>
                     <button class="av-rec-deep" onclick="event.stopPropagation();goDeep('${item.ticker}','${currentTab}')" title="\u6df1\u5ea6\u5206\u6790"><i class="bi bi-search-heart"></i></button>
                     ${item.screened ? `<span class="av-badge-screened"><i class="bi bi-lightning me-1"></i>${item.screenReason || '异动'}</span>` : ''}
+                    ${item.techFailed ? `<span class="av-badge-screened" style="background:#dc3545;color:#fff;"><i class="bi bi-exclamation-triangle me-1"></i>技术面降级</span>` : ''}
                 </div>
                 <div class="av-rec-right">
                     <span class="av-price">${item.price || ''}</span>

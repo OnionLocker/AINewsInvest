@@ -700,7 +700,7 @@ def api_upload_report():
                 "以下是一份 A 股年报的关键章节提取内容，请做综合分析:\n"
                 "1. 是否存在隐性风险（受限资产过高、应收账龄老化、关联交易异常等）\n"
                 "2. 经营亮点与隐忧\n"
-                "3. 涓€鍙ヨ瘽鎬荤粨璇ュ勾鎶ヨ川閲廫n\n"
+                "3. 一句话总结该年报质量\n\n"
                 f"{llm_text}"
             )
             messages = [
@@ -756,7 +756,7 @@ def api_deep_analysis_stream():
         yield f"data: {_json.dumps({'step':1,'total':steps_total,'msg':'获取行情数据...'}, ensure_ascii=False)}\n\n"
         tech = tech_analyze(ticker, market)
 
-        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'鍒嗘瀽鎶€鏈潰...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'分析技术面...'}, ensure_ascii=False)}\n\n"
         news = fetch_news(ticker, market, limit=10)
         sentiment = analyze_sentiment(news)
 
@@ -812,7 +812,7 @@ def api_deep_analysis_stream():
 
         _save_deep_cache(ticker, market, result)
 
-        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'瀹屾垚','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
+        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'完成','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
 
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
