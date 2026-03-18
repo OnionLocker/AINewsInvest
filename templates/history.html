@@ -68,7 +68,7 @@
     <!-- 周报展示 -->
     <div id="weeklyReportSection" style="display:none;margin-bottom:24px;">
         <div class="av-section-header">
-            <h6><i class="bi bi-calendar-week me-2"></i>\u5468\u62a5\u590d\u76d8</h6>
+            <h6><i class="bi bi-calendar-week me-2"></i>周报复盘</h6>
         </div>
         <div id="weeklyReportContent" class="av-deep-summary" style="white-space:pre-wrap;"></div>
     </div>
@@ -305,7 +305,7 @@ async function loadPerformance(market) {
                 data: {
                     labels: data.daily_stats.map(d => d.date.slice(5)),
                     datasets: [{
-                        label: '\u80dc\u7387 (%)',
+                        label: '胜率 (%)',
                         data: data.daily_stats.map(d => d.win_rate),
                         borderColor: '#059669',
                         backgroundColor: '#05966933',
@@ -314,7 +314,7 @@ async function loadPerformance(market) {
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, title: { display: true, text: '\u6bcf\u65e5\u80dc\u7387\u8d70\u52bf', color: textColor, font:{size:12} } },
+                    plugins: { legend: { display: false }, title: { display: true, text: '每日胜率走势', color: textColor, font:{size:12} } },
                     scales: {
                         x: { ticks: {color: textColor, maxTicksLimit: 10} },
                         y: { min: 0, max: 100, ticks: {color: textColor} }
@@ -326,7 +326,7 @@ async function loadPerformance(market) {
         // Recent recommendations
         const recentEl = document.getElementById('perfRecent');
         if (data.recent && data.recent.length > 0) {
-            recentEl.innerHTML = '<div style="font-weight:600;margin-bottom:8px;color:var(--av-text-secondary);">\u6700\u8fd1\u63a8\u8350\u8868\u73b0:</div>' +
+            recentEl.innerHTML = '<div style="font-weight:600;margin-bottom:8px;color:var(--av-text-secondary);">最近推荐表现:</div>' +
                 data.recent.map(r => {
                     const icon = r.outcome === 'win' || r.outcome === 'partial' ? '<i class="bi bi-check-circle-fill" style="color:var(--av-success)"></i>' :
                                  r.outcome === 'loss' ? '<i class="bi bi-x-circle-fill" style="color:var(--av-danger)"></i>' :
@@ -339,7 +339,7 @@ async function loadPerformance(market) {
                     </div>`;
                 }).join('');
         } else {
-            recentEl.innerHTML = '<div style="text-align:center;color:var(--av-text-muted);padding:12px;">\u6682\u65e0\u63a8\u8350\u8ddf\u8e2a\u6570\u636e</div>';
+            recentEl.innerHTML = '<div style="text-align:center;color:var(--av-text-muted);padding:12px;">暂无推荐跟踪数据</div>';
         }
     } catch(e) {
         console.warn('Performance load failed', e);

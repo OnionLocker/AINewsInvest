@@ -484,11 +484,11 @@ function renderCharts(data) {
             labels,
             datasets: [
                 { label: 'ROE (%)', data: cd.roe, borderColor: primary, backgroundColor: primary+'33', tension: 0.3, fill: false, pointRadius: 3 },
-                { label: '\u6bdb\u5229\u7387 (%)', data: cd.gross_margin, borderColor: success, backgroundColor: success+'33', tension: 0.3, fill: false, pointRadius: 3 },
-                { label: '\u51c0\u5229\u7387 (%)', data: cd.net_margin, borderColor: warning, backgroundColor: warning+'33', tension: 0.3, fill: false, pointRadius: 3 }
+                { label: '毛利率 (%)', data: cd.gross_margin, borderColor: success, backgroundColor: success+'33', tension: 0.3, fill: false, pointRadius: 3 },
+                { label: '净利率 (%)', data: cd.net_margin, borderColor: warning, backgroundColor: warning+'33', tension: 0.3, fill: false, pointRadius: 3 }
             ]
         },
-        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '\u76c8\u5229\u80fd\u529b', color: textColor, font:{size:12} } } }
+        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '盈利能力', color: textColor, font:{size:12} } } }
     });
 
     _destroyChart('chartGrowth');
@@ -497,11 +497,11 @@ function renderCharts(data) {
         data: {
             labels,
             datasets: [
-                { label: '\u8425\u6536\u589e\u901f (%)', data: cd.revenue_growth, backgroundColor: primary+'99', borderColor: primary, borderWidth: 1 },
-                { label: '\u5229\u6da6\u589e\u901f (%)', data: cd.profit_growth, backgroundColor: success+'99', borderColor: success, borderWidth: 1 }
+                { label: '营收增速 (%)', data: cd.revenue_growth, backgroundColor: primary+'99', borderColor: primary, borderWidth: 1 },
+                { label: '利润增速 (%)', data: cd.profit_growth, backgroundColor: success+'99', borderColor: success, borderWidth: 1 }
             ]
         },
-        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '\u6210\u957f\u6027', color: textColor, font:{size:12} } } }
+        options: { ...baseOpts, plugins: { ...baseOpts.plugins, title: { display: true, text: '成长性', color: textColor, font:{size:12} } } }
     });
 
     _destroyChart('chartSafety');
@@ -510,17 +510,17 @@ function renderCharts(data) {
         data: {
             labels,
             datasets: [
-                { label: '\u8d1f\u503a\u7387 (%)', data: cd.debt_ratio, borderColor: danger, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y' },
-                { label: '\u6d41\u52a8\u6bd4\u7387', data: cd.current_ratio, borderColor: primary, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y1' }
+                { label: '负债率 (%)', data: cd.debt_ratio, borderColor: danger, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y' },
+                { label: '流动比率', data: cd.current_ratio, borderColor: primary, tension: 0.3, fill: false, pointRadius: 3, yAxisID: 'y1' }
             ]
         },
         options: {
             ...baseOpts,
-            plugins: { ...baseOpts.plugins, title: { display: true, text: '\u8d22\u52a1\u5b89\u5168\u6027', color: textColor, font:{size:12} } },
+            plugins: { ...baseOpts.plugins, title: { display: true, text: '财务安全性', color: textColor, font:{size:12} } },
             scales: {
                 ...baseOpts.scales,
-                y: { ...baseOpts.scales.y, position: 'left', title: { display: true, text: '\u8d1f\u503a\u7387 %', color: textColor } },
-                y1: { position: 'right', ticks: {color: textColor}, grid: {drawOnChartArea: false}, title: { display: true, text: '\u6d41\u52a8\u6bd4\u7387', color: textColor } }
+                y: { ...baseOpts.scales.y, position: 'left', title: { display: true, text: '负债率 %', color: textColor } },
+                y1: { position: 'right', ticks: {color: textColor}, grid: {drawOnChartArea: false}, title: { display: true, text: '流动比率', color: textColor } }
             }
         }
     });
@@ -539,17 +539,17 @@ function renderCharts(data) {
         _charts['chartValBand'] = new Chart(document.getElementById('chartValBand'), {
             type: 'bar',
             data: {
-                labels: ['\u4f30\u503c\u533a\u95f4'],
+                labels: ['估值区间'],
                 datasets: [
                     { label: 'NCAV', data: [ncav], backgroundColor: '#059669cc', barPercentage: 0.6 },
-                    { label: 'BVPS (\u6bcf\u80a1\u51c0\u8d44\u4ea7)', data: [bvps], backgroundColor: '#6366f1cc', barPercentage: 0.6 },
-                    { label: '\u5f53\u524d\u4ef7', data: [price], backgroundColor: '#d97706cc', barPercentage: 0.6 },
-                    { label: '\u76ee\u6807\u4ef7', data: [target], backgroundColor: '#dc2626cc', barPercentage: 0.6 }
+                    { label: 'BVPS (每股净资产)', data: [bvps], backgroundColor: '#6366f1cc', barPercentage: 0.6 },
+                    { label: '当前价', data: [price], backgroundColor: '#d97706cc', barPercentage: 0.6 },
+                    { label: '目标价', data: [target], backgroundColor: '#dc2626cc', barPercentage: 0.6 }
                 ]
             },
             options: {
                 indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: textColor, font:{size:11} } }, title: { display: true, text: '\u4f30\u503c\u533a\u95f4\u5bf9\u6bd4', color: textColor, font:{size:12} } },
+                plugins: { legend: { labels: { color: textColor, font:{size:11} } }, title: { display: true, text: '估值区间对比', color: textColor, font:{size:12} } },
                 scales: {
                     x: { max: max, ticks: {color: textColor}, grid: {color: gridColor} },
                     y: { ticks: {color: textColor}, grid: {color: gridColor} }
