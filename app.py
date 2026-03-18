@@ -1,10 +1,10 @@
 """
-app.py - Alpha Vault 涓诲簲鐢�
+app.py - Alpha Vault 主应用
 
-鍔熻兘锛�
-  - 閴存潈锛�/login, /register, /logout
-  - 椤甸潰锛�/ (dashboard), /settings, /history
-  - API锛�/api/health, /api/search, /api/watchlist, /api/quotes, /api/report,
+- 功能：
+  - 鉴权：/login, /register, /logout
+  - 页面：/ (dashboard), /settings, /history
+  - API：/api/health, /api/search, /api/watchlist, /api/quotes, /api/report,
          /api/report/history, /api/report/generate, /api/accuracy, /api/llm/status
 """
 import json
@@ -21,7 +21,7 @@ from utils.notifier import test_notify
 
 _JOB_PROGRESS = {}
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 閹煎瓨姊婚弫銈夊礆濠靛棭娼楅柛鏍垫嫹 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 创建应用实例 ──────────────────────────
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -30,21 +30,21 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-login_manager.login_message = "璇峰厛鐧诲綍鍚庡啀璁块棶璇ラ〉闈�"
+login_manager.login_message = "请先登录后再访问该页面"
 
-# 绗﹀彿鏁版嵁搴擄紙鍚姩鏃跺姞杞藉埌鍐呭瓨锛屾悳绱㈢敤锛�
+# 符号数据库（启动时加载到内存，搜索用）
 _SYMBOLS: list[dict] = []
 _SYMBOLS_PATH = os.path.join(os.path.dirname(__file__), "data", "symbols.json")
 
 _FALLBACK_SYMBOLS = [
-    {"ticker": "600519", "name": "鐠愰潧绐炶寘鍙�", "market": "a_share"},
-    {"ticker": "000858", "name": "浜旂伯娑�", "market": "a_share"},
-    {"ticker": "300750", "name": "鐎逛礁鐥夐弮鏈靛敩", "market": "a_share"},
-    {"ticker": "AAPL", "name": "閼昏鐏�", "market": "us_stock"},
-    {"ticker": "MSFT", "name": "寰蒋", "market": "us_stock"},
-    {"ticker": "NVDA", "name": "鑻变紵杈�", "market": "us_stock"},
-    {"ticker": "00700", "name": "鑵捐鎺ц偂", "market": "hk_stock"},
-    {"ticker": "09988", "name": "闂冨潡鍣峰鏉戝弽-W", "market": "hk_stock"},
+    {"ticker": "600519", "name": "贵州茅台", "market": "a_share"},
+    {"ticker": "000858", "name": "五粮液", "market": "a_share"},
+    {"ticker": "300750", "name": "宁德时代", "market": "a_share"},
+    {"ticker": "AAPL", "name": "苹果", "market": "us_stock"},
+    {"ticker": "MSFT", "name": "微软", "market": "us_stock"},
+    {"ticker": "NVDA", "name": "英伟达", "market": "us_stock"},
+    {"ticker": "00700", "name": "腾讯控股", "market": "hk_stock"},
+    {"ticker": "09988", "name": "阿里巴巴-W", "market": "hk_stock"},
 ]
 
 
@@ -56,11 +56,11 @@ def _load_symbols():
                 data = json.load(f)
             if data:
                 _SYMBOLS = data
-                app_logger.info(f"绗﹀彿鏁版嵁搴撳凡鍔犺浇: {len(_SYMBOLS)} 鏉�")
+                app_logger.info(f"符号数据库已加载: {len(_SYMBOLS)} 条")
                 return
         except Exception as e:
-            app_logger.warning(f"绗﹀彿鏁版嵁搴撹鍙栧け璐�: {e}")
-    app_logger.warning("绗﹀彿鏁版嵁搴撲笉瀛樺湪鎴栦负绌猴紝浣跨敤鍐呯疆 fallback")
+            app_logger.warning(f"符号数据库读取失败: {e}")
+    app_logger.warning("符号数据库不存在或为空，使用内置 fallback")
     _SYMBOLS = list(_FALLBACK_SYMBOLS)
 
 
@@ -69,11 +69,11 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鍋ュ悍妫€鏌� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 健康检查 ──────────────────────────
 
 @app.route("/api/health")
 def health():
-    """澧炲己鍨嬪仴搴锋鏌ワ細鏁版嵁搴撱€佺鍙峰簱銆佺鐩樸€�"""
+    """增强型健康检查：数据库、符号库、磁盘。"""
     checks = {"db": False, "symbols": False}
     try:
         db.session.execute(db.text("SELECT 1"))
@@ -94,36 +94,36 @@ def health():
 @app.route("/api/market-overview")
 @login_required
 def api_market_overview():
-    """杩斿洖涓昏甯傚満鎸囨暟琛屾儏"""
+    """返回主要市场指数行情"""
     indices = []
     try:
         import akshare as ak
         spot = ak.stock_zh_index_spot_em()
         targets = {
-            "娑撳﹨鐦夐幐鍥ㄦ殶": "娑撳﹨鐦�",
-            "濞ｈ精鐦夐幋鎰瘹": "濞ｈ精鐦�",
-            "鍒涗笟鏉挎寚": "閸掓稐绗熸潯",
+            "上证指数": "上证",
+            "深证成指": "深证",
+            "创业板指": "创业板",
         }
         for _, row in spot.iterrows():
-            name = str(row.get("閸氬秶袨", ""))
+            name = str(row.get("名称", ""))
             if name in targets:
                 try:
                     indices.append({
                         "name": targets[name],
-                        "price": round(float(row.get("閺堚偓閺傞鐜�", 0)), 2),
-                        "change_pct": round(float(row.get("娑ㄨ穼骞�", 0)), 2),
+                        "price": round(float(row.get("最新价", 0)), 2),
+                        "change_pct": round(float(row.get("涨跌幅", 0)), 2),
                     })
                 except (ValueError, TypeError):
                     pass
     except Exception as e:
-        app_logger.warning(f"A鑲℃寚鏁拌幏鍙栧け璐�: {e}")
+        app_logger.warning(f"A股指数获取失败: {e}")
 
     try:
         import yfinance as yf
         us_hk = {
-            "^IXIC": "缁捐櫕鏌夋潏鎯у帬",
-            "^GSPC": "閺嶅洦娅�500",
-            "^HSI": "閹帞鏁�",
+            "^IXIC": "纳斯达克",
+            "^GSPC": "标普500",
+            "^HSI": "恒指",
         }
         for symbol, label in us_hk.items():
             try:
@@ -141,13 +141,13 @@ def api_market_overview():
             except Exception:
                 pass
     except Exception as e:
-        app_logger.warning(f"缇�/娓寚鏁拌幏鍙栧け璐�: {e}")
+        app_logger.warning(f"美/港指数获取失败: {e}")
 
     return jsonify(indices)
 
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 閴存潈璺敱 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 鉴权路由 ──────────────────────────
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -158,23 +158,23 @@ def register():
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
         if not username or not password:
-            flash("鐢ㄦ埛閸氬秴鎷扮€靛棛鐖滄稉宥堝厴娑撹櫣鈹�", "danger")
+            flash("用户名和密码不能为空", "danger")
             return redirect(url_for("register"))
         if len(password) < 6:
-            flash("瀵嗙爜闀垮害涓嶈兘灏戜簬 6 浣�", "danger")
+            flash("密码长度不能少于 6 位", "danger")
             return redirect(url_for("register"))
         if password != confirm:
-            flash("涓ゆ杈撳叆鐨勫瘑鐮佷笉涓€鑷�", "danger")
+            flash("两次输入的密码不一致", "danger")
             return redirect(url_for("register"))
         if User.query.filter_by(username=username).first():
-            flash("璇ョ敤鎴峰悕宸茶娉ㄥ唽", "danger")
+            flash("该用户名已被注册", "danger")
             return redirect(url_for("register"))
         user = User(username=username)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        app_logger.info(f"鏂扮敤鎴锋敞鍐�: {username}")
-        flash("娉ㄥ唽鎴愬姛锛岃鐧诲綍", "success")
+        app_logger.info(f"新用户注册: {username}")
+        flash("注册成功，请登录", "success")
         return redirect(url_for("login"))
     return render_template("register.html")
 
@@ -189,10 +189,10 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user, remember=True)
-            app_logger.info(f"鐢ㄦ埛鐧诲綍: {username}")
+            app_logger.info(f"用户登录: {username}")
             return redirect(request.args.get("next") or url_for("dashboard"))
-        app_logger.warning(f"鐧诲綍澶辫触: {username}")
-        flash("鐢ㄦ埛鍚嶆垨瀵嗙爜閿欒顕�", "danger")
+        app_logger.warning(f"登录失败: {username}")
+        flash("用户名或密码错误", "danger")
         return redirect(url_for("login"))
     return render_template("login.html")
 
@@ -200,13 +200,13 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
-    app_logger.info(f"鐢ㄦ埛閫€鍑�: {current_user.username}")
+    app_logger.info(f"用户退出: {current_user.username}")
     logout_user()
-    flash("宸插畨鍏ㄩ€€鍑虹櫥褰�", "info")
+    flash("已安全退出登录", "info")
     return redirect(url_for("login"))
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 椤甸潰璺敱 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 页面路由 ──────────────────────────
 
 @app.route("/")
 @login_required
@@ -230,19 +230,19 @@ def settings():
             chat_id = request.form.get("tg_chat_id", "").strip()
             current_user.set_tg_config(bot_token, chat_id)
             db.session.commit()
-            app_logger.info(f"鐢ㄦ埛 {current_user.username} 鏇存柊浜� Telegram 閰嶇疆")
-            flash("Telegram 閰嶇疆宸蹭繚瀛橈紙宸插姞瀵嗗瓨鍌級", "success")
+            app_logger.info(f"用户 {current_user.username} 更新了 Telegram 配置")
+            flash("Telegram 配置已保存（已加密存储）", "success")
         elif action == "test":
             if not current_user.tg_configured:
-                flash("璇峰厛淇濆瓨 Bot Token 鍜� Chat ID", "warning")
+                flash("请先保存 Bot Token 和 Chat ID", "warning")
                 return redirect(url_for("settings"))
             try:
                 token, chat_id = current_user.get_tg_config()
                 ok, msg = test_notify(token, chat_id)
                 flash(msg, "success" if ok else "danger")
             except Exception as e:
-                app_logger.error(f"Telegram 娴嬭瘯澶辫触: {e}")
-                flash(f"閰嶇疆瑙ｅ瘑澶辫触锛岃閲嶆柊淇濆瓨: {e}", "danger")
+                app_logger.error(f"Telegram 测试失败: {e}")
+                flash(f"配置解密失败，请重新保存: {e}", "danger")
         return redirect(url_for("settings"))
 
     token_display, chat_id_display = "", ""
@@ -252,19 +252,19 @@ def settings():
             token_display = t[:10] + "****" + t[-4:] if len(t) > 14 else "******"
             chat_id_display = c
         except Exception:
-            token_display = "(瑙ｅ瘑澶辫触锛岃閲嶆柊淇濆瓨)"
+            token_display = "(解密失败，请重新保存)"
 
     return render_template("settings.html", token_display=token_display, chat_id_display=chat_id_display)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 绗﹀彿鎼滅储 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 符号搜索 ──────────────────────────
 
 @app.route("/api/search")
 @login_required
 def api_search():
     """
-    TradingView 椋庢牸鎼滅储锛�?q=鑼呭彴&market=a_share
-    market 鍙€夛紝涓嶄紶鍒欐悳鍏ㄩ儴甯傚満
+    TradingView 风格搜索：?q=茅台&market=a_share
+    market 可选，不传则搜全部市场
     """
     q = request.args.get("q", "").strip().lower()
     market = request.args.get("market", "")
@@ -282,12 +282,12 @@ def api_search():
     return jsonify(results)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鑷€夌鐞� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 自选管理 ──────────────────────────
 
 @app.route("/api/watchlist", methods=["GET"])
 @login_required
 def api_watchlist_get():
-    """鑾峰彇褰撳墠鐢ㄦ埛鐨勮嚜閫夊垪琛�"""
+    """获取当前用户的自选列表"""
     items = Watchlist.query.filter_by(user_id=current_user.id).order_by(Watchlist.added_at.desc()).all()
     return jsonify([
         {"id": w.id, "ticker": w.ticker, "name": w.name, "market": w.market}
@@ -298,44 +298,44 @@ def api_watchlist_get():
 @app.route("/api/watchlist", methods=["POST"])
 @login_required
 def api_watchlist_add():
-    """娣诲姞鑷€�"""
+    """添加自选"""
     data = request.get_json(silent=True) or {}
     ticker = data.get("ticker", "").strip()
     name = data.get("name", "").strip()
     market = data.get("market", "").strip()
     if not ticker or not market:
-        return jsonify(error="鍙傛暟涓嶅畬鏁�"), 400
+        return jsonify(error="参数不完整"), 400
 
     existing = Watchlist.query.filter_by(user_id=current_user.id, ticker=ticker, market=market).first()
     if existing:
-        return jsonify(error="宸插湪鑷€変腑"), 409
+        return jsonify(error="已在自选中"), 409
 
     w = Watchlist(user_id=current_user.id, ticker=ticker, name=name, market=market)
     db.session.add(w)
     db.session.commit()
-    app_logger.info(f"鐢ㄦ埛 {current_user.username} 娣诲姞鑷€�: {market}:{ticker}")
+    app_logger.info(f"用户 {current_user.username} 添加自选: {market}:{ticker}")
     return jsonify(id=w.id, ticker=w.ticker, name=w.name, market=w.market), 201
 
 
 @app.route("/api/watchlist/<int:item_id>", methods=["DELETE"])
 @login_required
 def api_watchlist_delete(item_id):
-    """鍒犻櫎鑷€�"""
+    """删除自选"""
     w = Watchlist.query.filter_by(id=item_id, user_id=current_user.id).first()
     if not w:
-        return jsonify(error="鏈壘鍒�"), 404
+        return jsonify(error="未找到"), 404
     db.session.delete(w)
     db.session.commit()
-    app_logger.info(f"鐢ㄦ埛 {current_user.username} 鍒犻櫎鑷€�: {w.market}:{w.ticker}")
+    app_logger.info(f"用户 {current_user.username} 删除自选: {w.market}:{w.ticker}")
     return jsonify(status="deleted")
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鑷€夎鎯� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 自选行情 ──────────────────────────
 
 @app.route("/api/watchlist/quotes")
 @login_required
 def api_watchlist_quotes():
-    """鑾峰彇鑷€夊垪琛ㄧ殑瀹炴椂琛屾儏"""
+    """获取自选列表的实时行情"""
     items = Watchlist.query.filter_by(user_id=current_user.id).all()
     if not items:
         return jsonify([])
@@ -344,7 +344,7 @@ def api_watchlist_quotes():
     quote_input = [{"ticker": w.ticker, "market": w.market, "name": w.name} for w in items]
     quotes = get_quotes_batch(quote_input)
 
-    # 鐢ㄨ嚜閫夎〃鐨� name 琛ュ厖锛坹finance 鍙兘缂轰腑鏂囧悕锛�
+    # 用自选表的 name 补充（yfinance 可能缺中文名）
     name_map = {(w.ticker, w.market): w.name for w in items}
     id_map = {(w.ticker, w.market): w.id for w in items}
     for q in quotes:
@@ -365,14 +365,14 @@ def api_watchlist_quotes():
     return jsonify(quotes)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 濮ｅ繑妫╂姤鍛� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 每日报告 ──────────────────────────
 
 @app.route("/api/report")
 @login_required
 def api_report():
     """
-    鑾峰彇鎸囧畾甯傚満鐨勬瘡鏃ユ姤鍛婏細?market=a_share&date=2026-03-11
-    涓嶄紶 date 榛樿杩斿洖鏈€鏂颁竴鏈�
+    获取指定市场的每日报告：?market=a_share&date=2026-03-11
+    不传 date 默认返回最新一本
     """
     market = request.args.get("market", "a_share")
     date_str = request.args.get("date", "")
@@ -381,13 +381,13 @@ def api_report():
         try:
             target_date = date.fromisoformat(date_str)
         except ValueError:
-            return jsonify(error="鏃ユ湡鏍煎紡閿欒"), 400
+            return jsonify(error="日期格式错误"), 400
         report = DailyReport.query.filter_by(market=market, report_date=target_date).first()
     else:
         report = DailyReport.query.filter_by(market=market).order_by(DailyReport.report_date.desc()).first()
 
     if not report:
-        return jsonify(data=None, message="鏆傛棤鎶ュ憡")
+        return jsonify(data=None, message="暂无报告")
 
     return jsonify(
         market=report.market,
@@ -397,12 +397,12 @@ def api_report():
     )
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鎵嬪姩鐢熸垚鎶ュ憡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 手动生成报告 ──────────────────────────
 
 @app.route("/api/report/generate", methods=["POST"])
 @login_required
 def api_report_generate():
-    """寮傛瑙﹀彂鎶ュ憡鐢熸垚锛岃繑鍥� job_id 渚涘墠绔疆璇€€�"""
+    """异步触发报告生成，返回 job_id 供前端轮询"""
     import uuid
     data = request.get_json(silent=True) or {}
     market = data.get("market", "a_share")
@@ -410,7 +410,7 @@ def api_report_generate():
     use_news = bool(data.get("use_news", False))
     valid_markets = {"a_share", "us_stock", "hk_stock", "fund"}
     if market not in valid_markets:
-        return jsonify(error="鏃犳晥鐨勫競鍦哄弬鏁�"), 400
+        return jsonify(error="无效的市场参数"), 400
 
     job_id = str(uuid.uuid4())
     from models import ReportJob
@@ -420,7 +420,7 @@ def api_report_generate():
         market=market,
         status="pending",
         progress=0,
-        progress_msg="浠诲姟宸叉彁浜わ紝绛夊緟鎵ц...",
+        progress_msg="任务已提交，等待执行...",
     )
     db.session.add(job)
     db.session.commit()
@@ -574,7 +574,7 @@ def _run_report_job(flask_app, job_id, market, use_screener, use_news):
         finally:
             _JOB_PROGRESS.pop(job_id, None)
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鍚姩鍏ュ彛 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 启动入口 ──────────────────────────
 
 
 def _create_tracks(report_obj, report_data):
@@ -603,12 +603,12 @@ def _create_tracks(report_obj, report_data):
     db.session.commit()
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鍘嗗彶鎶ュ憡鍒楄〃 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 历史报告列表 ──────────────────────────
 
 @app.route("/api/report/history")
 @login_required
 def api_report_history():
-    """鑾峰彇鎸囧畾甯傚満鐨勫巻鍙叉姤鍛婂垪琛紙鍙繑鍥炴憳瑕佷俊鎭紝涓嶅惈瀹屾暣鏁版嵁锛�"""
+    """获取指定市场的历史报告列表"""
     market = request.args.get("market", "a_share")
     reports = DailyReport.query.filter_by(market=market).order_by(
         DailyReport.report_date.desc()
@@ -630,12 +630,12 @@ def api_report_history():
     return jsonify(result)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鍑嗙‘鐜囩粺璁� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 准确率统计 ──────────────────────────
 
 @app.route("/api/accuracy")
 @login_required
 def api_accuracy():
-    """鑾峰彇鎸囧畾甯傚満鐨勬帹鑽愬噯纭巼缁熻"""
+    """获取指定市场的推荐准确率统计"""
     market = request.args.get("market", "a_share")
 
     tracks = RecommendationTrack.query.filter_by(market=market).all()
@@ -656,18 +656,18 @@ def api_accuracy():
     })
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: LLM 鐘舵€佹鏌� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: LLM 状态检查 ──────────────────────────
 
 @app.route("/api/llm/status")
 @login_required
 def api_llm_status():
-    """妫€鏌� LLM 鏈嶅姟杩為€氭€�"""
+    """检查 LLM 服务连通性"""
     from analysis.llm_client import llm_health_check
     return jsonify(llm_health_check())
 
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 涓偂娣卞害鍒嗘瀽 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 个股深度分析 ──────────────────────────
 
 @app.route("/deep-analysis")
 @login_required
@@ -694,11 +694,11 @@ def api_deep_analysis():
     force = data.get("force", False)
 
     if not ticker or not market:
-        return jsonify(error="鍙傛暟涓嶅畬鏁�"), 400
+        return jsonify(error="参数不完整"), 400
 
     valid_markets = {"a_share", "us_stock", "hk_stock"}
     if market not in valid_markets:
-        return jsonify(error="娣卞害鍒嗘瀽涓嶆敮鎸佽甯傚満绫诲瀷"), 400
+        return jsonify(error="深度分析不支持该市场类型"), 400
 
     CACHE_TTL = 4 * 3600
     if not force:
@@ -707,16 +707,16 @@ def api_deep_analysis():
         if cached:
             age = (datetime.utcnow() - cached.created_at).total_seconds()
             if age < CACHE_TTL:
-                app_logger.info(f"娣卞害鍒嗘瀽鍛戒腑缂撳瓨 {market}:{ticker}")
+                app_logger.info(f"深度分析命中缓存 {market}:{ticker}")
                 return jsonify(_json.loads(cached.data))
 
     try:
         result = _run_deep_analysis(ticker, market)
         _save_deep_cache(ticker, market, result)
-        app_logger.info(f"鐢ㄦ埛 {current_user.username} 娣卞害鍒嗘瀽 {market}:{ticker}")
+        app_logger.info(f"用户 {current_user.username} 深度分析 {market}:{ticker}")
         return jsonify(result)
     except Exception as e:
-        app_logger.error(f"娣卞害鍒嗘瀽澶辫触 {market}:{ticker}: {e}")
+        app_logger.error(f"深度分析失败 {market}:{ticker}: {e}")
         return jsonify(error=str(e)), 500
 
 
@@ -729,38 +729,38 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 @app.route("/api/upload-report", methods=["POST"])
 @login_required
 def api_upload_report():
-    """涓婁紶骞存姤 PDF锛屾彁鍙栧叧閿珷鑺備俊鎭紝鍙€夎仈鍚� LLM 鍒嗘瀽銆�"""
+    """上传年报 PDF，提取关键章节信息，可选联动 LLM 分析。"""
     from analysis.pdf_parser import parse_annual_report, format_for_llm
     from analysis.llm_client import chat_completion, _is_enabled
 
     if "pdf" not in request.files:
-        return jsonify(error="鐠囩兘鈧瀚� PDF 閺傚洣娆�"), 400
+        return jsonify(error="请上传 PDF 文件"), 400
 
     file = request.files["pdf"]
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        return jsonify(error="浠呮敮鎸� PDF 鏍煎紡"), 400
+        return jsonify(error="\u4ec5\u652f\u6301 PDF \u683c\u5f0f"), 400
 
     save_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(save_path)
-    app_logger.info(f"鐢ㄦ埛 {current_user.username} 涓婁紶骞存姤: {file.filename}")
+    app_logger.info(f"用户 {current_user.username} 上传年报: {file.filename}")
 
     try:
         parsed = parse_annual_report(save_path)
         if not parsed:
-            return jsonify(error="PDF 瑙ｆ瀽澶辫触"), 500
+            return jsonify(error="PDF 解析失败"), 500
 
         llm_summary = None
         if _is_enabled() and parsed["extracted_count"] > 0:
             llm_text = format_for_llm(parsed)
             prompt = (
-                "浠ヤ笅鏄竴浠� A 鑲″勾鎶ョ殑鍏抽敭绔犺妭鎻愬彇鍐呭锛岃鍋氱患鍚堝垎鏋�:\n"
-                "1. 鏄惁瀛樺湪闅愭€ч闄╋紙鍙楅檺璧勪骇杩囬珮銆佸簲鏀惰处榫勮€佸寲銆佸叧鑱斾氦鏄撳紓甯哥瓑锛塡n"
-                "2. 缁忚惀浜偣涓庨殣蹇n"
-                "3. 涓€鍙ヨ瘽鎬荤粨璇ュ勾鎶ヨ川閲廫n\n"
+                "以下是一份 A 股年报的关键章节提取内容，请做综合分析:\n"
+                "1. 是否存在隐性风险（受限资产过高、应收账龄老化、关联交易异常等）\n"
+                "2. 经营亮点与隐忧\n"
+                "3. 一句话总结该年报质量\n\n"
                 f"{llm_text}"
             )
             messages = [
-                {"role": "system", "content": "浣犳槸 Alpha Vault 鐨勫勾鎶ュ垎鏋愬姪鎵嬨€�"},
+                {"role": "system", "content": "你是 Alpha Vault 的年报分析助手。"},
                 {"role": "user", "content": prompt},
             ]
             llm_summary = chat_completion(messages, max_tokens=2048)
@@ -773,7 +773,7 @@ def api_upload_report():
             "llm_summary": llm_summary,
         })
     except Exception as e:
-        app_logger.error(f"骞存姤鍒嗘瀽澶辫触: {e}")
+        app_logger.error(f"年报分析失败: {e}")
         return jsonify(error=str(e)), 500
     finally:
         try:
@@ -809,21 +809,21 @@ def api_deep_analysis_stream():
 
         steps_total = 6
 
-        yield f"data: {_json.dumps({'step':1,'total':steps_total,'msg':'鑾峰彇琛屾儏鏁版嵁...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':1,'total':steps_total,'msg':'获取行情数据...'}, ensure_ascii=False)}\n\n"
         tech = tech_analyze(ticker, market)
 
-        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'鍒嗘瀽鎶€鏈潰...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'分析技术面...'}, ensure_ascii=False)}\n\n"
         news = fetch_news(ticker, market, limit=10)
         sentiment = analyze_sentiment(news)
 
-        yield f"data: {_json.dumps({'step':3,'total':steps_total,'msg':'鍒嗘瀽鍩烘湰闈�...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':3,'total':steps_total,'msg':'分析基本面...'}, ensure_ascii=False)}\n\n"
         fund_data = None
         try:
             fund_data = fund_analyze(ticker, market)
         except Exception as e:
             app_logger.warning(f"SSE deep - fundamental fail {ticker}: {e}")
 
-        yield f"data: {_json.dumps({'step':4,'total':steps_total,'msg':'浼板€煎垎鏋�...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':4,'total':steps_total,'msg':'估值分析...'}, ensure_ascii=False)}\n\n"
         val_data = None
         if fund_data and tech:
             try:
@@ -833,7 +833,7 @@ def api_deep_analysis_stream():
             except Exception as e:
                 app_logger.warning(f"SSE deep - valuation fail {ticker}: {e}")
 
-        yield f"data: {_json.dumps({'step':5,'total':steps_total,'msg':'AI 鐮斿垽涓�...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':5,'total':steps_total,'msg':'AI 研判中...'}, ensure_ascii=False)}\n\n"
         llm_result = None
         cigbutt_result = None
         if _is_enabled():
@@ -868,7 +868,7 @@ def api_deep_analysis_stream():
 
         _save_deep_cache(ticker, market, result)
 
-        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'瀹屾垚','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
+        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'完成','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
 
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
@@ -891,11 +891,11 @@ def _save_deep_cache(ticker: str, market: str, result: dict):
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        app_logger.warning(f"娣卞害鍒嗘瀽缂撳瓨淇濆瓨澶辫触: {e}")
+        app_logger.warning(f"深度分析缓存保存失败: {e}")
 
 
 
-# ======================== API: 鍛婅瑙勫垯 CRUD ========================
+# ======================== API: 告警规则 CRUD ========================
 
 @app.route("/api/alerts", methods=["GET"])
 @login_required
@@ -966,12 +966,12 @@ def api_alerts_delete(rule_id):
 
 
 
-# ======================== API: 缁╂晥缁熻顓� ========================
+# ======================== API: 绩效统计 ========================
 
 @app.route("/api/performance")
 @login_required
 def api_performance():
-    """缁熻鎺ㄨ崘缁╂晥锛氳儨鐜囥€佺泩浜忔瘮銆佸钩鍧囨敹鐩娿€佹寜鏃ヨ蛋鍔裤€�"""
+    """统计推荐绩效"""
     market = request.args.get("market", "a_share")
     days = int(request.args.get("days", "90"))
 
@@ -1068,12 +1068,12 @@ def api_performance():
     })
 
 
-# ======================== API: 婢舵俺鍋傜€佃鐦� ========================
+# ======================== API: 股票对比 ========================
 
 @app.route("/api/compare", methods=["POST"])
 @login_required
 def api_compare():
-    """瀵规瘮 2-4 鍙偂绁ㄧ殑鍩烘湰闈�/浼板€�/鎶€鏈潰銆�"""
+    """对比 2-4 只股票的基本面/估值/技术面。"""
     data = request.get_json(silent=True) or {}
     tickers = data.get("tickers", [])
 
@@ -1134,7 +1134,7 @@ def api_compare():
 @app.route("/api/weekly-report")
 @login_required
 def api_weekly_report():
-    """鑾峰彇鏈€鏂板懆鎶ワ紙浠庣紦瀛樻垨瀹炴椂鐢熸垚锛夈€�"""
+    """获取最新周报（从缓存或实时生成）"""
     market = request.args.get("market", "a_share")
     cache_key = f"weekly_{market}"
 
@@ -1148,7 +1148,7 @@ def api_weekly_report():
         app.config.setdefault("_weekly_cache", {})[cache_key] = report
         return jsonify(report)
     except Exception as e:
-        app_logger.warning(f"鍛ㄦ姤鐢熸垚澶辫触: {e}")
+        app_logger.warning(f"周报生成失败: {e}")
         return jsonify(content=None), 404
 
 
@@ -1197,7 +1197,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
     try:
         fund_data = fund_analyze(ticker, market)
     except Exception as e:
-        app_logger.warning(f"娣卞害鍒嗘瀽-鍩烘湰闈㈠け璐� {ticker}: {e}")
+        app_logger.warning(f"深度分析-基本面失败 {ticker}: {e}")
 
     if fund_data and tech:
         try:
@@ -1205,7 +1205,7 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
             if fin:
                 val_data = valuate(fin, tech["price"])
         except Exception as e:
-            app_logger.warning(f"娣卞害鍒嗘瀽-浼板€煎け璐� {ticker}: {e}")
+            app_logger.warning(f"深度分析-估值失败 {ticker}: {e}")
 
     llm_result = None
     cigbutt_result = None
@@ -1228,14 +1228,14 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
                 fundamental_data=fund_data, valuation_data=val_data,
                 announcements=ann_data, fund_flow=flow_data)
         except Exception as e:
-            app_logger.warning(f"娣卞害鍒嗘瀽-LLM澶辫触 {ticker}: {e}")
+            app_logger.warning(f"深度分析-LLM失败 {ticker}: {e}")
 
         if market == "a_share" and val_data and val_data.get("cigbutt"):
             try:
                 cigbutt_result = llm_cigbutt_analyze(
                     ticker, "", fund_data, val_data)
             except Exception as e:
-                app_logger.warning(f"娣卞害鍒嗘瀽-鐑熻拏鑲″垎鏋愬け璐� {ticker}: {e}")
+                app_logger.warning(f"深度分析-烟蒂股分析失败 {ticker}: {e}")
 
     fin_for_chart = None
     try:
@@ -1265,7 +1265,7 @@ _app_initialized = False
 
 
 def initialize_app():
-    """缁熶竴鍒濆鍖栧叆鍙ｏ紝鍏煎 Flask 寮€鍙戞ā寮忓拰 Gunicorn銆�"""
+    """统一初始化入口，兼容 Flask 开发模式和 Gunicorn。"""
     global _app_initialized
     if _app_initialized:
         return
@@ -1278,9 +1278,9 @@ def initialize_app():
         from scripts.scheduler import init_scheduler
         init_scheduler(app)
     except Exception as e:
-        app_logger.warning(f"璋冨害鍣ㄥ惎鍔ㄥけ璐�: {e}")
+        app_logger.warning(f"调度器启动失败: {e}")
 
-    app_logger.info("Alpha Vault 鍚姩")
+    app_logger.info("Alpha Vault 启动")
     _app_initialized = True
 
 
