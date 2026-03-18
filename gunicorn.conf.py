@@ -15,4 +15,4 @@ accesslog = "logs/gunicorn_access.log"
 errorlog = "logs/gunicorn_error.log"
 loglevel = "info"
 
-preload_app = True
+preload_app = False

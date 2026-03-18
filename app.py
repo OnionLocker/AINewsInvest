@@ -1205,7 +1205,15 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
 from utils.logger import init_request_logging
 init_request_logging(app)
 
-if __name__ == "__main__":
+_app_initialized = False
+
+
+def initialize_app():
+    """统一初始化入口，兼容 Flask 开发模式和 Gunicorn。"""
+    global _app_initialized
+    if _app_initialized:
+        return
+
     with app.app_context():
         db.create_all()
         _load_symbols()
@@ -1214,7 +1222,13 @@ if __name__ == "__main__":
         from scripts.scheduler import init_scheduler
         init_scheduler(app)
     except Exception as e:
-        app_logger.warning(f"\u8c03\u5ea6\u5668\u542f\u52a8\u5931\u8d25: {e}")
+        app_logger.warning(f"调度器启动失败: {e}")
 
-    app_logger.info("Alpha Vault \u542f\u52a8")
+    app_logger.info("Alpha Vault 启动")
+    _app_initialized = True
+
+
+initialize_app()
+
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
