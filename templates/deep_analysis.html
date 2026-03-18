@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Alpha Vault - 娣卞害鍒嗘瀽{% endblock %}
+{% block title %}Alpha Vault - 深度分析{% endblock %}
 
 {% block content %}
 <div class="av-container">
 
     <div class="av-section-header">
-        <h6><i class="bi bi-search-heart me-2"></i>涓偂娣卞害鍒嗘瀽</h6>
-        <span class="av-section-sub">鎶€鏈潰 + 鍩烘湰闈� + 浼板€� + AI 缁煎悎鐮斿垽</span>
+        <h6><i class="bi bi-search-heart me-2"></i>涓偂深度分析</h6>
+        <span class="av-section-sub">技术面 + 基本面 + 估值 + AI 综合研判</span>
     </div>
 
     <div class="av-deep-search">
-        <input type="text" id="deepTicker" class="av-search-input" placeholder="杈撳叆鑲＄エ浠ｇ爜锛屽 600519銆丄APL銆�0700">
+        <input type="text" id="deepTicker" class="av-search-input" placeholder="杈撳叆股票代码锛屽 600519銆丄APL0700">
         <select id="deepMarket">
-            <option value="a_share">A 鑲�</option>
-            <option value="us_stock">缇庤偂</option>
+            <option value="a_share">A 股</option>
+            <option value="us_stock">美股</option>
             <option value="hk_stock">娓偂</option>
         </select>
         <button class="av-deep-btn" id="btnDeep" onclick="runDeepAnalysis()">
-            <i class="bi bi-lightning-charge"></i>寮€濮嬪垎鏋�
+            <i class="bi bi-lightning-charge"></i>开始分析
         </button>
     </div>
 
@@ -34,20 +34,20 @@
 
     <div id="deepResult" style="display:none;">
 
-        <!-- 姒傝 -->
+        <!-- 概览 -->
         <div class="av-deep-section">
             <div class="av-deep-section-head">
-                <i class="bi bi-info-circle"></i>鍒嗘瀽姒傝
+                <i class="bi bi-info-circle"></i>分析概览
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="overviewGrid"></div>
             </div>
         </div>
 
-        <!-- 鎶€鏈潰 -->
+        <!-- 技术面 -->
         <div class="av-deep-section">
             <div class="av-deep-section-head">
-                <i class="bi bi-graph-up" style="color:var(--av-tag-tech)"></i>鎶€鏈潰鍒嗘瀽
+                <i class="bi bi-graph-up" style="color:var(--av-tag-tech)"></i>技术面分析
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="techGrid"></div>
@@ -55,10 +55,10 @@
             </div>
         </div>
 
-        <!-- 鍩烘湰闈� -->
+        <!-- 基本面 -->
         <div class="av-deep-section" id="fundSection">
             <div class="av-deep-section-head">
-                <i class="bi bi-bar-chart-line" style="color:#059669"></i>鍩烘湰闈㈠垎鏋�
+                <i class="bi bi-bar-chart-line" style="color:#059669"></i>基本面分析
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="fundGrid"></div>
@@ -73,10 +73,10 @@
             </div>
         </div>
 
-        <!-- 浼板€奸潰 -->
+        <!-- 估值面 -->
         <div class="av-deep-section" id="valSection">
             <div class="av-deep-section-head">
-                <i class="bi bi-calculator" style="color:#7c3aed"></i>浼板€煎垎鏋�
+                <i class="bi bi-calculator" style="color:#7c3aed"></i>估值分析
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="valGrid"></div>
@@ -87,10 +87,10 @@
             </div>
         </div>
 
-        <!-- 鏂伴椈闈� -->
+        <!-- 新闻闈� -->
         <div class="av-deep-section">
             <div class="av-deep-section-head">
-                <i class="bi bi-newspaper" style="color:var(--av-tag-news)"></i>鏂伴椈鑸嗘儏
+                <i class="bi bi-newspaper" style="color:var(--av-tag-news)"></i>新闻舆情
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="newsGrid"></div>
@@ -98,10 +98,10 @@
             </div>
         </div>
 
-        <!-- 鐑熻拏鑲″垎鏋� (A鑲′綆PB鏃舵樉绀�) -->
+        <!-- 烟蒂股分析 (A鑲′綆PB鏃舵樉绀�) -->
         <div class="av-deep-section" id="cigbuttSection" style="display:none;">
             <div class="av-deep-section-head">
-                <i class="bi bi-piggy-bank" style="color:#b45309"></i>鐑熻拏鑲¤祫浜у灚鍒嗘瀽
+                <i class="bi bi-piggy-bank" style="color:#b45309"></i>烟蒂股资产垫分析
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-grid" id="cigbuttGrid"></div>
@@ -109,26 +109,26 @@
             </div>
         </div>
 
-        <!-- AI 娣卞害鍒嗘瀽 -->
+        <!-- AI 深度分析 -->
         <div class="av-deep-section" id="llmSection">
             <div class="av-deep-section-head">
-                <i class="bi bi-robot" style="color:var(--av-primary)"></i>AI 缁煎悎鐮斿垽
+                <i class="bi bi-robot" style="color:var(--av-primary)"></i>AI 综合研判
             </div>
             <div class="av-deep-section-body">
                 <div class="av-deep-summary" id="llmContent" style="white-space:pre-wrap;"></div>
             </div>
         </div>
 
-        <!-- PDF 骞存姤涓婁紶 -->
+        <!-- PDF 年报上传 -->
         <div class="av-deep-section">
             <div class="av-deep-section-head">
-                <i class="bi bi-file-earmark-pdf" style="color:#dc2626"></i>骞存姤 PDF 鍒嗘瀽锛堝彲閫夛級
+                <i class="bi bi-file-earmark-pdf" style="color:#dc2626"></i>年报 PDF 分析（可选）
             </div>
             <div class="av-deep-section-body">
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <input type="file" id="pdfFile" accept=".pdf" style="font-size:13px;color:var(--av-text-secondary);">
                     <button class="av-deep-btn" id="btnUploadPdf" onclick="uploadPdf()" style="padding:8px 16px;font-size:13px;">
-                        <i class="bi bi-upload"></i>涓婁紶鍒嗘瀽
+                        <i class="bi bi-upload"></i>上传分析
                     </button>
                 </div>
                 <div id="pdfResult" style="display:none;margin-top:16px;">
@@ -143,8 +143,8 @@
 
     <div id="deepEmpty" class="av-empty" style="display:flex;">
         <i class="bi bi-search-heart"></i>
-        <p>杈撳叆鑲＄エ浠ｇ爜寮€濮嬫繁搴﹀垎鏋�</p>
-        <span>绯荤粺灏嗕粠鎶€鏈潰銆佸熀鏈潰銆佷及鍊奸潰鍜屾柊闂婚潰鍥涗釜缁村害杩涜鍏ㄦ柟浣嶅垎鏋�</span>
+        <p>输入股票代码开始深度分析</p>
+        <span>系统将从技术面、基本面、估值面和新闻面四个维度进行全方位分析</span>
     </div>
 
 </div>
@@ -228,20 +228,20 @@ function renderDeepResult(data) {
     document.getElementById('deepResult').style.display = '';
     renderCharts(data);
 
-    // 姒傝
+    // 概览
     const tech = data.technical || {};
     const fund = data.fundamental || {};
     const val = data.valuation || {};
     let overviewHtml = '';
-    overviewHtml += metricHtml('褰撳墠浠锋牸', fmt(tech.price));
-    overviewHtml += metricHtml('娑ㄨ穼骞�', fmt(tech.change_pct, '%'));
-    if (fund.quality_score != null) overviewHtml += metricHtml('璐ㄩ噺璇勫垎', fmt(fund.quality_score, '鍒�'));
-    if (val.safety_margin != null) overviewHtml += metricHtml('瀹夊叏杈归檯', fmt(val.safety_margin, '%'));
-    if (val.penetration_return) overviewHtml += metricHtml('绌块€忓洖鎶�', fmt(val.penetration_return.rate, '%'));
-    overviewHtml += metricHtml('鍒嗘瀽鏃堕棿', data.generated_at ? data.generated_at.slice(0,16).replace('T',' ') : '--');
+    overviewHtml += metricHtml('当前价格', fmt(tech.price));
+    overviewHtml += metricHtml('涨跌幅', fmt(tech.change_pct, '%'));
+    if (fund.quality_score != null) overviewHtml += metricHtml('质量评分', fmt(fund.quality_score, '分'));
+    if (val.safety_margin != null) overviewHtml += metricHtml('安全边际', fmt(val.safety_margin, '%'));
+    if (val.penetration_return) overviewHtml += metricHtml('穿透回报', fmt(val.penetration_return.rate, '%'));
+    overviewHtml += metricHtml('分析时间', data.generated_at ? data.generated_at.slice(0,16).replace('T',' ') : '--');
     document.getElementById('overviewGrid').innerHTML = overviewHtml;
 
-    // 鎶€鏈潰
+    // 技术面
     let techHtml = '';
     if (tech.indicators) {
         const ind = tech.indicators;
@@ -250,58 +250,58 @@ function renderDeepResult(data) {
         techHtml += metricHtml('MA5', fmt(ind.ma5));
         techHtml += metricHtml('MA20', fmt(ind.ma20));
         techHtml += metricHtml('MA60', fmt(ind.ma60));
-        if (ind.bollinger_upper) techHtml += metricHtml('甯冩灄涓婅建', fmt(ind.bollinger_upper));
-        if (ind.bollinger_lower) techHtml += metricHtml('甯冩灄涓嬭建', fmt(ind.bollinger_lower));
+        if (ind.bollinger_upper) techHtml += metricHtml('布林上轨', fmt(ind.bollinger_upper));
+        if (ind.bollinger_lower) techHtml += metricHtml('布林下轨', fmt(ind.bollinger_lower));
     }
-    techHtml += metricHtml('鎴愪氦閲�', fmt(tech.volume));
+    techHtml += metricHtml('成交量', fmt(tech.volume));
     document.getElementById('techGrid').innerHTML = techHtml;
-    document.getElementById('techSummary').innerHTML = tech.signal_summary || tech.summary || '鏆傛棤鎶€鏈潰鎬荤粨';
+    document.getElementById('techSummary').innerHTML = tech.signal_summary || tech.summary || '暂无技术面总结';
 
-    // 鍩烘湰闈�
+    // 基本面
     const fundSection = document.getElementById('fundSection');
     if (fund && fund.quality_score != null) {
         fundSection.style.display = '';
         let fundHtml = '';
         const sc = fund.scores || {};
-        fundHtml += metricHtml('璐ㄩ噺鎬诲垎', fmt(fund.quality_score, '鍒�'));
-        fundHtml += metricHtml('鐩堝埄鑳藉姏', fmt(sc.profitability, '鍒�'));
-        fundHtml += metricHtml('鎴愰暱鎬�', fmt(sc.growth, '鍒�'));
-        fundHtml += metricHtml('瀹夊叏鎬�', fmt(sc.safety, '鍒�'));
-        fundHtml += metricHtml('鐩堝埄璐ㄩ噺', fmt(sc.earnings_quality, '鍒�'));
+        fundHtml += metricHtml('质量总分', fmt(fund.quality_score, '分'));
+        fundHtml += metricHtml('盈利能力', fmt(sc.profitability, '分'));
+        fundHtml += metricHtml('成长性', fmt(sc.growth, '分'));
+        fundHtml += metricHtml('安全性', fmt(sc.safety, '分'));
+        fundHtml += metricHtml('盈利质量', fmt(sc.earnings_quality, '分'));
         const mk = fund.market_info || {};
         if (mk.pe) fundHtml += metricHtml('PE', fmt(mk.pe));
         if (mk.pb) fundHtml += metricHtml('PB', fmt(mk.pb));
-        if (mk.market_cap) fundHtml += metricHtml('甯傚€�(浜�)', fmt(mk.market_cap));
+        if (mk.market_cap) fundHtml += metricHtml('市值(亿)', fmt(mk.market_cap));
         document.getElementById('fundGrid').innerHTML = fundHtml;
 
         let fundSumText = fund.summary || '';
         if (fund.risk_flags && fund.risk_flags.length > 0) {
-            fundSumText += '<br><span style="color:var(--av-danger);font-weight:600;">椋庨櫓鎻愮ず: ' + fund.risk_flags.join('銆�') + '</span>';
+            fundSumText += '<br><span style="color:var(--av-danger);font-weight:600;">风险提示: ' + fund.risk_flags.join('') + '</span>';
         }
         document.getElementById('fundSummary').innerHTML = fundSumText;
     } else {
         fundSection.style.display = 'none';
     }
 
-    // 浼板€奸潰
+    // 估值面
     const valSection = document.getElementById('valSection');
     if (val && val.floor_price != null) {
         valSection.style.display = '';
         let valHtml = '';
-        valHtml += metricHtml('鍦版澘浠�', fmt(val.floor_price));
-        valHtml += metricHtml('瀹夊叏杈归檯', fmt(val.safety_margin, '%'));
+        valHtml += metricHtml('地板价', fmt(val.floor_price));
+        valHtml += metricHtml('安全边际', fmt(val.safety_margin, '%'));
         const pr = val.penetration_return || {};
-        valHtml += metricHtml('绌块€忓洖鎶ョ巼', fmt(pr.rate, '%'));
-        valHtml += metricHtml('绌块€忚瘎绾�', pr.grade || '--');
+        valHtml += metricHtml('穿透回报率', fmt(pr.rate, '%'));
+        valHtml += metricHtml('穿透评级', pr.grade || '--');
         if (val.ev_ebitda) valHtml += metricHtml('EV/EBITDA', fmt(val.ev_ebitda));
-        valHtml += metricHtml('瀹夊叏缁撹', val.verdict || '--');
+        valHtml += metricHtml('安全结论', val.verdict || '--');
         document.getElementById('valGrid').innerHTML = valHtml;
 
         let valSum = val.summary || '';
         if (val.methods) {
             valSum += '<br><small style="color:var(--av-text-muted);">';
             val.methods.forEach(m => {
-                valSum += m.name + ': ' + fmt(m.value) + '銆€';
+                valSum += m.name + ': ' + fmt(m.value) + '、';
             });
             valSum += '</small>';
         }
@@ -310,25 +310,25 @@ function renderDeepResult(data) {
         valSection.style.display = 'none';
     }
 
-    // 鏂伴椈
+    // 新闻
     const newsData = data.news || {};
     const senti = newsData.sentiment || {};
     let newsGridHtml = '';
-    newsGridHtml += metricHtml('鎯呯华璇勫垎', fmt(senti.score));
-    newsGridHtml += metricHtml('鎯呯华鍊惧悜', senti.label || '--');
-    newsGridHtml += metricHtml('鏂伴椈鏁伴噺', (newsData.items || []).length);
+    newsGridHtml += metricHtml('情绪评分', fmt(senti.score));
+    newsGridHtml += metricHtml('情绪倾向', senti.label || '--');
+    newsGridHtml += metricHtml('新闻数量', (newsData.items || []).length);
     document.getElementById('newsGrid').innerHTML = newsGridHtml;
 
     const newsItems = newsData.items || [];
     if (newsItems.length > 0) {
         document.getElementById('newsList').innerHTML = newsItems.slice(0, 8).map(n => `
             <div style="padding:8px 0;border-bottom:1px solid var(--av-border);font-size:13px;">
-                <a href="${n.url || '#'}" target="_blank" style="color:var(--av-text);text-decoration:none;">${n.title || '鏃犳爣棰�'}</a>
+                <a href="${n.url || '#'}" target="_blank" style="color:var(--av-text);text-decoration:none;">${n.title || '无标题'}</a>
                 <span style="color:var(--av-text-muted);font-size:11px;margin-left:8px;">${n.source || ''} ${n.date || ''}</span>
             </div>
         `).join('');
     } else {
-        document.getElementById('newsList').innerHTML = '<p style="color:var(--av-text-muted);font-size:13px;">鏆傛棤鐩稿叧鏂伴椈</p>';
+        document.getElementById('newsList').innerHTML = '<p style="color:var(--av-text-muted);font-size:13px;">暂无相关新闻</p>';
     }
 
     // LLM

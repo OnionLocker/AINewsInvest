@@ -8,6 +8,7 @@ A股/港股：akshare 东方财富新闻
 import akshare as ak
 import yfinance as yf
 from utils.logger import app_logger
+from utils.data_fetcher import safe_fetch
 
 # 情绪关键词表
 _POSITIVE = {
@@ -28,10 +29,7 @@ _NEGATIVE = {
 
 
 def fetch_news(ticker: str, market: str, limit: int = 10) -> list[dict]:
-    """
-    获取个股最近新闻。
-    返回: [{"title": str, "time": str, "source": str}, ...]
-    """
+    """获取个股最近新闻，失败时降级为空列表。"""
     try:
         if market == "a_share":
             return _news_a_share(ticker, limit)
@@ -42,10 +40,11 @@ def fetch_news(ticker: str, market: str, limit: int = 10) -> list[dict]:
         else:
             return []
     except Exception as e:
-        app_logger.warning(f"新闻获取失败 [{market}:{ticker}]: {e}")
+        app_logger.warning(f"[新闻] 获取失败 [{market}:{ticker}]: {type(e).__name__}: {e}")
         return []
 
 
+@safe_fetch("akshare_news", timeout=8, retries=0, fallback=list)
 def _news_a_share(ticker: str, limit: int) -> list[dict]:
     df = ak.stock_news_em(symbol=ticker)
     if df is None or df.empty:
@@ -60,24 +59,22 @@ def _news_a_share(ticker: str, limit: int) -> list[dict]:
     return items
 
 
+@safe_fetch("akshare_news_hk", timeout=8, retries=0, fallback=list)
 def _news_hk(ticker: str, limit: int) -> list[dict]:
-    # akshare 港股新闻接口有限，复用 A 股搜索或返回空
-    try:
-        df = ak.stock_news_em(symbol=ticker)
-        if df is None or df.empty:
-            return []
-        items = []
-        for _, row in df.head(limit).iterrows():
-            items.append({
-                "title": str(row.get("新闻标题", "")),
-                "time": str(row.get("发布时间", "")),
-                "source": str(row.get("文章来源", "")),
-            })
-        return items
-    except Exception:
+    df = ak.stock_news_em(symbol=ticker)
+    if df is None or df.empty:
         return []
+    items = []
+    for _, row in df.head(limit).iterrows():
+        items.append({
+            "title": str(row.get("新闻标题", "")),
+            "time": str(row.get("发布时间", "")),
+            "source": str(row.get("文章来源", "")),
+        })
+    return items
 
 
+@safe_fetch("yfinance_news", timeout=8, retries=0, fallback=list)
 def _news_us(ticker: str, limit: int) -> list[dict]:
     t = yf.Ticker(ticker)
     news_list = t.news or []
@@ -92,10 +89,7 @@ def _news_us(ticker: str, limit: int) -> list[dict]:
 
 
 def analyze_sentiment(news: list[dict]) -> dict:
-    """
-    基于关键词的简单情绪分析。
-    返回: {"score": float(-1~1), "label": str, "positive": int, "negative": int, "summary": str}
-    """
+    """基于关键词的简单情绪分析。"""
     if not news:
         return {"score": 0, "label": "中性", "positive": 0, "negative": 0, "summary": "暂无相关新闻。"}
 
@@ -128,7 +122,6 @@ def analyze_sentiment(news: list[dict]) -> dict:
     else:
         label = "中性"
 
-    # 生成摘要
     summary_parts = []
     if key_titles:
         summary_parts.append(f"近期 {len(news)} 条新闻中，")
@@ -139,7 +132,6 @@ def analyze_sentiment(news: list[dict]) -> dict:
         if neg_count:
             summary_parts.append(f"{neg_count} 条偏负面")
         summary_parts.append("。")
-        # 取最多 2 条关键新闻标题
         for t in key_titles[:2]:
             summary_parts.append(f"「{t[:40]}」")
     else:

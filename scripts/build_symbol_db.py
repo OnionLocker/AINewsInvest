@@ -165,20 +165,59 @@ def _dedupe(items: list[dict]) -> list[dict]:
     return result
 
 
-def main():
-    all_symbols = []
-    all_symbols.extend(_safe_build("A 股", build_a_share, A_SHARE_FALLBACK))
-    all_symbols.extend(_safe_build("美股", build_us_stock, US_STOCK_FALLBACK))
-    all_symbols.extend(_safe_build("港股", build_hk_stock, HK_STOCK_FALLBACK))
-    all_symbols.extend(_safe_build("基金", build_fund, FUND_FALLBACK))
+def main(markets=None):
+    """
+    构建符号数据库。
+    markets: 指定要更新的市场列表，None = 全部。
+             例如 ["a_share"] 只更新 A 股，其他市场保留旧数据。
+    """
+    import shutil
 
-    all_symbols = _dedupe(all_symbols)
+    builders = {
+        "a_share": ("A 股", build_a_share, A_SHARE_FALLBACK),
+        "us_stock": ("美股", build_us_stock, US_STOCK_FALLBACK),
+        "hk_stock": ("港股", build_hk_stock, HK_STOCK_FALLBACK),
+        "fund": ("基金", build_fund, FUND_FALLBACK),
+    }
+
+    if markets is None:
+        markets = list(builders.keys())
+
+    old_symbols = []
+    if os.path.exists(OUTPUT):
+        try:
+            with open(OUTPUT, "r", encoding="utf-8") as f:
+                old_symbols = json.load(f)
+            shutil.copy2(OUTPUT, OUTPUT + ".bak")
+            print(f"[..] 已备份旧符号库 ({len(old_symbols)} 条)")
+        except Exception as e:
+            print(f"[!] 读取旧符号库失败: {e}")
+
+    keep = [s for s in old_symbols if s.get("market") not in markets]
+    new_symbols = list(keep)
+
+    for market_key in markets:
+        if market_key not in builders:
+            print(f"[!] 未知市场: {market_key}")
+            continue
+        label, builder, fallback = builders[market_key]
+        new_symbols.extend(_safe_build(label, builder, fallback))
+
+    new_symbols = _dedupe(new_symbols)
+
+    if len(new_symbols) < 10:
+        print("[!] 新构建结果太少，保留旧文件")
+        return
 
     with open(OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(all_symbols, f, ensure_ascii=False)
+        json.dump(new_symbols, f, ensure_ascii=False)
 
-    print(f"\n[OK] 共 {len(all_symbols)} 条符号数据 → {OUTPUT}")
+    print(f"\n[OK] 共 {len(new_symbols)} 条符号数据 → {OUTPUT}")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="构建符号数据库")
+    parser.add_argument("--market", nargs="*", help="指定市场: a_share us_stock hk_stock fund")
+    args = parser.parse_args()
+    main(args.market)

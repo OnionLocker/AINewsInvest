@@ -501,7 +501,7 @@ async function generateReport() {
     if (currentTab === 'watchlist') return;
     const btn = document.getElementById('btnGenerate');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 生成中...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 提交中...';
     try {
         const resp = await fetch('/api/report/generate', {
             method: 'POST',
@@ -509,18 +509,49 @@ async function generateReport() {
             body: JSON.stringify({market: currentTab, use_screener: false, use_news: false})
         });
         const result = await resp.json();
-        if (resp.ok) {
-            await loadReport(currentTab);
+        if (resp.ok && result.job_id) {
+            pollReportJob(result.job_id);
         } else {
-            alert(result.error || '生成失败');
+            alert(result.error || '提交失败');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
         }
     } catch(e) {
-        alert('生成请求失败：可能是接口超时、返回异常，或后端数据源太慢。请稍后重试。');
+        alert('请求失败，请稍后重试');
         console.error(e);
-    } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
     }
+}
+
+function pollReportJob(jobId) {
+    const btn = document.getElementById('btnGenerate');
+    const poll = async () => {
+        try {
+            const resp = await fetch(`/api/report/job/${jobId}`);
+            const data = await resp.json();
+            if (data.status === 'running' || data.status === 'pending') {
+                btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${data.progress_msg || '生成中...'} (${data.progress || 0}%)`;
+                setTimeout(poll, 2000);
+            } else if (data.status === 'done') {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> 生成完成';
+                await loadReport(currentTab);
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
+                }, 3000);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
+                const errMsg = data.error_msg || '生成失败';
+                alert(`报告生成失败：${errMsg}`);
+            }
+        } catch(e) {
+            console.error('轮询失败:', e);
+            setTimeout(poll, 3000);
+        }
+    };
+    poll();
 }
 
 // ═══════════════════════════════════════════════════════════════

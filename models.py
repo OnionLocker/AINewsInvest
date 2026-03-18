@@ -138,6 +138,24 @@ class AlertRule(db.Model):
     }
 
 
+class ReportJob(db.Model):
+    """异步报告生成任务"""
+    __tablename__ = "report_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    market = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), default="pending")  # pending / running / done / failed
+    progress = db.Column(db.Integer, default=0)  # 0-100
+    progress_msg = db.Column(db.String(200), default="")
+    error_type = db.Column(db.String(30))
+    error_msg = db.Column(db.Text)
+    report_id = db.Column(db.Integer, db.ForeignKey("daily_reports.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    finished_at = db.Column(db.DateTime)
+
+
 class DeepAnalysisCache(db.Model):
     """个股深度分析缓存（避免短时间重复计算）"""
     __tablename__ = "deep_analysis_cache"

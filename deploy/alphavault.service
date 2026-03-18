@@ -1,0 +1,19 @@
+[Unit]
+Description=Alpha Vault AI投研系统
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/alphavault
+ExecStart=/opt/alphavault/venv/bin/gunicorn -c gunicorn.conf.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment="FLASK_ENV=production"
+
+[Install]
+WantedBy=multi-user.target

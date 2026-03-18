@@ -53,18 +53,41 @@ def generate_report(market: str, use_screener: bool = True, use_news: bool = Tru
         app_logger.info("[报告] 基本面分析已启用")
 
     items = []
-    for ticker, name in pool:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import time as _time
+
+    def _analyze_with_timeout(ticker, name):
+        start = _time.time()
         try:
             item = _analyze_one(ticker, name, market, has_llm, fund_enabled, use_news)
-            if item:
-                for si in screened_info:
-                    if si["ticker"] == ticker:
-                        item["screened"] = True
-                        item["screenReason"] = si["reason"]
-                        break
-                items.append(item)
+            elapsed = _time.time() - start
+            app_logger.info(f"[报告] {ticker} 分析完成 ({elapsed:.1f}s)")
+            return item
         except Exception as e:
-            app_logger.warning(f"[报告] 分析 {market}:{ticker} 失败: {e}")
+            elapsed = _time.time() - start
+            app_logger.warning(f"[报告] {ticker} 分析失败 ({elapsed:.1f}s): {type(e).__name__}: {e}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        future_to_ticker = {
+            executor.submit(_analyze_with_timeout, ticker, name): (ticker, name)
+            for ticker, name in pool
+        }
+        done_count = 0
+        for future in as_completed(future_to_ticker, timeout=120):
+            ticker, name = future_to_ticker[future]
+            done_count += 1
+            try:
+                item = future.result(timeout=30)
+                if item:
+                    for si in screened_info:
+                        if si["ticker"] == ticker:
+                            item["screened"] = True
+                            item["screenReason"] = si["reason"]
+                            break
+                    items.append(item)
+            except Exception as e:
+                app_logger.warning(f"[报告] {ticker} 超时或异常: {e}")
 
     items.sort(key=lambda x: x["confidence"], reverse=True)
 

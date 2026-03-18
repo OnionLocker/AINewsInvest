@@ -1,10 +1,10 @@
 """
-app.py - Alpha Vault 涓诲簲鐢�
+app.py - Alpha Vault 主应用
 
-璺敱锛�
-  - 閴存潈锛�/login, /register, /logout
-  - 椤甸潰锛�/ (dashboard), /settings, /history
-  - API锛�/api/health, /api/search, /api/watchlist, /api/quotes, /api/report,
+功能：
+  - 鉴权：/login, /register, /logout
+  - 页面：/ (dashboard), /settings, /history
+  - API：/api/health, /api/search, /api/watchlist, /api/quotes, /api/report,
          /api/report/history, /api/report/generate, /api/accuracy, /api/llm/status
 """
 import json
@@ -19,7 +19,7 @@ from models import db, User, Watchlist, DailyReport, RecommendationTrack, AlertR
 from utils.logger import app_logger
 from utils.notifier import test_notify
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 搴旂敤鍒濆鍖� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 鎼存梻鏁ら崚婵嗩潗閸栵拷 ──────────────────────────
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -30,19 +30,36 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 login_manager.login_message = "请先登录后再访问该页面"
 
-# 绗﹀彿鏁版嵁搴擄紙鍚姩鏃跺姞杞藉埌鍐呭瓨锛屾悳绱㈢敤锛�
+# 符号数据库（启动时加载到内存，搜索用）
 _SYMBOLS: list[dict] = []
 _SYMBOLS_PATH = os.path.join(os.path.dirname(__file__), "data", "symbols.json")
+
+_FALLBACK_SYMBOLS = [
+    {"ticker": "600519", "name": "璐靛窞茅台", "market": "a_share"},
+    {"ticker": "000858", "name": "五粮液", "market": "a_share"},
+    {"ticker": "300750", "name": "瀹佸痉鏃朵唬", "market": "a_share"},
+    {"ticker": "AAPL", "name": "鑻规灉", "market": "us_stock"},
+    {"ticker": "MSFT", "name": "微软", "market": "us_stock"},
+    {"ticker": "NVDA", "name": "英伟达", "market": "us_stock"},
+    {"ticker": "00700", "name": "腾讯控股", "market": "hk_stock"},
+    {"ticker": "09988", "name": "闃块噷宸村反-W", "market": "hk_stock"},
+]
 
 
 def _load_symbols():
     global _SYMBOLS
     if os.path.exists(_SYMBOLS_PATH):
-        with open(_SYMBOLS_PATH, "r", encoding="utf-8") as f:
-            _SYMBOLS = json.load(f)
-        app_logger.info(f"绗﹀彿鏁版嵁搴撳凡鍔犺浇: {len(_SYMBOLS)} 鏉�")
-    else:
-        app_logger.warning(f"绗﹀彿鏁版嵁搴撲笉瀛樺湪: {_SYMBOLS_PATH}锛屾悳绱㈠姛鑳藉皢涓嶅彲鐢�")
+        try:
+            with open(_SYMBOLS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data:
+                _SYMBOLS = data
+                app_logger.info(f"符号数据库已加载: {len(_SYMBOLS)} 条")
+                return
+        except Exception as e:
+            app_logger.warning(f"符号数据库读取失败: {e}")
+    app_logger.warning("符号数据库不存在或为空，使用内置 fallback")
+    _SYMBOLS = list(_FALLBACK_SYMBOLS)
 
 
 @login_manager.user_loader
@@ -50,11 +67,26 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鍋ュ悍妫€鏌� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 健康检查 ──────────────────────────
 
 @app.route("/api/health")
 def health():
-    return jsonify(status="ok", time=datetime.now().isoformat())
+    """增强型健康检查：数据库、符号库、磁盘。"""
+    checks = {"db": False, "symbols": False}
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        checks["db"] = True
+    except Exception:
+        pass
+    checks["symbols"] = len(_SYMBOLS) > 0
+    checks["symbols_count"] = len(_SYMBOLS)
+
+    all_ok = all([checks["db"], checks["symbols"]])
+    return jsonify(
+        status="ok" if all_ok else "degraded",
+        time=datetime.now().isoformat(),
+        checks=checks,
+    ), 200 if all_ok else 503
 
 
 @app.route("/api/market-overview")
@@ -66,17 +98,17 @@ def api_market_overview():
         import akshare as ak
         spot = ak.stock_zh_index_spot_em()
         targets = {
-            "上证指数": "上证",
-            "深证成指": "深证",
-            "创业板指": "创业板",
+            "涓婅瘉鎸囨暟": "涓婅瘉",
+            "娣辫瘉鎴愭寚": "娣辫瘉",
+            "创业板指": "鍒涗笟条",
         }
         for _, row in spot.iterrows():
-            name = str(row.get("名称", ""))
+            name = str(row.get("鍚嶇О", ""))
             if name in targets:
                 try:
                     indices.append({
                         "name": targets[name],
-                        "price": round(float(row.get("最新价", 0)), 2),
+                        "price": round(float(row.get("鏈€鏂颁环", 0)), 2),
                         "change_pct": round(float(row.get("涨跌幅", 0)), 2),
                     })
                 except (ValueError, TypeError):
@@ -87,9 +119,9 @@ def api_market_overview():
     try:
         import yfinance as yf
         us_hk = {
-            "^IXIC": "纳斯达克",
-            "^GSPC": "标普500",
-            "^HSI": "恒生",
+            "^IXIC": "绾虫柉杈惧厠",
+            "^GSPC": "鏍囨櫘500",
+            "^HSI": "鎭掔敓",
         }
         for symbol, label in us_hk.items():
             try:
@@ -113,7 +145,7 @@ def api_market_overview():
 
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 閴存潈璺敱 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 鉴权路由 ──────────────────────────
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -124,7 +156,7 @@ def register():
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
         if not username or not password:
-            flash("用户名和密码不能为空", "danger")
+            flash("用户鍚嶅拰瀵嗙爜涓嶈兘涓虹┖", "danger")
             return redirect(url_for("register"))
         if len(password) < 6:
             flash("密码长度不能少于 6 位", "danger")
@@ -139,7 +171,7 @@ def register():
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        app_logger.info(f"鏂扮敤鎴锋敞鍐�: {username}")
+        app_logger.info(f"新用户注册: {username}")
         flash("注册成功，请登录", "success")
         return redirect(url_for("login"))
     return render_template("register.html")
@@ -155,10 +187,10 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user, remember=True)
-            app_logger.info(f"鐢ㄦ埛鐧诲綍: {username}")
+            app_logger.info(f"用户登录: {username}")
             return redirect(request.args.get("next") or url_for("dashboard"))
-        app_logger.warning(f"鐧诲綍澶辫触: {username}")
-        flash("用户名或密码错误", "danger")
+        app_logger.warning(f"登录失败: {username}")
+        flash("用户名或密码错误", "danger")
         return redirect(url_for("login"))
     return render_template("login.html")
 
@@ -166,13 +198,13 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
-    app_logger.info(f"鐢ㄦ埛閫€鍑�: {current_user.username}")
+    app_logger.info(f"用户退出: {current_user.username}")
     logout_user()
     flash("已安全退出登录", "info")
     return redirect(url_for("login"))
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 椤甸潰璺敱 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── 页面路由 ──────────────────────────
 
 @app.route("/")
 @login_required
@@ -196,7 +228,7 @@ def settings():
             chat_id = request.form.get("tg_chat_id", "").strip()
             current_user.set_tg_config(bot_token, chat_id)
             db.session.commit()
-            app_logger.info(f"鐢ㄦ埛 {current_user.username} 鏇存柊浜� Telegram 閰嶇疆")
+            app_logger.info(f"用户 {current_user.username} 更新了 Telegram 配置")
             flash("Telegram 配置已保存（已加密存储）", "success")
         elif action == "test":
             if not current_user.tg_configured:
@@ -207,7 +239,7 @@ def settings():
                 ok, msg = test_notify(token, chat_id)
                 flash(msg, "success" if ok else "danger")
             except Exception as e:
-                app_logger.error(f"Telegram 娴嬭瘯澶辫触: {e}")
+                app_logger.error(f"Telegram 测试失败: {e}")
                 flash(f"配置解密失败，请重新保存: {e}", "danger")
         return redirect(url_for("settings"))
 
@@ -223,14 +255,14 @@ def settings():
     return render_template("settings.html", token_display=token_display, chat_id_display=chat_id_display)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 绗﹀彿鎼滅储 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 符号搜索 ──────────────────────────
 
 @app.route("/api/search")
 @login_required
 def api_search():
     """
-    TradingView 椋庢牸鎼滅储锛�?q=鑼呭彴&market=a_share
-    market 鍙€夛紝涓嶄紶鍒欐悳鍏ㄩ儴甯傚満
+    TradingView 风格搜索：?q=茅台&market=a_share
+    market 可选，不传则搜全部市场
     """
     q = request.args.get("q", "").strip().lower()
     market = request.args.get("market", "")
@@ -248,12 +280,12 @@ def api_search():
     return jsonify(results)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鑷€夌鐞� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 自选管理 ──────────────────────────
 
 @app.route("/api/watchlist", methods=["GET"])
 @login_required
 def api_watchlist_get():
-    """鑾峰彇褰撳墠鐢ㄦ埛鐨勮嚜閫夊垪琛�"""
+    """获取当前用户的自选列表"""
     items = Watchlist.query.filter_by(user_id=current_user.id).order_by(Watchlist.added_at.desc()).all()
     return jsonify([
         {"id": w.id, "ticker": w.ticker, "name": w.name, "market": w.market}
@@ -264,44 +296,44 @@ def api_watchlist_get():
 @app.route("/api/watchlist", methods=["POST"])
 @login_required
 def api_watchlist_add():
-    """娣诲姞鑷€�"""
+    """添加自选"""
     data = request.get_json(silent=True) or {}
     ticker = data.get("ticker", "").strip()
     name = data.get("name", "").strip()
     market = data.get("market", "").strip()
     if not ticker or not market:
-        return jsonify(error="鍙傛暟涓嶅畬鏁�"), 400
+        return jsonify(error="参数不完整"), 400
 
     existing = Watchlist.query.filter_by(user_id=current_user.id, ticker=ticker, market=market).first()
     if existing:
-        return jsonify(error="宸插湪鑷€変腑"), 409
+        return jsonify(error="已在自选中"), 409
 
     w = Watchlist(user_id=current_user.id, ticker=ticker, name=name, market=market)
     db.session.add(w)
     db.session.commit()
-    app_logger.info(f"鐢ㄦ埛 {current_user.username} 娣诲姞鑷€�: {market}:{ticker}")
+    app_logger.info(f"用户 {current_user.username} 添加自选: {market}:{ticker}")
     return jsonify(id=w.id, ticker=w.ticker, name=w.name, market=w.market), 201
 
 
 @app.route("/api/watchlist/<int:item_id>", methods=["DELETE"])
 @login_required
 def api_watchlist_delete(item_id):
-    """鍒犻櫎鑷€�"""
+    """删除自选"""
     w = Watchlist.query.filter_by(id=item_id, user_id=current_user.id).first()
     if not w:
-        return jsonify(error="鏈壘鍒�"), 404
+        return jsonify(error="未找到"), 404
     db.session.delete(w)
     db.session.commit()
-    app_logger.info(f"鐢ㄦ埛 {current_user.username} 鍒犻櫎鑷€�: {w.market}:{w.ticker}")
+    app_logger.info(f"用户 {current_user.username} 删除自选: {w.market}:{w.ticker}")
     return jsonify(status="deleted")
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鑷€夎鎯� 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 自选行情 ──────────────────────────
 
 @app.route("/api/watchlist/quotes")
 @login_required
 def api_watchlist_quotes():
-    """鑾峰彇鑷€夊垪琛ㄧ殑瀹炴椂琛屾儏"""
+    """获取自选列表的实时行情"""
     items = Watchlist.query.filter_by(user_id=current_user.id).all()
     if not items:
         return jsonify([])
@@ -310,7 +342,7 @@ def api_watchlist_quotes():
     quote_input = [{"ticker": w.ticker, "market": w.market, "name": w.name} for w in items]
     quotes = get_quotes_batch(quote_input)
 
-    # 鐢ㄨ嚜閫夎〃鐨� name 琛ュ厖锛坹finance 鍙兘缂轰腑鏂囧悕锛�
+    # 用自选表的 name 补充（yfinance 可能缺中文名）
     name_map = {(w.ticker, w.market): w.name for w in items}
     id_map = {(w.ticker, w.market): w.id for w in items}
     for q in quotes:
@@ -331,14 +363,14 @@ def api_watchlist_quotes():
     return jsonify(quotes)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 姣忔棩鎶ュ憡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 姣忔棩报告 ──────────────────────────
 
 @app.route("/api/report")
 @login_required
 def api_report():
     """
-    鑾峰彇鎸囧畾甯傚満鐨勬瘡鏃ユ姤鍛婏細?market=a_share&date=2026-03-11
-    涓嶄紶 date 榛樿杩斿洖鏈€鏂颁竴鏈�
+    获取指定市场的每日报告：?market=a_share&date=2026-03-11
+    不传 date 默认返回最新一期
     """
     market = request.args.get("market", "a_share")
     date_str = request.args.get("date", "")
@@ -347,13 +379,13 @@ def api_report():
         try:
             target_date = date.fromisoformat(date_str)
         except ValueError:
-            return jsonify(error="鏃ユ湡鏍煎紡閿欒"), 400
+            return jsonify(error="日期格式错误"), 400
         report = DailyReport.query.filter_by(market=market, report_date=target_date).first()
     else:
         report = DailyReport.query.filter_by(market=market).order_by(DailyReport.report_date.desc()).first()
 
     if not report:
-        return jsonify(data=None, message="鏆傛棤鎶ュ憡")
+        return jsonify(data=None, message="暂无报告")
 
     return jsonify(
         market=report.market,
@@ -363,13 +395,13 @@ def api_report():
     )
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ API: 鎵嬪姩鐢熸垚鎶ュ憡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# ────────────────────────── API: 手动生成报告 ──────────────────────────
 
 @app.route("/api/report/generate", methods=["POST"])
 @login_required
 def api_report_generate():
-    """手动触发报告生成（前端“立即生成”按钮）。"""
-    import time
+    """异步触发报告生成，返回 job_id 供前端轮询。"""
+    import uuid
     data = request.get_json(silent=True) or {}
     market = data.get("market", "a_share")
     use_screener = bool(data.get("use_screener", False))
@@ -378,39 +410,115 @@ def api_report_generate():
     if market not in valid_markets:
         return jsonify(error="无效的市场参数"), 400
 
-    try:
-        started_at = time.time()
-        from analysis.report_generator import generate_report
-        report_data = generate_report(market, use_screener=use_screener, use_news=use_news)
+    job_id = str(uuid.uuid4())
+    from models import ReportJob
+    job = ReportJob(
+        job_id=job_id,
+        user_id=current_user.id,
+        market=market,
+        status="pending",
+        progress=0,
+        progress_msg="任务已提交，等待执行...",
+    )
+    db.session.add(job)
+    db.session.commit()
 
-        today = date.today()
-        existing = DailyReport.query.filter_by(market=market, report_date=today).first()
-        if existing:
-            existing.data = json.dumps(report_data, ensure_ascii=False)
-            existing.generated_at = datetime.utcnow()
-        else:
-            report = DailyReport(
-                market=market,
-                report_date=today,
-                data=json.dumps(report_data, ensure_ascii=False),
-                pushed=False,
-            )
-            db.session.add(report)
-        db.session.commit()
-
-        report_obj = DailyReport.query.filter_by(market=market, report_date=today).first()
-        if report_obj:
-            _create_tracks(report_obj, report_data)
-
-        elapsed = round(time.time() - started_at, 2)
-        app_logger.info(f"用户 {current_user.username} 手动生成 {market} 报告，耗时 {elapsed}s")
-        return jsonify(status="ok", market=market, elapsed=elapsed, use_screener=use_screener, use_news=use_news)
-    except Exception as e:
-        app_logger.error(f"手动生成报告失败: {e}")
-        return jsonify(error=f"生成失败: {e}"), 500
+    import threading
+    t = threading.Thread(
+        target=_run_report_job,
+        args=(app, job_id, market, use_screener, use_news),
+        daemon=True,
+    )
+    t.start()
+    return jsonify(status="ok", job_id=job_id)
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鍚姩鍏ュ彛 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+@app.route("/api/report/job/<job_id>")
+@login_required
+def api_report_job_status(job_id):
+    """查询报告生成任务状态。"""
+    from models import ReportJob
+    job = ReportJob.query.filter_by(job_id=job_id).first()
+    if not job:
+        return jsonify(error="任务不存在"), 404
+    result = {
+        "job_id": job.job_id,
+        "status": job.status,
+        "progress": job.progress,
+        "progress_msg": job.progress_msg,
+        "error_type": job.error_type,
+        "error_msg": job.error_msg,
+    }
+    if job.status == "done" and job.report_id:
+        result["report_id"] = job.report_id
+    return jsonify(**result)
+
+
+def _run_report_job(flask_app, job_id, market, use_screener, use_news):
+    """后台线程执行报告生成。"""
+    import time as _time
+    with flask_app.app_context():
+        from models import ReportJob
+        job = ReportJob.query.filter_by(job_id=job_id).first()
+        if not job:
+            return
+        try:
+            job.status = "running"
+            job.progress = 5
+            job.progress_msg = "正在获取股票池..."
+            db.session.commit()
+
+            started_at = _time.time()
+            from analysis.report_generator import generate_report
+            report_data = generate_report(market, use_screener=use_screener, use_news=use_news)
+
+            job.progress = 80
+            job.progress_msg = "正在保存报告..."
+            db.session.commit()
+
+            today = date.today()
+            existing = DailyReport.query.filter_by(market=market, report_date=today).first()
+            if existing:
+                existing.data = json.dumps(report_data, ensure_ascii=False)
+                existing.generated_at = datetime.utcnow()
+            else:
+                existing = DailyReport(
+                    market=market,
+                    report_date=today,
+                    data=json.dumps(report_data, ensure_ascii=False),
+                    pushed=False,
+                )
+                db.session.add(existing)
+            db.session.commit()
+
+            report_obj = DailyReport.query.filter_by(market=market, report_date=today).first()
+            if report_obj:
+                _create_tracks(report_obj, report_data)
+                job.report_id = report_obj.id
+
+            elapsed = round(_time.time() - started_at, 2)
+            job.status = "done"
+            job.progress = 100
+            job.progress_msg = f"报告生成完成，耗时 {elapsed}s"
+            job.finished_at = datetime.utcnow()
+            db.session.commit()
+            app_logger.info(f"[报告] 异步生成 {market} 完成，耗时 {elapsed}s")
+
+        except Exception as e:
+            import traceback
+            from utils.data_fetcher import classify_error
+            err_info = classify_error(e)
+            job.status = "failed"
+            job.error_type = err_info["error_type"]
+            job.error_msg = f"{err_info['message']}: {e}"
+            job.progress_msg = "生成失败"
+            job.finished_at = datetime.utcnow()
+            db.session.commit()
+            app_logger.error(f"[报告] 异步生成 {market} 失败: {traceback.format_exc()}")
+
+
+
+# ────────────────────────── 启动入口 ──────────────────────────
 
 
 def _create_tracks(report_obj, report_data):
@@ -570,7 +678,7 @@ def api_upload_report():
     from analysis.llm_client import chat_completion, _is_enabled
 
     if "pdf" not in request.files:
-        return jsonify(error="请选择 PDF 文件"), 400
+        return jsonify(error="璇烽€夋嫨 PDF 鏂囦欢"), 400
 
     file = request.files["pdf"]
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -592,7 +700,7 @@ def api_upload_report():
                 "以下是一份 A 股年报的关键章节提取内容，请做综合分析:\n"
                 "1. 是否存在隐性风险（受限资产过高、应收账龄老化、关联交易异常等）\n"
                 "2. 经营亮点与隐忧\n"
-                "3. 一句话总结该年报质量\n\n"
+                "3. 涓€鍙ヨ瘽鎬荤粨璇ュ勾鎶ヨ川閲廫n\n"
                 f"{llm_text}"
             )
             messages = [
@@ -648,7 +756,7 @@ def api_deep_analysis_stream():
         yield f"data: {_json.dumps({'step':1,'total':steps_total,'msg':'获取行情数据...'}, ensure_ascii=False)}\n\n"
         tech = tech_analyze(ticker, market)
 
-        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'分析技术面...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'step':2,'total':steps_total,'msg':'鍒嗘瀽鎶€鏈潰...'}, ensure_ascii=False)}\n\n"
         news = fetch_news(ticker, market, limit=10)
         sentiment = analyze_sentiment(news)
 
@@ -704,7 +812,7 @@ def api_deep_analysis_stream():
 
         _save_deep_cache(ticker, market, result)
 
-        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'完成','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
+        yield f"data: {_json.dumps({'step':6,'total':steps_total,'msg':'瀹屾垚','done':True,'result':result}, ensure_ascii=False, default=str)}\n\n"
 
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
@@ -802,7 +910,7 @@ def api_alerts_delete(rule_id):
 
 
 
-# ======================== API: 绩效统计 ========================
+# ======================== API: 绩效统计 ========================
 
 @app.route("/api/performance")
 @login_required
@@ -904,7 +1012,7 @@ def api_performance():
     })
 
 
-# ======================== API: 多股对比 ========================
+# ======================== API: 澶氳偂瀵规瘮 ========================
 
 @app.route("/api/compare", methods=["POST"])
 @login_required
@@ -1093,6 +1201,9 @@ def _run_deep_analysis(ticker: str, market: str) -> dict:
         "generated_at": datetime.now().isoformat(),
     }
 
+
+from utils.logger import init_request_logging
+init_request_logging(app)
 
 if __name__ == "__main__":
     with app.app_context():
