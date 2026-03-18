@@ -35,7 +35,7 @@
         </div>
     </div>
 
-    <!-- ═══ 自选面板 ═══ -->
+    <!-- 自选面板 -->
     <div id="panelWatchlist">
         <div class="av-search-wrap">
             <div class="av-search-box">
@@ -79,7 +79,7 @@
         </div>
     </div>
 
-    <!-- ═══ AI 报告面板 ═══ -->
+    <!-- AI 报告面板 -->
     <div id="panelReport" style="display:none;">
         <div class="av-metrics">
             <div class="av-metric-card">
@@ -127,7 +127,7 @@
         <div class="av-empty" id="reportEmpty" style="display:none;">
             <i class="bi bi-robot"></i>
             <p>暂无报告</p>
-            <span>点击“立即生成”生成 AI 投研报告</span>
+            <span>点击"立即生成"生成 AI 投研报告</span>
         </div>
     </div>
 
@@ -168,17 +168,44 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.av-skeleton-card{padding:18px 20px;border-radius:12px;background:rgba(255,255,255,.03);margin-bottom:8px;animation:av-pulse 1.2s ease-in-out infinite}
+.av-skeleton-line{background:rgba(255,255,255,.08);border-radius:4px}
+@keyframes av-pulse{0%,100%{opacity:.6}50%{opacity:1}}
+</style>
 <script>
 const MARKET_LABELS = {a_share:'A股', us_stock:'美股', hk_stock:'港股', fund:'基金'};
 let currentTab = 'watchlist';
+const _reportCache = {};
 
-// ═══ 标签切换 ═══
+// ═══ 骨架屏加载占位 ═══
+
+function showReportLoading() {
+    const cardsEl = document.getElementById('reportCards');
+    const emptyEl = document.getElementById('reportEmpty');
+    emptyEl.style.display = 'none';
+    document.getElementById('rptCount').textContent = '--';
+    document.getElementById('rptBull').textContent = '--';
+    document.getElementById('rptBear').textContent = '--';
+    document.getElementById('rptSentiment').textContent = '--';
+    document.getElementById('rptDate').textContent = '加载中...';
+    cardsEl.innerHTML = Array(4).fill(0).map(() => `
+        <div class="av-rec-card av-skeleton-card">
+            <div class="av-skeleton-line" style="width:30%;height:18px;margin-bottom:8px;"></div>
+            <div class="av-skeleton-line" style="width:55%;height:14px;margin-bottom:6px;"></div>
+            <div class="av-skeleton-line" style="width:40%;height:14px;"></div>
+        </div>`).join('');
+}
+
+// ═══ 标签切换（带缓存 + 立即响应） ═══
 
 document.querySelectorAll('.av-tab').forEach(tab => {
     tab.addEventListener('click', function() {
+        const market = this.dataset.market;
+        if (market === currentTab) return;
         document.querySelectorAll('.av-tab').forEach(t => t.classList.remove('active'));
         this.classList.add('active');
-        currentTab = this.dataset.market;
+        currentTab = market;
 
         if (currentTab === 'watchlist') {
             document.getElementById('panelWatchlist').style.display = '';
@@ -187,6 +214,11 @@ document.querySelectorAll('.av-tab').forEach(tab => {
         } else {
             document.getElementById('panelWatchlist').style.display = 'none';
             document.getElementById('panelReport').style.display = '';
+            if (_reportCache[currentTab]) {
+                renderReport(_reportCache[currentTab]);
+            } else {
+                showReportLoading();
+            }
             loadReport(currentTab);
         }
     });
@@ -328,11 +360,28 @@ function renderWatchlistCards(items, container) {
     drawSparklines();
 }
 
-// ═══ AI 报告加载 ═══
+// ═══ AI 报告加载（带缓存） ═══
 
 async function loadReport(market) {
-    const resp = await fetch(`/api/report?market=${market}`);
-    const result = await resp.json();
+    try {
+        const resp = await fetch(`/api/report?market=${market}`);
+        const result = await resp.json();
+        _reportCache[market] = result;
+        if (currentTab === market) {
+            renderReport(result);
+        }
+    } catch(e) {
+        console.warn('加载报告失败', e);
+        if (currentTab === market && !_reportCache[market]) {
+            document.getElementById('reportCards').innerHTML = '';
+            const emptyEl = document.getElementById('reportEmpty');
+            emptyEl.style.display = 'flex';
+            emptyEl.innerHTML = `<i class="bi bi-wifi-off" style="font-size:48px;"></i><p>网络异常，请稍后重试</p>`;
+        }
+    }
+}
+
+function renderReport(result) {
     const cardsEl = document.getElementById('reportCards');
     const emptyEl = document.getElementById('reportEmpty');
 
@@ -349,7 +398,7 @@ async function loadReport(market) {
                 <i class="bi bi-exclamation-circle" style="color:#dc3545;font-size:48px;"></i>
                 <p style="font-weight:600;margin-top:12px;">报告生成失败</p>
                 <span>${result.data.empty_reason}</span>
-                <span style="margin-top:8px;font-size:12px;">点击“立即生成”重试</span>`;
+                <span style="margin-top:8px;font-size:12px;">点击"立即生成"重试</span>`;
             document.getElementById('rptDate').textContent = `${result.report_date || ''} 所有标的分析失败`;
         } else if (result.data && result.data.failed_tickers && result.data.failed_tickers.length > 0) {
             emptyEl.innerHTML = `
@@ -363,7 +412,7 @@ async function loadReport(market) {
             emptyEl.innerHTML = `
                 <i class="bi bi-robot" style="font-size:48px;"></i>
                 <p>暂无报告</p>
-                <span>点击“立即生成”生成 AI 投研报告</span>`;
+                <span>点击"立即生成"生成 AI 投研报告</span>`;
             document.getElementById('rptDate').textContent = '暂无报告';
         }
         return;
@@ -377,7 +426,7 @@ async function loadReport(market) {
         const failedInfo = data.failed_tickers && data.failed_tickers.length > 0
             ? `${data.failed_tickers.length}只分析失败` : '';
         const combined = [failInfo, failedInfo].filter(Boolean).join('，');
-        dateText += ` ⚠️ ${combined || '部分标的异常'}`;
+        dateText += ` \u26a0\ufe0f ${combined || '部分标的异常'}`;
     }
     document.getElementById('rptDate').textContent = dateText;
 
@@ -581,6 +630,7 @@ function pollReportJob(jobId) {
                 document.getElementById('progressFill').style.background = '#059669';
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-check-circle"></i> 已完成';
+                delete _reportCache[currentTab];
                 await loadReport(currentTab);
                 setTimeout(() => {
                     btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
@@ -594,6 +644,7 @@ function pollReportJob(jobId) {
                 document.getElementById('progressFill').style.background = '#f59e0b';
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 部分完成';
+                delete _reportCache[currentTab];
                 await loadReport(currentTab);
                 setTimeout(() => {
                     btn.innerHTML = '<i class="bi bi-lightning-charge"></i>立即生成';
@@ -737,7 +788,15 @@ async function loadMarketOverview() {
     } catch(e) { console.warn('Market overview failed', e); }
 }
 
+// ═══ 初始化 + 后台预取 ═══
+
 loadMarketOverview();
 loadWatchlist();
+
+setTimeout(() => {
+    ['a_share','us_stock','hk_stock','fund'].forEach(m => {
+        if (!_reportCache[m]) loadReport(m);
+    });
+}, 1500);
 </script>
 {% endblock %}
