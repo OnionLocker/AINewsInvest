@@ -1,4 +1,4 @@
-const variants = {
+﻿const variants = {
   green: "bg-green-500/15 text-green-400",
   red: "bg-red-500/15 text-red-400",
   blue: "bg-blue-500/15 text-blue-400",

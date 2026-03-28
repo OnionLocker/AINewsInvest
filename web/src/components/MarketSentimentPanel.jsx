@@ -1,4 +1,4 @@
-import { Activity, TrendingUp, TrendingDown, Minus, Newspaper, BarChart3 } from "lucide-react";
+﻿import { Activity, TrendingUp, TrendingDown, Minus, Newspaper, BarChart3 } from "lucide-react";
 
 const FEAR_GREED_COLORS = {
   "极度贪婪": { ring: "ring-green-400", text: "text-green-400", bg: "bg-green-500" },
