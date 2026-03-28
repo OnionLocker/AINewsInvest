@@ -1,41 +1,50 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
+  --color-brand-400: #5b8def;
+  --color-brand-500: #2962ff;
+  --color-brand-600: #1e53e5;
+  --color-brand-700: #1848cc;
 
-  --color-up: #22c55e;
-  --color-down: #ef4444;
-  --color-flat: #6b7280;
+  --color-up: #089981;
+  --color-down: #f23645;
+  --color-flat: #787b86;
 
-  --color-surface-0: #030712;
-  --color-surface-1: #111827;
-  --color-surface-2: #1f2937;
-  --color-surface-3: #374151;
+  --color-surface-0: #131722;
+  --color-surface-1: #1e222d;
+  --color-surface-2: #2a2e39;
+  --color-surface-3: #363a45;
 }
 
 body {
-  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, system-ui, "Segoe UI", Roboto, Ubuntu, sans-serif;
   -webkit-font-smoothing: antialiased;
+  background: #131722;
+  color: #d1d4dc;
+}
+
+::selection {
+  background: rgba(41, 98, 255, 0.3);
+}
+
+input, select, textarea, button {
+  font-family: inherit;
 }
 
 .scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 3px;
+  background: #363a45;
+  border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #4a4e59;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

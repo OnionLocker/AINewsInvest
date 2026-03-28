@@ -201,9 +201,23 @@ def get_index_components(index_symbol: str) -> list[dict]:
         return []
 
 
+def _wiki_read_html(url: str) -> list:
+    """Read HTML tables from Wikipedia with proper User-Agent to avoid 403."""
+    import io
+    import httpx
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; AlphaVault/3.0; +https://github.com)",
+        "Accept": "text/html",
+    }
+    with httpx.Client(timeout=15, follow_redirects=True) as client:
+        r = client.get(url, headers=headers)
+        r.raise_for_status()
+    return pd.read_html(io.StringIO(r.text))
+
+
 def _sp500_components() -> list[dict]:
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    df = pd.read_html(url)[0]
+    df = _wiki_read_html(url)[0]
     return [{"ticker": str(r.get("Symbol", "")).strip().replace(".", "-"),
              "name": str(r.get("Security", "")).strip(), "market": "us_stock"}
             for _, r in df.iterrows() if str(r.get("Symbol", "")).strip()]
@@ -211,7 +225,7 @@ def _sp500_components() -> list[dict]:
 
 def _nasdaq100_components() -> list[dict]:
     url = "https://en.wikipedia.org/wiki/Nasdaq-100"
-    for tbl in pd.read_html(url):
+    for tbl in _wiki_read_html(url):
         col = "Ticker" if "Ticker" in tbl.columns else ("Symbol" if "Symbol" in tbl.columns else None)
         if col:
             nc = "Company" if "Company" in tbl.columns else "Security"
@@ -223,7 +237,8 @@ def _nasdaq100_components() -> list[dict]:
 
 def _hsi_components() -> list[dict]:
     url = "https://en.wikipedia.org/wiki/Hang_Seng_Index"
-    for tbl in pd.read_html(url):
+    import re as _re
+    for tbl in _wiki_read_html(url):
         cols_lower = [str(c).lower() for c in tbl.columns]
         if any("ticker" in c or "stock code" in c for c in cols_lower):
             results = []
@@ -231,6 +246,7 @@ def _hsi_components() -> list[dict]:
                 for c in tbl.columns:
                     if "ticker" in str(c).lower() or "stock code" in str(c).lower():
                         raw = str(row[c]).strip().replace(".0", "")
+                        raw = _re.sub(r"^(?:SEHK|HKG)\s*:\s*", "", raw, flags=_re.IGNORECASE).strip()
                         t = raw.zfill(4) if raw.isdigit() else raw
                         nc = [x for x in tbl.columns if "company" in str(x).lower() or "name" in str(x).lower()]
                         n = str(row[nc[0]]).strip() if nc else t

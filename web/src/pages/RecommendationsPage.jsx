@@ -1,44 +1,42 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import api from "../api";
-import Card, { CardTitle } from "../components/Card";
-import { PageLoader } from "../components/Spinner";
 import PriceChange from "../components/PriceChange";
 import RecCard from "../components/RecCard";
 import MarketSentimentPanel from "../components/MarketSentimentPanel";
-import { Calendar, TrendingUp } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
 
 const MARKET_CFG = {
   us: {
     title: "美股推荐",
     mkt: "us_stock",
     indexFilter: (idx) => idx.market === "us_stock",
-    bg: "bg-gradient-to-br from-brand-950/80 via-brand-900/40 to-surface-1",
   },
   hk: {
     title: "港股推荐",
     mkt: "hk_stock",
     indexFilter: (idx) => idx.market === "hk_stock",
-    bg: "bg-gradient-to-br from-amber-950/80 via-amber-900/40 to-surface-1",
   },
 };
 
-function IndexCard({ idx, bg }) {
+function IndexCard({ idx }) {
   return (
-    <div className={`rounded-xl ${bg} p-5 shadow-lg ring-1 ring-white/5`}>
-      <p className="text-sm font-semibold text-gray-300 tracking-wide">
-        {idx.name || idx.symbol}
-      </p>
-      <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-white">
+    <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-4">
+      <p className="text-xs text-[#787b86]">{idx.name || idx.symbol}</p>
+      <p className="mt-1.5 text-xl font-semibold tabular-nums text-[#d1d4dc]">
         {idx.price?.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }) ?? "--"}
       </p>
       <div className="mt-1">
-        <PriceChange value={idx.change_pct} size="lg" />
+        <PriceChange value={idx.change_pct} />
       </div>
     </div>
   );
+}
+
+function Skeleton({ className }) {
+  return <div className={`animate-pulse rounded bg-[#2a2e39] ${className}`} />;
 }
 
 export default function RecommendationsPage({ market = "us" }) {
@@ -46,6 +44,7 @@ export default function RecommendationsPage({ market = "us" }) {
 
   const [indices, setIndices] = useState([]);
   const [sentiment, setSentiment] = useState(null);
+  const [sentimentLoading, setSentimentLoading] = useState(true);
   const [today, setToday] = useState(null);
   const [history, setHistory] = useState([]);
   const [detail, setDetail] = useState(null);
@@ -55,23 +54,28 @@ export default function RecommendationsPage({ market = "us" }) {
     setLoading(true);
     setDetail(null);
     setSentiment(null);
+    setSentimentLoading(true);
+
     Promise.allSettled([
       api.marketOverview(),
       api.marketTodayRecs(market),
       api.marketRecHistory(market, 30),
-      api.marketSentiment(market),
-    ]).then(([idxRes, tRes, hRes, sRes]) => {
+    ]).then(([idxRes, tRes, hRes]) => {
       if (idxRes.status === "fulfilled") {
-        const all = idxRes.value || [];
-        setIndices(all.filter(cfg.indexFilter));
+        setIndices((idxRes.value || []).filter(cfg.indexFilter));
       }
       if (tRes.status === "fulfilled") setToday(tRes.value);
       else setToday(null);
       if (hRes.status === "fulfilled") setHistory(hRes.value || []);
       else setHistory([]);
-      if (sRes.status === "fulfilled") setSentiment(sRes.value);
       setLoading(false);
     });
+
+    api
+      .marketSentiment(market)
+      .then((d) => setSentiment(d))
+      .catch(() => {})
+      .finally(() => setSentimentLoading(false));
   }, [market]);
 
   async function loadDate(date) {
@@ -83,118 +87,123 @@ export default function RecommendationsPage({ market = "us" }) {
     }
   }
 
-  if (loading) return <PageLoader />;
-
   const items = detail?.items || today?.items || [];
   const viewingDate = detail ? detail.run?.ref_date : "今日";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold">{cfg.title}</h1>
+    <div className="mx-auto max-w-5xl space-y-4">
+      <h1 className="text-lg font-semibold text-[#d1d4dc]">{cfg.title}</h1>
 
       {/* Market indices */}
       <section>
-        <div className={`grid gap-4 ${indices.length <= 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
-          {indices.map((idx, i) => (
-            <IndexCard key={i} idx={idx} bg={cfg.bg} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-4">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="mt-2 h-6 w-28" />
+                <Skeleton className="mt-2 h-3 w-14" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={`grid gap-3 ${indices.length <= 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+            {indices.map((idx, i) => (
+              <IndexCard key={i} idx={idx} />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Market sentiment panel */}
-      {sentiment && <MarketSentimentPanel data={sentiment} market={market} />}
+      {/* Market sentiment */}
+      {sentimentLoading ? (
+        <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
+          <Skeleton className="mb-4 h-4 w-28" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
+        </div>
+      ) : (
+        sentiment && <MarketSentimentPanel data={sentiment} market={market} />
+      )}
 
       {/* Display message */}
       {today?.display_message && !detail && (
-        <div className="rounded-lg border border-yellow-600/20 bg-yellow-900/10 px-4 py-3 text-sm text-yellow-400">
+        <div className="flex items-center gap-2 rounded-lg border border-[#363a45] bg-[#1e222d] px-4 py-3 text-xs text-[#787b86]">
+          <Clock size={14} />
           {today.display_message}
         </div>
       )}
 
-      {/* Recommendations */}
-      <div className="flex gap-6">
-        {/* Sidebar: history dates */}
-        <div className="hidden w-48 shrink-0 md:block">
-          <CardTitle>
-            <Calendar size={14} className="mr-1 inline" /> 历史记录
-          </CardTitle>
-          <div className="space-y-1">
+      {/* History bar + Rec header */}
+      <div className="flex items-center gap-3">
+        <Calendar size={13} className="text-[#787b86]" />
+        <p className="text-xs font-medium text-[#787b86]">历史记录</p>
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
+          <button
+            onClick={() => setDetail(null)}
+            className={`shrink-0 rounded px-2.5 py-1 text-xs transition-colors ${
+              !detail
+                ? "bg-brand-500/10 text-brand-500 font-semibold"
+                : "text-[#787b86] hover:text-[#d1d4dc]"
+            }`}
+          >
+            今日推荐
+          </button>
+          {history.map((h) => (
             <button
-              onClick={() => setDetail(null)}
-              className={`w-full rounded-lg px-3 py-2 text-left text-xs transition-colors ${
-                !detail
-                  ? "bg-brand-600/20 text-brand-400"
-                  : "text-gray-400 hover:bg-surface-2"
+              key={h.id || h.ref_date}
+              onClick={() => loadDate(h.ref_date)}
+              className={`shrink-0 rounded px-2.5 py-1 text-xs transition-colors ${
+                detail?.run?.ref_date === h.ref_date
+                  ? "bg-brand-500/10 text-brand-500 font-semibold"
+                  : "text-[#787b86] hover:text-[#d1d4dc]"
               }`}
             >
-              今日
+              {h.ref_date}
+              <span className="ml-1 text-[#363a45]">{h.published_count ?? h.result_count}</span>
             </button>
-            {history.map((h) => (
-              <button
-                key={h.id || h.ref_date}
-                onClick={() => loadDate(h.ref_date)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${
-                  detail?.run?.ref_date === h.ref_date
-                    ? "bg-brand-600/20 text-brand-400"
-                    : "text-gray-400 hover:bg-surface-2"
-                }`}
-              >
-                <span>{h.ref_date}</span>
-                <span className="text-gray-600">
-                  {h.published_count ?? h.result_count}
-                </span>
-              </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Recommendations - full width */}
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <p className="text-sm font-semibold text-[#d1d4dc]">推荐列表</p>
+          <span className="text-xs text-[#787b86]">
+            {viewingDate} · {items.length} 只
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-14" />
+                  <Skeleton className="h-4 w-28" />
+                </div>
+                <div className="mt-2 flex gap-3">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
             ))}
-            {history.length === 0 && (
-              <p className="px-3 text-xs text-gray-600">暂无历史</p>
-            )}
           </div>
-        </div>
-
-        {/* Main content */}
-        <div className="flex-1">
-          <div className="mb-4 flex items-center gap-2">
-            <CardTitle className="!mb-0">
-              <TrendingUp size={14} className="mr-1 inline text-brand-400" />
-              推荐列表
-            </CardTitle>
-            <span className="text-xs text-gray-500">
-              {viewingDate}
-              {items.length > 0 && ` \u00b7 ${items.length} 只`}
-            </span>
+        ) : items.length === 0 ? (
+          <div className="flex items-center justify-center rounded-lg border border-[#2a2e39] bg-[#1e222d] py-16">
+            <p className="text-sm text-[#787b86]">该日期暂无推荐数据</p>
           </div>
-
-          {items.length === 0 ? (
-            <Card className="py-16 text-center text-sm text-gray-500">
-              该日期暂无推荐数据
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item, i) => (
-                <RecCard key={item.ticker || i} item={item} />
-              ))}
-            </div>
-          )}
-
-          {/* Mobile history selector */}
-          <div className="mt-6 md:hidden">
-            <CardTitle>历史记录</CardTitle>
-            <select
-              className="w-full rounded-lg border border-surface-3 bg-surface-2 px-3 py-2 text-sm"
-              value={detail?.run?.ref_date || ""}
-              onChange={(e) =>
-                e.target.value ? loadDate(e.target.value) : setDetail(null)
-              }
-            >
-              <option value="">今日</option>
-              {history.map((h) => (
-                <option key={h.ref_date} value={h.ref_date}>
-                  {h.ref_date} ({h.published_count ?? h.result_count})
-                </option>
-              ))}
-            </select>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item, i) => (
+              <RecCard key={item.ticker || i} item={item} rank={i + 1} />
+            ))}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

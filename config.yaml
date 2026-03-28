@@ -31,7 +31,7 @@ llm:
 
 # LLM Agent settings (6-layer: screen->enrich->news_agent->tech_agent->synthesis->risk_control)
 agent:
-  enabled: false
+  enabled: true
   news_version: "news-sentiment-v2"
   tech_version: "technical-v2"
   max_retries: 1
@@ -78,7 +78,7 @@ pipeline:
     news_weight: 0.35
     tech_weight: 0.65
     fundamental_weight: 0.0
-    min_confidence: 55
+    min_confidence: 40
     quality_threshold: 50
     adaptive_threshold_drop: 20
     adaptive_threshold_floor: 30

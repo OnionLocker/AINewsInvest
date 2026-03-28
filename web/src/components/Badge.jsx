@@ -1,16 +1,16 @@
-﻿const variants = {
-  green: "bg-green-500/15 text-green-400",
-  red: "bg-red-500/15 text-red-400",
-  blue: "bg-blue-500/15 text-blue-400",
-  yellow: "bg-yellow-500/15 text-yellow-400",
-  gray: "bg-gray-500/15 text-gray-400",
-  brand: "bg-brand-500/15 text-brand-400",
+const variants = {
+  green:  "bg-[#089981]/10 text-[#089981]",
+  red:    "bg-[#f23645]/10 text-[#f23645]",
+  blue:   "bg-[#2962ff]/10 text-[#2962ff]",
+  yellow: "bg-[#fb8c00]/10 text-[#fb8c00]",
+  gray:   "bg-[#787b86]/10 text-[#787b86]",
+  brand:  "bg-[#2962ff]/10 text-[#2962ff]",
 };
 
 export default function Badge({ children, variant = "gray", className = "" }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${variants[variant] || variants.gray} ${className}`}
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ${variants[variant] || variants.gray} ${className}`}
     >
       {children}
     </span>

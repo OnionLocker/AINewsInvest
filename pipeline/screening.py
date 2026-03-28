@@ -116,19 +116,24 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         logger.warning(f"No stock pool for {market}")
         return []
 
-    max_workers = min(32, max(8, len(pool) // 4 or 8))
+    import time as _time
+    _BATCH = 5
 
     quotes: dict[tuple[str, str], dict | None] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futs = {ex.submit(get_quote, row["ticker"], row["market"]): row for row in pool}
-        for fut in as_completed(futs):
-            row = futs[fut]
-            t, m = row["ticker"], row["market"]
-            try:
-                quotes[(t, m)] = fut.result()
-            except Exception as e:
-                logger.warning(f"Quote error {m}:{t}: {e}")
-                quotes[(t, m)] = None
+    for bi in range(0, len(pool), _BATCH):
+        batch = pool[bi:bi + _BATCH]
+        with ThreadPoolExecutor(max_workers=_BATCH) as ex:
+            futs = {ex.submit(get_quote, row["ticker"], row["market"]): row for row in batch}
+            for fut in as_completed(futs):
+                row = futs[fut]
+                t, m = row["ticker"], row["market"]
+                try:
+                    quotes[(t, m)] = fut.result()
+                except Exception as e:
+                    logger.warning(f"Quote error {m}:{t}: {e}")
+                    quotes[(t, m)] = None
+        if bi + _BATCH < len(pool):
+            _time.sleep(0.5)
 
     passed: list[dict] = []
     for row in pool:
@@ -159,7 +164,7 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         return []
 
     fin_rows: list[dict] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    with ThreadPoolExecutor(max_workers=5) as ex:
         futs = {ex.submit(get_financial_data, r["ticker"], r["market"]): r for r in passed}
         for fut in as_completed(futs):
             r = futs[fut]
@@ -401,7 +406,7 @@ def batch_fetch_klines(
     def _fetch(ticker: str, market: str):
         return get_klines(ticker, market, days=days)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    with ThreadPoolExecutor(max_workers=5) as ex:
         futs = {
             ex.submit(_fetch, c["ticker"], c["market"]): c["ticker"]
             for c in candidates

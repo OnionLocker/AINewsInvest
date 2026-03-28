@@ -30,7 +30,7 @@ async def stock_query(req: StockQueryRequest, user: User = Depends(get_current_u
     from core.data_source import get_quote
     result = await run_in_threadpool(get_quote, req.ticker, req.market)
     if not result:
-        raise HTTPException(status_code=404, detail="????????")
+        raise HTTPException(status_code=404, detail="未找到该股票数据")
     return result
 
 
@@ -88,7 +88,7 @@ async def watchlist_quotes(user: User = Depends(get_current_user)):
 async def market_sentiment(market: str, user: User = Depends(get_current_user)):
     """Aggregate market-level sentiment for US or HK."""
     if market not in ("us", "hk"):
-        raise HTTPException(400, "market ??? us ? hk")
+        raise HTTPException(400, "市场参数必须为 us 或 hk")
     mkt = f"{market}_stock"
 
     def _work():
@@ -131,15 +131,15 @@ def _compute_fear_greed(sentiment: dict, breadth: dict) -> dict:
     raw = max(0, min(100, raw))
 
     if raw >= 75:
-        label = "????"
+        label = "极度贪婪"
     elif raw >= 60:
-        label = "??"
+        label = "贪婪"
     elif raw >= 40:
-        label = "??"
+        label = "中性"
     elif raw >= 25:
-        label = "??"
+        label = "恐惧"
     else:
-        label = "????"
+        label = "极度恐惧"
 
     return {"value": round(raw, 1), "label": label}
 

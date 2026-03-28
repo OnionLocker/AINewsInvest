@@ -1,4 +1,4 @@
-﻿import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   DollarSign,
@@ -27,14 +27,14 @@ function SideLink({ to, icon: Icon, label, onClick }) {
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-5 py-3.5 text-lg font-medium transition-colors ${
+        `flex items-center gap-3 rounded-md px-3 py-2 text-[18px] font-medium transition-colors duration-100 ${
           isActive
-            ? "bg-brand-600/20 text-brand-400"
-            : "text-gray-400 hover:bg-surface-2 hover:text-gray-200"
+            ? "bg-brand-500/10 text-brand-500"
+            : "text-[#787b86] hover:text-[#d1d4dc]"
         }`
       }
     >
-      <Icon size={22} />
+      <Icon size={16} strokeWidth={1.6} />
       {label}
     </NavLink>
   );
@@ -46,14 +46,17 @@ export default function Layout() {
 
   const sidebar = (
     <nav className="flex h-full flex-col">
-      <div className="flex items-center gap-2 px-4 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold">
+      <div className="flex items-center gap-2.5 px-4 py-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white">
           AV
         </div>
-        <span className="text-lg font-semibold tracking-tight">Alpha Vault</span>
+        <div>
+          <span className="text-sm font-semibold text-[#d1d4dc]">Alpha Vault</span>
+          <p className="text-[10px] text-[#787b86]">AI Investment Research</p>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-1.5 px-3 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 space-y-0.5 px-2 overflow-y-auto scrollbar-thin">
         {navItems.map((item) => (
           <SideLink key={item.to} {...item} onClick={() => setSidebarOpen(false)} />
         ))}
@@ -67,20 +70,23 @@ export default function Layout() {
         )}
       </div>
 
-      <div className="border-t border-surface-3 px-3 py-4">
-        <div className="mb-2 px-3 text-xs text-gray-500">
-          {user?.username}
-          {user?.is_admin && (
-            <span className="ml-1 rounded bg-brand-600/30 px-1.5 py-0.5 text-[10px] text-brand-400">
-              管理员
-            </span>
-          )}
+      <div className="border-t border-[#2a2e39] px-3 py-3">
+        <div className="mb-2 flex items-center gap-2 px-1">
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-[#2a2e39] text-[10px] font-bold text-[#787b86]">
+            {user?.username?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-xs text-[#d1d4dc]">{user?.username}</p>
+            {user?.is_admin && (
+              <span className="text-[10px] text-brand-500">管理员</span>
+            )}
+          </div>
         </div>
         <button
           onClick={logout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-surface-2 hover:text-red-400"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-[#787b86] transition-colors hover:text-[#f23645]"
         >
-          <LogOut size={18} />
+          <LogOut size={14} />
           退出登录
         </button>
       </div>
@@ -89,7 +95,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-surface-0">
-      <aside className="hidden w-64 shrink-0 border-r border-surface-3 bg-surface-1 lg:block">
+      <aside className="hidden w-52 shrink-0 border-r border-[#2a2e39] bg-surface-1 lg:block">
         {sidebar}
       </aside>
 
@@ -100,7 +106,7 @@ export default function Layout() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface-1 transition-transform lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-52 border-r border-[#2a2e39] bg-surface-1 transition-transform lg:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -108,13 +114,13 @@ export default function Layout() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center gap-3 border-b border-surface-3 bg-surface-1 px-4 lg:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-400">
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+        <header className="flex h-12 items-center gap-3 border-b border-[#2a2e39] bg-surface-1 px-4 lg:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="text-[#787b86]">
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
-          <span className="font-semibold">Alpha Vault</span>
+          <span className="text-sm font-semibold text-[#d1d4dc]">Alpha Vault</span>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin">
+        <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
           <Outlet />
         </main>
       </div>

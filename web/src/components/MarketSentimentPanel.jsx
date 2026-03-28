@@ -1,96 +1,27 @@
-﻿import { Activity, TrendingUp, TrendingDown, Minus, Newspaper, BarChart3 } from "lucide-react";
-
-const FEAR_GREED_COLORS = {
-  "极度贪婪": { ring: "ring-green-400", text: "text-green-400", bg: "bg-green-500" },
-  "贪婪": { ring: "ring-green-500/60", text: "text-green-400", bg: "bg-green-500" },
-  "中性": { ring: "ring-yellow-500/60", text: "text-yellow-400", bg: "bg-yellow-500" },
-  "恐惧": { ring: "ring-red-500/60", text: "text-red-400", bg: "bg-red-500" },
-  "极度恐惧": { ring: "ring-red-400", text: "text-red-400", bg: "bg-red-500" },
-};
-
-function FearGreedGauge({ value, label }) {
-  const colors = FEAR_GREED_COLORS[label] || FEAR_GREED_COLORS["中性"];
-  const angle = (value / 100) * 180 - 90;
-
-  return (
-    <div className="flex flex-col items-center">
-      <div className="relative h-20 w-40 overflow-hidden">
-        <svg viewBox="0 0 120 60" className="h-full w-full">
-          <path
-            d="M 10 55 A 50 50 0 0 1 110 55"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="8"
-            className="text-surface-3"
-          />
-          <path
-            d="M 10 55 A 50 50 0 0 1 110 55"
-            fill="none"
-            stroke="url(#gauge-gradient)"
-            strokeWidth="8"
-            strokeDasharray={`${(value / 100) * 157} 157`}
-          />
-          <defs>
-            <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#ef4444" />
-              <stop offset="25%" stopColor="#f97316" />
-              <stop offset="50%" stopColor="#eab308" />
-              <stop offset="75%" stopColor="#22c55e" />
-              <stop offset="100%" stopColor="#16a34a" />
-            </linearGradient>
-          </defs>
-          <line
-            x1="60"
-            y1="55"
-            x2={60 + 35 * Math.cos((angle * Math.PI) / 180)}
-            y2={55 - 35 * Math.abs(Math.sin((angle * Math.PI) / 180))}
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <circle cx="60" cy="55" r="3" fill="white" />
-        </svg>
-      </div>
-      <div className="mt-1 text-center">
-        <span className={`text-2xl font-bold ${colors.text}`}>{value}</span>
-        <p className={`text-sm font-semibold ${colors.text}`}>{label}</p>
-      </div>
-    </div>
-  );
-}
-
-function BreadthBar({ advance, decline, unchanged, total }) {
-  if (!total || total === 0) return null;
-  const aPct = (advance / total) * 100;
-  const dPct = (decline / total) * 100;
-
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between text-[11px] text-gray-400">
-        <span className="text-green-400">上涨 {advance}</span>
-        <span>平盘 {unchanged}</span>
-        <span className="text-red-400">下跌 {decline}</span>
-      </div>
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full">
-        <div className="bg-green-500" style={{ width: `${aPct}%` }} />
-        <div className="bg-gray-600" style={{ width: `${100 - aPct - dPct}%` }} />
-        <div className="bg-red-500" style={{ width: `${dPct}%` }} />
-      </div>
-    </div>
-  );
-}
+import { Activity, TrendingUp, TrendingDown, Minus, Lightbulb } from "lucide-react";
 
 function SentimentLabel({ label }) {
   const map = {
-    bullish: { icon: TrendingUp, text: "偏多", cls: "text-green-400" },
-    bearish: { icon: TrendingDown, text: "偏空", cls: "text-red-400" },
-    neutral: { icon: Minus, text: "中性", cls: "text-yellow-400" },
+    bullish:  { text: "偏多", color: "#089981" },
+    bearish:  { text: "偏空", color: "#f23645" },
+    neutral:  { text: "中性", color: "#787b86" },
   };
   const info = map[label] || map.neutral;
-  const Icon = info.icon;
   return (
-    <span className={`flex items-center gap-1 text-sm font-semibold ${info.cls}`}>
-      <Icon size={14} /> {info.text}
+    <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ color: info.color, background: info.color + "18" }}>
+      {info.text}
+    </span>
+  );
+}
+
+function Dot({ color = "#089981" }) {
+  return <span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />;
+}
+
+function StatItem({ label, value, color }) {
+  return (
+    <span className="text-xs text-[#787b86]">
+      {label}：<span className="font-semibold" style={{ color: color || "#d1d4dc" }}>{value}</span>
     </span>
   );
 }
@@ -98,83 +29,130 @@ function SentimentLabel({ label }) {
 export default function MarketSentimentPanel({ data, market }) {
   if (!data) return null;
 
-  const { sentiment, breadth, fear_greed: fg, headlines } = data;
+  const { sentiment, breadth, fear_greed: fg, headlines, analysis } = data;
+  const fgValue = fg?.value != null ? Math.round(fg.value) : null;
+  const fgLabel = fg?.label || (fgValue >= 75 ? "极度贪婪" : fgValue >= 60 ? "贪婪" : fgValue >= 40 ? "中性" : fgValue >= 25 ? "恐惧" : "极度恐惧");
+  const fgColor = fgValue >= 60 ? "#089981" : fgValue >= 40 ? "#787b86" : "#f23645";
+
+  const advN = breadth?.advance ?? 0;
+  const decN = breadth?.decline ?? 0;
+  const unchN = breadth?.unchanged ?? 0;
+  const totalN = breadth?.total ?? 0;
+
+  const bullPoints = [];
+  const bearPoints = [];
+
+  if (advN > decN) bullPoints.push("上涨家数多于下跌，多头占优");
+  else if (decN > advN) bearPoints.push("下跌家数多于上涨，空头占优");
+
+  if (fgValue != null && fgValue >= 60) bullPoints.push(`情绪评分${fgValue}分，市场偏乐观`);
+  else if (fgValue != null && fgValue < 40) bearPoints.push(`情绪评分${fgValue}分，市场偏悲观`);
+
+  if (sentiment?.positive > sentiment?.negative) bullPoints.push("正面新闻多于负面，情绪偏暖");
+  else if (sentiment?.negative > sentiment?.positive) bearPoints.push("负面新闻多于正面，情绪偏冷");
+
+  if ((headlines || []).length > 0) {
+    bullPoints.push("有" + headlines.length + "条相关新闻，市场关注度高");
+  }
+
+  const riskLevel = fgValue >= 70 ? "中" : fgValue >= 40 ? "低" : "高";
+  const strategyLevel = fgValue >= 60 ? "激进" : fgValue >= 40 ? "稳健" : "保守";
+  const riskColor = riskLevel === "高" ? "#f23645" : riskLevel === "中" ? "#fb8c00" : "#089981";
+  const strategyColor = strategyLevel === "激进" ? "#089981" : strategyLevel === "保守" ? "#f23645" : "#2962ff";
 
   return (
-    <section className="rounded-xl border border-surface-3 bg-surface-1 p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <Activity size={16} className="text-brand-400" />
-        <span className="text-sm font-bold text-gray-200">市场情绪分析</span>
-        <SentimentLabel label={sentiment?.label} />
+    <div className="space-y-3">
+      {/* Market Sentiment Block */}
+      <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-semibold text-[#d1d4dc]">市场情绪</span>
+              <SentimentLabel label={sentiment?.label} />
+            </div>
+            {fgValue != null && (
+              <p className="text-2xl font-bold" style={{ color: fgColor }}>{fgLabel}</p>
+            )}
+            <p className="mt-1 text-xs text-[#787b86]">
+              上涨 {advN} 家，下跌 {decN} 家
+              {advN > decN ? "，多头占优" : decN > advN ? "，空头占优" : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-right">
+            <StatItem label="上涨家数" value={advN} color="#089981" />
+            <StatItem label="下跌家数" value={decN} color="#f23645" />
+            {unchN > 0 && <StatItem label="平盘家数" value={unchN} />}
+          </div>
+        </div>
+        {fgValue != null && (
+          <p className="mt-2 text-xs text-[#787b86]">
+            市场情绪评分{fgValue}分（{fgLabel}），
+            {fgValue >= 60 ? "多头气氛浓厚，资金做多意愿较强" :
+             fgValue >= 40 ? "市场情绪平稳，观望气氛偏重" :
+             "恐慌情绪蔓延，谨慎为主"}。
+          </p>
+        )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        {/* Fear & Greed gauge */}
-        <div className="flex flex-col items-center justify-center rounded-lg bg-surface-0/50 p-4">
-          <p className="mb-2 text-xs font-semibold text-gray-400">贪婪恐惧指数</p>
-          <FearGreedGauge value={fg?.value ?? 50} label={fg?.label ?? "中性"} />
+      {/* Market Analysis Block */}
+      <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-[#d1d4dc]">市场分析</span>
+          <div className="flex gap-2">
+            <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+              style={{ color: strategyColor, background: strategyColor + "18" }}>
+              策略：{strategyLevel}
+            </span>
+            <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+              style={{ color: riskColor, background: riskColor + "18" }}>
+              风险：{riskLevel}
+            </span>
+          </div>
         </div>
 
-        {/* Breadth + stats */}
-        <div className="flex flex-col justify-center space-y-4 rounded-lg bg-surface-0/50 p-4">
-          <div>
-            <p className="mb-2 text-xs font-semibold text-gray-400">
-              <BarChart3 size={12} className="mr-1 inline" />
-              涨跌家数
-            </p>
-            <BreadthBar
-              advance={breadth?.advance ?? 0}
-              decline={breadth?.decline ?? 0}
-              unchanged={breadth?.unchanged ?? 0}
-              total={breadth?.total ?? 0}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div>
-              <p className="text-[11px] text-gray-500">多空信号数</p>
-              <p className="text-sm">
-                <span className="font-semibold text-green-400">{sentiment?.positive ?? 0}</span>
-                {" / "}
-                <span className="font-semibold text-red-400">{sentiment?.negative ?? 0}</span>
-              </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          {bullPoints.map((p, i) => (
+            <div key={"b"+i} className="flex items-start gap-2 text-xs text-[#d1d4dc]">
+              <Dot color="#089981" />
+              <span>{p}</span>
             </div>
-            <div>
-              <p className="text-[11px] text-gray-500">情绪评分</p>
-              <p className={`text-sm font-bold ${
-                (sentiment?.score ?? 0) > 0 ? "text-green-400" : (sentiment?.score ?? 0) < 0 ? "text-red-400" : "text-yellow-400"
-              }`}>
-                {sentiment?.score != null ? (sentiment.score > 0 ? "+" : "") + sentiment.score.toFixed(2) : "--"}
-              </p>
+          ))}
+          {bearPoints.map((p, i) => (
+            <div key={"r"+i} className="flex items-start gap-2 text-xs text-[#d1d4dc]">
+              <Dot color="#f23645" />
+              <span>{p}</span>
             </div>
-          </div>
+          ))}
         </div>
 
         {/* Headlines */}
-        <div className="rounded-lg bg-surface-0/50 p-4">
-          <p className="mb-2 text-xs font-semibold text-gray-400">
-            <Newspaper size={12} className="mr-1 inline" />
-            热点新闻
-          </p>
-          <div className="space-y-2">
-            {(headlines || []).slice(0, 4).map((h, i) => (
-              <a
-                key={i}
-                href={h.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block truncate text-xs text-gray-300 transition-colors hover:text-brand-400"
-                title={h.title}
-              >
-                <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-500" />
-                {h.title}
+        {(headlines || []).length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {headlines.slice(0, 3).map((h, i) => (
+              <a key={i} href={h.link} target="_blank" rel="noopener noreferrer"
+                className="flex items-start gap-2 text-xs text-[#787b86] hover:text-brand-500 transition-colors">
+                <Dot color="#363a45" />
+                <span className="line-clamp-1">{h.title}</span>
               </a>
             ))}
-            {(!headlines || headlines.length === 0) && (
-              <p className="text-xs text-gray-600">暂无新闻</p>
-            )}
           </div>
+        )}
+
+        {/* Operation Suggestion */}
+        <div className="mt-4 rounded-lg border border-[#fb8c00]/25 bg-[#fb8c00]/5 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#fb8c00]">
+            <Lightbulb size={13} />
+            操作建议
+          </div>
+          <p className="text-xs leading-relaxed text-[#fb8c00]/80">
+            {fgValue >= 60
+              ? "市场情绪偏热，可适当参与强势标的，但注意控制仓位，防范追高风险。"
+              : fgValue >= 40
+                ? "市场情绪中性，建议以观望为主，精选个股，轻仓试探。"
+                : "市场情绪偏冷，建议减仓防守，等待企稳信号后再入场。"}
+          </p>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

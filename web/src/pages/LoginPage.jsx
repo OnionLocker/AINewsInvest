@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import Spinner from "../components/Spinner";
@@ -49,46 +49,46 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-0 px-4">
-      <div className="w-full max-w-sm">
+    <div className="flex min-h-screen items-center justify-center bg-[#131722] px-4">
+      <div className="w-full max-w-xs">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white">
             AV
           </div>
-          <h1 className="text-2xl font-bold">Alpha Vault</h1>
-          <p className="mt-1 text-sm text-gray-500">港美股 AI 投研系统</p>
+          <h1 className="text-xl font-semibold text-[#d1d4dc]">Alpha Vault</h1>
+          <p className="mt-1 text-xs text-[#787b86]">港美股 AI 投研系统</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl border border-surface-3 bg-surface-1 p-6"
+          className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5"
         >
-          <h2 className="mb-5 text-lg font-semibold">{titles[mode]}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-[#d1d4dc]">{titles[mode]}</h2>
 
           {mode === "bootstrap" && (
-            <p className="mb-4 rounded-lg bg-yellow-500/10 p-3 text-xs text-yellow-400">
+            <p className="mb-3 rounded bg-[#fb8c00]/10 p-2.5 text-[11px] text-[#fb8c00]">
               尚未创建管理员账户，请创建第一个管理员。
             </p>
           )}
 
-          <label className="mb-1 block text-xs text-gray-400">用户名</label>
+          <label className="mb-1 block text-[11px] text-[#787b86]">用户名</label>
           <input
-            className="mb-4 w-full rounded-lg border border-surface-3 bg-surface-2 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            className="mb-3 w-full rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-sm text-[#d1d4dc] outline-none transition-colors focus:border-brand-500"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoFocus
           />
 
-          <label className="mb-1 block text-xs text-gray-400">密码</label>
+          <label className="mb-1 block text-[11px] text-[#787b86]">密码</label>
           <input
             type="password"
-            className="mb-5 w-full rounded-lg border border-surface-3 bg-surface-2 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            className="mb-4 w-full rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-sm text-[#d1d4dc] outline-none transition-colors focus:border-brand-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
 
           {error && (
-            <p className="mb-3 rounded-lg bg-red-500/10 p-2 text-xs text-red-400">
+            <p className="mb-3 rounded bg-[#f23645]/10 p-2 text-[11px] text-[#f23645]">
               {error}
             </p>
           )}
@@ -96,19 +96,19 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy || !username || !password}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-40"
           >
             {busy && <Spinner size="sm" />}
             {titles[mode]}
           </button>
 
           {needBootstrap === false && (
-            <div className="mt-4 text-center text-xs text-gray-500">
+            <div className="mt-3 text-center text-[11px] text-[#787b86]">
               {mode === "login" ? (
                 <button
                   type="button"
                   onClick={() => setMode("register")}
-                  className="text-brand-400 hover:underline"
+                  className="text-brand-500 hover:underline"
                 >
                   没有账号？注册
                 </button>
@@ -116,7 +116,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setMode("login")}
-                  className="text-brand-400 hover:underline"
+                  className="text-brand-500 hover:underline"
                 >
                   已有账号？去登录
                 </button>
