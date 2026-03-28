@@ -30,7 +30,7 @@ async def stock_query(req: StockQueryRequest, user: User = Depends(get_current_u
     from core.data_source import get_quote
     result = await run_in_threadpool(get_quote, req.ticker, req.market)
     if not result:
-        raise HTTPException(status_code=404, detail="??????")
+        raise HTTPException(status_code=404, detail="????????")
     return result
 
 
@@ -82,6 +82,66 @@ async def watchlist_quotes(user: User = Depends(get_current_user)):
     for q, item in zip(quotes, items):
         q["watchlist_id"] = item["id"]
     return quotes
+
+
+@router.get("/market-sentiment/{market}")
+async def market_sentiment(market: str, user: User = Depends(get_current_user)):
+    """Aggregate market-level sentiment for US or HK."""
+    if market not in ("us", "hk"):
+        raise HTTPException(400, "market ??? us ? hk")
+    mkt = f"{market}_stock"
+
+    def _work():
+        from analysis.news_fetcher import fetch_market_news, analyze_sentiment
+        from core.data_source import _get_market_breadth
+
+        news = fetch_market_news(market=mkt, limit=25)
+        sentiment = analyze_sentiment(news)
+
+        breadth = _get_market_breadth(mkt)
+
+        top_headlines = []
+        for n in news[:6]:
+            top_headlines.append({
+                "title": n.get("title", ""),
+                "publisher": n.get("publisher", ""),
+                "link": n.get("link", ""),
+                "credibility": n.get("credibility", 0.5),
+            })
+
+        fear_greed = _compute_fear_greed(sentiment, breadth)
+
+        return {
+            "market": mkt,
+            "sentiment": sentiment,
+            "breadth": breadth,
+            "fear_greed": fear_greed,
+            "headlines": top_headlines,
+        }
+
+    return await run_in_threadpool(_work)
+
+
+def _compute_fear_greed(sentiment: dict, breadth: dict) -> dict:
+    """Compute a simplified fear/greed index from sentiment + breadth."""
+    s = sentiment.get("score", 0.0)
+    adv = breadth.get("advance_pct", 50.0)
+
+    raw = (s + 1) / 2 * 50 + adv / 100 * 50
+    raw = max(0, min(100, raw))
+
+    if raw >= 75:
+        label = "????"
+    elif raw >= 60:
+        label = "??"
+    elif raw >= 40:
+        label = "??"
+    elif raw >= 25:
+        label = "??"
+    else:
+        label = "????"
+
+    return {"value": round(raw, 1), "label": label}
 
 
 @router.get("/performance/summary")

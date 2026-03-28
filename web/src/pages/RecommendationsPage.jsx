@@ -1,30 +1,82 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import api from "../api";
 import Card, { CardTitle } from "../components/Card";
 import { PageLoader } from "../components/Spinner";
-import { MarketBadge, DirectionBadge, StrategyBadge } from "../components/Badge";
-import { Calendar, Eye } from "lucide-react";
+import PriceChange from "../components/PriceChange";
+import RecCard from "../components/RecCard";
+import MarketSentimentPanel from "../components/MarketSentimentPanel";
+import { Calendar, TrendingUp } from "lucide-react";
 
-export default function RecommendationsPage() {
+const MARKET_CFG = {
+  us: {
+    title: "美股推荐",
+    mkt: "us_stock",
+    indexFilter: (idx) => idx.market === "us_stock",
+    bg: "bg-gradient-to-br from-brand-950/80 via-brand-900/40 to-surface-1",
+  },
+  hk: {
+    title: "港股推荐",
+    mkt: "hk_stock",
+    indexFilter: (idx) => idx.market === "hk_stock",
+    bg: "bg-gradient-to-br from-amber-950/80 via-amber-900/40 to-surface-1",
+  },
+};
+
+function IndexCard({ idx, bg }) {
+  return (
+    <div className={`rounded-xl ${bg} p-5 shadow-lg ring-1 ring-white/5`}>
+      <p className="text-sm font-semibold text-gray-300 tracking-wide">
+        {idx.name || idx.symbol}
+      </p>
+      <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-white">
+        {idx.price?.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }) ?? "--"}
+      </p>
+      <div className="mt-1">
+        <PriceChange value={idx.change_pct} size="lg" />
+      </div>
+    </div>
+  );
+}
+
+export default function RecommendationsPage({ market = "us" }) {
+  const cfg = MARKET_CFG[market] || MARKET_CFG.us;
+
+  const [indices, setIndices] = useState([]);
+  const [sentiment, setSentiment] = useState(null);
   const [today, setToday] = useState(null);
   const [history, setHistory] = useState([]);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.allSettled([api.todayRecs(), api.recHistory(30)]).then(
-      ([tRes, hRes]) => {
-        if (tRes.status === "fulfilled") setToday(tRes.value);
-        if (hRes.status === "fulfilled") setHistory(hRes.value || []);
-        setLoading(false);
-      },
-    );
-  }, []);
+    setLoading(true);
+    setDetail(null);
+    setSentiment(null);
+    Promise.allSettled([
+      api.marketOverview(),
+      api.marketTodayRecs(market),
+      api.marketRecHistory(market, 30),
+      api.marketSentiment(market),
+    ]).then(([idxRes, tRes, hRes, sRes]) => {
+      if (idxRes.status === "fulfilled") {
+        const all = idxRes.value || [];
+        setIndices(all.filter(cfg.indexFilter));
+      }
+      if (tRes.status === "fulfilled") setToday(tRes.value);
+      else setToday(null);
+      if (hRes.status === "fulfilled") setHistory(hRes.value || []);
+      else setHistory([]);
+      if (sRes.status === "fulfilled") setSentiment(sRes.value);
+      setLoading(false);
+    });
+  }, [market]);
 
   async function loadDate(date) {
     try {
-      const d = await api.recByDate(date);
+      const d = await api.marketRecByDate(market, date);
       setDetail(d);
     } catch {
       setDetail(null);
@@ -38,9 +90,30 @@ export default function RecommendationsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">推荐列表</h1>
+      <h1 className="text-xl font-bold">{cfg.title}</h1>
 
+      {/* Market indices */}
+      <section>
+        <div className={`grid gap-4 ${indices.length <= 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+          {indices.map((idx, i) => (
+            <IndexCard key={i} idx={idx} bg={cfg.bg} />
+          ))}
+        </div>
+      </section>
+
+      {/* Market sentiment panel */}
+      {sentiment && <MarketSentimentPanel data={sentiment} market={market} />}
+
+      {/* Display message */}
+      {today?.display_message && !detail && (
+        <div className="rounded-lg border border-yellow-600/20 bg-yellow-900/10 px-4 py-3 text-sm text-yellow-400">
+          {today.display_message}
+        </div>
+      )}
+
+      {/* Recommendations */}
       <div className="flex gap-6">
+        {/* Sidebar: history dates */}
         <div className="hidden w-48 shrink-0 md:block">
           <CardTitle>
             <Calendar size={14} className="mr-1 inline" /> 历史记录
@@ -78,61 +151,32 @@ export default function RecommendationsPage() {
           </div>
         </div>
 
+        {/* Main content */}
         <div className="flex-1">
-          <div className="mb-3 flex items-center gap-2">
-            <CardTitle className="!mb-0">{viewingDate}</CardTitle>
-            {today?.display_message && !detail && (
-              <span className="text-xs text-yellow-400">
-                {today.display_message}
-              </span>
-            )}
+          <div className="mb-4 flex items-center gap-2">
+            <CardTitle className="!mb-0">
+              <TrendingUp size={14} className="mr-1 inline text-brand-400" />
+              推荐列表
+            </CardTitle>
+            <span className="text-xs text-gray-500">
+              {viewingDate}
+              {items.length > 0 && ` \u00b7 ${items.length} 只`}
+            </span>
           </div>
 
           {items.length === 0 ? (
-            <Card className="py-10 text-center text-sm text-gray-500">
-              该日期暂无推荐
+            <Card className="py-16 text-center text-sm text-gray-500">
+              该日期暂无推荐数据
             </Card>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {items.map((item, i) => (
-                <Card
-                  key={i}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-semibold">
-                          {item.ticker}
-                        </span>
-                        <MarketBadge market={item.market} />
-                        <DirectionBadge direction={item.direction} />
-                        <StrategyBadge strategy={item.strategy} />
-                      </div>
-                      <p className="mt-0.5 text-xs text-gray-500">{item.name}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-xs text-gray-400">
-                    <span>
-                      评分:{" "}
-                      <b className="text-gray-200">{item.score?.toFixed(1)}</b>
-                    </span>
-                    <span>入场: ${item.entry_price?.toFixed(2) ?? "--"}</span>
-                    <span>止损: ${item.stop_loss?.toFixed(2) ?? "--"}</span>
-                    <span>止盈: ${item.take_profit?.toFixed(2) ?? "--"}</span>
-                    <Link
-                      to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
-                      className="text-brand-400 hover:underline"
-                    >
-                      <Eye size={14} />
-                    </Link>
-                  </div>
-                </Card>
+                <RecCard key={item.ticker || i} item={item} />
               ))}
             </div>
           )}
 
+          {/* Mobile history selector */}
           <div className="mt-6 md:hidden">
             <CardTitle>历史记录</CardTitle>
             <select

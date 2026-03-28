@@ -1,8 +1,11 @@
 """SQLite persistence for recommendations, screening, watchlist, evaluations.
 
-Two database scopes (mirroring astock-quant):
+Two database scopes:
   - system.db  : admin recommendations, published recommendations, win-rate
   - per-user   : screening history, watchlist
+
+All recommendation tables are market-scoped: US and HK pipelines
+store and query independently via (ref_date, market) composite keys.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from loguru import logger
 
 
 class Database:
-    """SQLite storage with dual-table recommendation publishing."""
+    """SQLite storage with market-isolated recommendation publishing."""
 
     def __init__(self, db_path: str | Path):
         self.db_path = str(db_path)
@@ -25,6 +28,7 @@ class Database:
         self._conn = sqlite3.connect(self.db_path, timeout=30)
         self._conn.row_factory = sqlite3.Row
         self._init_tables()
+        self._migrate_market_isolation()
 
     def close(self):
         try:
@@ -65,11 +69,11 @@ class Database:
                 FOREIGN KEY (run_id) REFERENCES screening_runs(id)
             );
 
-            -- Admin recommendation runs (internal)
+            -- Admin recommendation runs (internal, market-isolated)
             CREATE TABLE IF NOT EXISTS daily_recommendation_runs (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                ref_date        TEXT    NOT NULL UNIQUE,
-                market          TEXT    NOT NULL DEFAULT 'all',
+                ref_date        TEXT    NOT NULL,
+                market          TEXT    NOT NULL DEFAULT 'us_stock',
                 strategy        TEXT    NOT NULL DEFAULT 'dual',
                 result_count    INTEGER NOT NULL DEFAULT 0,
                 run_status      TEXT    NOT NULL DEFAULT 'published',
@@ -78,7 +82,8 @@ class Database:
                 source_count    INTEGER NOT NULL DEFAULT 0,
                 candidate_count INTEGER NOT NULL DEFAULT 0,
                 published_count INTEGER NOT NULL DEFAULT 0,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(ref_date, market)
             );
 
             CREATE TABLE IF NOT EXISTS daily_recommendation_items (
@@ -114,11 +119,11 @@ class Database:
                 FOREIGN KEY (run_id) REFERENCES daily_recommendation_runs(id)
             );
 
-            -- Published recommendation runs (user-visible)
+            -- Published recommendation runs (user-visible, market-isolated)
             CREATE TABLE IF NOT EXISTS published_recommendation_runs (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                ref_date        TEXT    NOT NULL UNIQUE,
-                market          TEXT    NOT NULL DEFAULT 'all',
+                ref_date        TEXT    NOT NULL,
+                market          TEXT    NOT NULL DEFAULT 'us_stock',
                 strategy        TEXT    NOT NULL DEFAULT 'dual',
                 result_count    INTEGER NOT NULL DEFAULT 0,
                 run_status      TEXT    NOT NULL DEFAULT 'published',
@@ -126,7 +131,8 @@ class Database:
                 trigger_note    TEXT    DEFAULT '',
                 published_count INTEGER NOT NULL DEFAULT 0,
                 published_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(ref_date, market)
             );
 
             CREATE TABLE IF NOT EXISTS published_recommendation_items (
@@ -218,6 +224,66 @@ class Database:
         """)
         self._conn.commit()
 
+    def _migrate_market_isolation(self):
+        """Migrate old single-column UNIQUE(ref_date) to UNIQUE(ref_date, market)."""
+        for table in ("daily_recommendation_runs", "published_recommendation_runs"):
+            try:
+                idx_list = self._conn.execute(
+                    f"PRAGMA index_list({table})"
+                ).fetchall()
+                needs_migration = False
+                for idx in idx_list:
+                    idx_info = self._conn.execute(
+                        f"PRAGMA index_info('{idx['name']}')"
+                    ).fetchall()
+                    if len(idx_info) == 1 and idx_info[0]["name"] == "ref_date" and idx["unique"]:
+                        needs_migration = True
+                        break
+
+                if not needs_migration:
+                    continue
+
+                logger.info(f"Migrating {table}: UNIQUE(ref_date) -> UNIQUE(ref_date, market)")
+                items_table = table.replace("_runs", "_items")
+
+                rows = [dict(r) for r in self._conn.execute(f"SELECT * FROM {table}").fetchall()]
+                item_rows = [dict(r) for r in self._conn.execute(f"SELECT * FROM {items_table}").fetchall()]
+
+                self._conn.execute(f"DROP TABLE IF EXISTS {items_table}")
+                self._conn.execute(f"DROP TABLE IF EXISTS {table}")
+                self._conn.commit()
+                self._init_tables()
+
+                for rd in rows:
+                    mkt = rd.get("market", "us_stock")
+                    if mkt == "all":
+                        mkt = "us_stock"
+                    try:
+                        self._conn.execute(
+                            f"INSERT INTO {table} "
+                            f"(ref_date, market, strategy, result_count, run_status, "
+                            f"trigger_source, trigger_note, source_count, candidate_count, published_count) "
+                            f"VALUES (?,?,?,?,?,?,?,?,?,?)",
+                            (rd["ref_date"], mkt, rd.get("strategy", "dual"),
+                             rd.get("result_count", 0), rd.get("run_status", "published"),
+                             rd.get("trigger_source", ""), rd.get("trigger_note", ""),
+                             rd.get("source_count", 0), rd.get("candidate_count", 0),
+                             rd.get("published_count", 0)),
+                        )
+                    except sqlite3.IntegrityError:
+                        pass
+
+                for ird in item_rows:
+                    try:
+                        self._insert_recommendation_items(items_table, ird.get("run_id"), [ird])
+                    except Exception:
+                        pass
+
+                self._conn.commit()
+                logger.info(f"Migration complete for {table}")
+            except Exception as e:
+                logger.warning(f"Migration check for {table}: {e}")
+
     # ------------------------------------------------------------------
     # Screening
     # ------------------------------------------------------------------
@@ -275,11 +341,12 @@ class Database:
                                       items: list[dict], **meta) -> int:
         self._conn.execute(
             "DELETE FROM daily_recommendation_items WHERE run_id IN "
-            "(SELECT id FROM daily_recommendation_runs WHERE ref_date=?)",
-            (ref_date,),
+            "(SELECT id FROM daily_recommendation_runs WHERE ref_date=? AND market=?)",
+            (ref_date, market),
         )
         self._conn.execute(
-            "DELETE FROM daily_recommendation_runs WHERE ref_date=?", (ref_date,)
+            "DELETE FROM daily_recommendation_runs WHERE ref_date=? AND market=?",
+            (ref_date, market),
         )
 
         cur = self._conn.execute(
@@ -297,10 +364,17 @@ class Database:
         self._conn.commit()
         return run_id
 
-    def get_daily_recommendations(self, ref_date: str):
-        run = self._conn.execute(
-            "SELECT * FROM daily_recommendation_runs WHERE ref_date=?", (ref_date,)
-        ).fetchone()
+    def get_daily_recommendations(self, ref_date: str, market: str | None = None):
+        if market:
+            run = self._conn.execute(
+                "SELECT * FROM daily_recommendation_runs WHERE ref_date=? AND market=?",
+                (ref_date, market),
+            ).fetchone()
+        else:
+            run = self._conn.execute(
+                "SELECT * FROM daily_recommendation_runs WHERE ref_date=? ORDER BY id DESC LIMIT 1",
+                (ref_date,),
+            ).fetchone()
         if not run:
             return None, []
         items = self._conn.execute(
@@ -313,15 +387,17 @@ class Database:
     # Published recommendations (published_recommendation_*)
     # ------------------------------------------------------------------
 
-    def publish_recommendations(self, ref_date: str, admin_run: dict,
+    def publish_recommendations(self, ref_date: str, market: str,
+                                admin_run: dict,
                                 admin_items: list[dict]) -> int:
         self._conn.execute(
             "DELETE FROM published_recommendation_items WHERE run_id IN "
-            "(SELECT id FROM published_recommendation_runs WHERE ref_date=?)",
-            (ref_date,),
+            "(SELECT id FROM published_recommendation_runs WHERE ref_date=? AND market=?)",
+            (ref_date, market),
         )
         self._conn.execute(
-            "DELETE FROM published_recommendation_runs WHERE ref_date=?", (ref_date,)
+            "DELETE FROM published_recommendation_runs WHERE ref_date=? AND market=?",
+            (ref_date, market),
         )
 
         cur = self._conn.execute(
@@ -329,7 +405,7 @@ class Database:
                (ref_date, market, strategy, result_count, run_status,
                 trigger_source, trigger_note, published_count)
                VALUES (?,?,?,?,?,?,?,?)""",
-            (ref_date, admin_run.get("market", "all"),
+            (ref_date, market,
              admin_run.get("strategy", "dual"), len(admin_items),
              "published", admin_run.get("trigger_source", "system_auto"),
              admin_run.get("trigger_note", ""), len(admin_items)),
@@ -337,14 +413,20 @@ class Database:
         run_id = cur.lastrowid
         self._insert_recommendation_items("published_recommendation_items", run_id, admin_items)
         self._conn.commit()
-        logger.info(f"已发布 {len(admin_items)} 条推荐 ({ref_date})")
+        logger.info(f"Published {len(admin_items)} recommendations ({ref_date}, {market})")
         return run_id
 
-    def get_published_recommendations(self, ref_date: str):
-        run = self._conn.execute(
-            "SELECT * FROM published_recommendation_runs WHERE ref_date=?",
-            (ref_date,),
-        ).fetchone()
+    def get_published_recommendations(self, ref_date: str, market: str | None = None):
+        if market:
+            run = self._conn.execute(
+                "SELECT * FROM published_recommendation_runs WHERE ref_date=? AND market=?",
+                (ref_date, market),
+            ).fetchone()
+        else:
+            run = self._conn.execute(
+                "SELECT * FROM published_recommendation_runs WHERE ref_date=? ORDER BY id DESC LIMIT 1",
+                (ref_date,),
+            ).fetchone()
         if not run:
             return None, []
         items = self._conn.execute(
@@ -353,10 +435,16 @@ class Database:
         ).fetchall()
         return dict(run), [dict(i) for i in items]
 
-    def get_latest_published(self):
-        run = self._conn.execute(
-            "SELECT * FROM published_recommendation_runs ORDER BY ref_date DESC LIMIT 1"
-        ).fetchone()
+    def get_latest_published(self, market: str | None = None):
+        if market:
+            run = self._conn.execute(
+                "SELECT * FROM published_recommendation_runs WHERE market=? ORDER BY ref_date DESC LIMIT 1",
+                (market,),
+            ).fetchone()
+        else:
+            run = self._conn.execute(
+                "SELECT * FROM published_recommendation_runs ORDER BY ref_date DESC LIMIT 1"
+            ).fetchone()
         if not run:
             return None, []
         items = self._conn.execute(
@@ -365,12 +453,16 @@ class Database:
         ).fetchall()
         return dict(run), [dict(i) for i in items]
 
-    def list_published_runs(self, limit: int = 20) -> pd.DataFrame:
+    def list_published_runs(self, limit: int = 20, market: str | None = None) -> pd.DataFrame:
+        if market:
+            return pd.read_sql_query(
+                "SELECT * FROM published_recommendation_runs WHERE market=? ORDER BY ref_date DESC LIMIT ?",
+                self._conn, params=(market, limit),
+            )
         return pd.read_sql_query(
             "SELECT * FROM published_recommendation_runs ORDER BY ref_date DESC LIMIT ?",
             self._conn, params=(limit,),
         )
-
     # ------------------------------------------------------------------
     # Win-rate
     # ------------------------------------------------------------------

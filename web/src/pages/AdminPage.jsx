@@ -71,7 +71,7 @@ function UsersSection() {
 }
 
 function RecommendationRunner() {
-  const [market, setMarket] = useState("all");
+  const [market, setMarket] = useState("us_stock");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState(null);
   const intervalRef = useRef(null);
@@ -81,7 +81,7 @@ function RecommendationRunner() {
       try {
         const s = await api.adminTaskStatus();
         setStatus(s);
-        if (s.status === "completed" || s.status === "failed" || s.status === "idle") {
+        if (s.status === "done" || s.status === "failed" || s.status === "idle") {
           clearInterval(intervalRef.current);
           setRunning(false);
         }
@@ -111,8 +111,8 @@ function RecommendationRunner() {
 
   async function handlePublish() {
     try {
-      const result = await api.adminPublish("");
-      alert("已发布 " + result.count + " 条推荐");
+      const result = await api.adminPublish("", market);
+      alert("已发布 " + result.count + " 条推荐 (" + market + ")");
     } catch (err) {
       alert(err.message);
     }
@@ -129,9 +129,8 @@ function RecommendationRunner() {
             onChange={(e) => setMarket(e.target.value)}
             className="rounded-lg border border-surface-3 bg-surface-2 px-3 py-2 text-sm"
           >
-            <option value="all">全部市场</option>
-            <option value="us_stock">仅美股</option>
-            <option value="hk_stock">仅港股</option>
+            <option value="us_stock">美股</option>
+            <option value="hk_stock">港股</option>
           </select>
         </div>
         <button
@@ -153,7 +152,7 @@ function RecommendationRunner() {
       {status && status.status !== "idle" && (
         <div className="mt-4 rounded-lg bg-surface-2 p-3">
           <div className="flex items-center gap-2 text-sm">
-            <Badge variant={status.status === "completed" ? "green" : status.status === "failed" ? "red" : "yellow"}>
+            <Badge variant={status.status === "done" ? "green" : status.status === "failed" ? "red" : "yellow"}>
               {status.status}
             </Badge>
             {status.progress != null && (

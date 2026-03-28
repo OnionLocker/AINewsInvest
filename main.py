@@ -6,6 +6,16 @@ import sys
 
 
 def cmd_serve(args):
+    from pipeline.config import get_config
+    cfg = get_config()
+
+    if cfg.scheduler.enabled:
+        from pipeline.scheduler import start_scheduler
+        start_scheduler(
+            us_time=cfg.scheduler.us_run_time,
+            hk_time=cfg.scheduler.hk_run_time,
+        )
+
     import uvicorn
     uvicorn.run(
         "api.server:app",
@@ -33,6 +43,22 @@ def cmd_screen(args):
     print(f"Screened {len(results)} stocks for {args.market}:")
     for r in results[:10]:
         print(f"  {r['ticker']:>8} {r['name']:<30} score={r['score']:.1f}")
+
+
+def cmd_run(args):
+    from pipeline.runner import run_daily_pipeline
+    print(f"Running pipeline for {args.market}...")
+    result = run_daily_pipeline(
+        market=args.market,
+        force=args.force,
+        trigger_source="cli_manual",
+    )
+    if result.get("skipped"):
+        print(f"Skipped: {result.get('reason', 'already ran')}")
+    else:
+        print(f"Done: {result.get('published_count', 0)} recommendations published")
+        print(f"  ref_date: {result.get('ref_date')}")
+        print(f"  candidates: {result.get('candidate_count', 0)}")
 
 
 def cmd_build_pool(args):
@@ -69,7 +95,7 @@ def main():
     parser = argparse.ArgumentParser(description="Alpha Vault CLI")
     sub = parser.add_subparsers(dest="command")
 
-    p_serve = sub.add_parser("serve", help="Start the API server")
+    p_serve = sub.add_parser("serve", help="Start the API server (with optional scheduler)")
     p_serve.add_argument("--host", default="0.0.0.0")
     p_serve.add_argument("--port", type=int, default=8000)
     p_serve.add_argument("--reload", action="store_true")
@@ -82,6 +108,10 @@ def main():
     p_screen.add_argument("--market", default="us_stock", choices=["us_stock", "hk_stock"])
     p_screen.add_argument("--top-n", type=int, default=20)
 
+    p_run = sub.add_parser("run", help="Run daily pipeline for a single market")
+    p_run.add_argument("--market", required=True, choices=["us_stock", "hk_stock"])
+    p_run.add_argument("--force", action="store_true", help="Force re-run even if already ran today")
+
     p_pool = sub.add_parser("build-pool", help="Build stock pool from index components")
 
     args = parser.parse_args()
@@ -93,6 +123,7 @@ def main():
         "serve": cmd_serve,
         "bootstrap": cmd_bootstrap,
         "screen": cmd_screen,
+        "run": cmd_run,
         "build-pool": cmd_build_pool,
     }
     cmds[args.command](args)

@@ -92,7 +92,7 @@ class StockQueryRequest(BaseModel):
     market: str
 
 class AdminRecommendationRunRequest(BaseModel):
-    market: str = "all"
+    market: str = "us_stock"
     force: bool = False
     note: str = ""
 

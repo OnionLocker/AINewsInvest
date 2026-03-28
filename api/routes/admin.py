@@ -48,7 +48,7 @@ async def set_user_active(username: str, active: bool = True,
 @router.delete("/users/{username}")
 async def delete_user(username: str, admin: User = Depends(require_admin)):
     if username == admin.username:
-        raise HTTPException(400, "Cannot delete yourself")
+        raise HTTPException(400, "不能删除自己")
     um = get_user_manager()
     try:
         um.delete_user(username)
@@ -64,11 +64,15 @@ async def run_recommendations(
 ):
     global _running_task
     if _running_task.get("status") == "running":
-        raise HTTPException(409, "A task is already running")
+        raise HTTPException(409, "已有任务正在运行")
+
+    if req.market not in ("us_stock", "hk_stock"):
+        raise HTTPException(400, "market 参数必须为 us_stock 或 hk_stock")
 
     task_id = str(uuid.uuid4())
     _running_task = {
         "task_id": task_id, "status": "running",
+        "market": req.market,
         "progress": 0, "message": "Starting...",
         "started_at": datetime.utcnow().isoformat(),
     }
@@ -96,7 +100,7 @@ async def run_recommendations(
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
-    return {"task_id": task_id, "status": "running"}
+    return {"task_id": task_id, "status": "running", "market": req.market}
 
 
 @router.get("/recommendations/task-status")
@@ -107,25 +111,28 @@ async def task_status(admin: User = Depends(require_admin)):
 @router.post("/recommendations/publish")
 async def publish_recommendations(
     ref_date: str | None = None,
+    market: str = "us_stock",
     admin: User = Depends(require_admin),
 ):
     from zoneinfo import ZoneInfo
     if not ref_date:
-        ref_date = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d")
+        tz_name = "Asia/Hong_Kong" if market == "hk_stock" else "America/New_York"
+        ref_date = datetime.now(ZoneInfo(tz_name)).strftime("%Y%m%d")
 
     db = Database(SYSTEM_DB_PATH)
     try:
-        run_info, items = db.get_daily_recommendations(ref_date)
+        run_info, items = db.get_daily_recommendations(ref_date, market=market)
         if not run_info:
-            raise HTTPException(404, f"No admin recommendations for {ref_date}")
-        pub_id = db.publish_recommendations(ref_date, run_info, items)
-        return {"published_run_id": pub_id, "count": len(items)}
+            raise HTTPException(404, f"该日期 ({ref_date}) 暂无 {market} 管理端推荐")
+        pub_id = db.publish_recommendations(ref_date, market, run_info, items)
+        return {"published_run_id": pub_id, "count": len(items), "market": market}
     finally:
         db.close()
 
 
 @router.get("/recommendations/both-tables")
 async def both_tables(ref_date: str | None = None,
+                      market: str | None = None,
                       admin: User = Depends(require_admin)):
     from zoneinfo import ZoneInfo
     if not ref_date:
@@ -133,8 +140,8 @@ async def both_tables(ref_date: str | None = None,
 
     db = Database(SYSTEM_DB_PATH)
     try:
-        admin_run, admin_items = db.get_daily_recommendations(ref_date)
-        pub_run, pub_items = db.get_published_recommendations(ref_date)
+        admin_run, admin_items = db.get_daily_recommendations(ref_date, market=market)
+        pub_run, pub_items = db.get_published_recommendations(ref_date, market=market)
         return {
             "admin": {"run": admin_run, "items": admin_items},
             "published": {"run": pub_run, "items": pub_items},

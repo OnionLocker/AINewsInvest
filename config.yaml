@@ -1,14 +1,25 @@
-# Alpha Vault - 港股/美股 AI 投研系统
-# 修改此文件后需重启服务生效
+# Alpha Vault - US/HK AI Investment Research System
+# Restart service after modification
 
 app:
   name: "Alpha Vault"
-  version: "2.0.0"
+  version: "3.0.0"
   host: "0.0.0.0"
   port: 8000
   debug: false
 
-# LLM 设置（兼容 OpenAI API 协议）
+# News data sources (multi-source aggregation)
+# Register free API keys:
+#   Finnhub: https://finnhub.io/register (60 calls/min free)
+#   MarketAux: https://www.marketaux.com/register (free tier)
+# Sources without keys (Yahoo Finance, Google News RSS, SEC EDGAR) always active
+news_sources:
+  finnhub_key: ""
+  marketaux_key: ""
+  max_per_source: 10
+  max_total: 15
+
+# LLM settings (OpenAI API compatible)
 llm:
   enabled: false
   base_url: ""
@@ -18,15 +29,15 @@ llm:
   max_tokens: 2048
   timeout: 60
 
-# LLM Agent 设置
+# LLM Agent settings (6-layer: screen->enrich->news_agent->tech_agent->synthesis->risk_control)
 agent:
-  enabled: false                   # 是否启用 LLM Agent 参与每日推荐评分
-  news_version: "news-sentiment-v1"
-  tech_version: "technical-v1"
-  max_retries: 1                   # LLM 调用失败后重试次数
-  batch_size: 20                   # 每批发送给 Agent 的股票数量
+  enabled: false
+  news_version: "news-sentiment-v2"
+  tech_version: "technical-v2"
+  max_retries: 1
+  batch_size: 40
 
-  fallback:                        # Agent 失败时的确定性打分参数
+  fallback:
     base_score: 50
     ma_bullish_bonus: 12
     ma_short_golden_bonus: 5
@@ -40,30 +51,38 @@ agent:
     take_profit_pct: 1.08
     holding_days: 3
 
-# Pipeline 参数
+# Built-in scheduler (triggers pipelines independently per market)
+# Times are in local timezone: US = Eastern Time, HK = Hong Kong Time
+scheduler:
+  enabled: false
+  us_run_time: "07:30"
+  hk_run_time: "07:30"
+
+# Pipeline parameters
 pipeline:
   max_candidates: 40
   max_recommendations: 20
 
   screening:
-    min_market_cap: 1.0e9          # 最小市值（美元），10亿
-    min_avg_volume: 500000         # 最近20日均成交量
-    max_pe: 80.0                   # PE(TTM) 上限
-    min_pe: 0                      # PE 下限（排除负值设0）
-    max_pb: 15.0                   # PB 上限
-    weight_volume: 0.25            # 成交量排名权重
-    weight_momentum: 0.30          # 动量排名权重
-    weight_market_cap: 0.20        # 市值排名权重
-    weight_volatility: 0.25        # 波动率排名权重
+    min_market_cap: 1.0e9
+    min_avg_volume: 500000
+    max_pe: 80.0
+    min_pe: 0
+    max_pb: 15.0
+    weight_volume: 0.25
+    weight_momentum: 0.30
+    weight_market_cap: 0.20
+    weight_volatility: 0.25
 
   synthesis:
     news_weight: 0.35
-    tech_weight: 0.40
-    fundamental_weight: 0.25
-    min_confidence: 50
-    quality_threshold: 45
-    adaptive_threshold_drop: 20    # 弱市自适应降低阈值幅度
-    adaptive_threshold_floor: 30   # 自适应阈值下限
+    tech_weight: 0.65
+    fundamental_weight: 0.0
+    min_confidence: 55
+    quality_threshold: 50
+    adaptive_threshold_drop: 20
+    adaptive_threshold_floor: 30
+    cross_fill_factor: 0.3
 
   short_term:
     max_recommendations: 8
@@ -93,20 +112,20 @@ pipeline:
     evaluation_retention_days: 21
     enable_auto_cleanup: true
 
-# 股票池配置
+# Stock pool
 stock_pool:
   us_stock:
-    - index: "^GSPC"               # 标普500
+    - index: "^GSPC"
       name: "S&P 500"
-    - index: "^NDX"                # 纳斯达克100
+    - index: "^NDX"
       name: "Nasdaq 100"
   hk_stock:
-    - index: "^HSI"                # 恒生指数
+    - index: "^HSI"
       name: "Hang Seng Index"
-    - index: "^HSTECH"             # 恒生科技指数
+    - index: "^HSTECH"
       name: "Hang Seng Tech"
 
-# 市场参数
+# Market parameters
 market:
   us_stock:
     currency: "USD"

@@ -48,10 +48,20 @@ const api = {
   marketOverview: () => get("/api/market-overview"),
   stockQuery: (d) => post("/api/stock-query", d),
 
-  // recommendations
+  // market sentiment
+  marketSentiment: (market) => get(`/api/market-sentiment/${market}`),
+
+  // recommendations (legacy)
   todayRecs: () => get("/api/recommendations/today"),
   recHistory: (limit = 20) => get(`/api/recommendations/history?limit=${limit}`),
   recByDate: (date) => get(`/api/recommendations/${date}`),
+
+  // recommendations (market-scoped: market = "us" | "hk")
+  marketTodayRecs: (market) => get(`/api/recommendations/${market}/today`),
+  marketRecHistory: (market, limit = 20) =>
+    get(`/api/recommendations/${market}/history?limit=${limit}`),
+  marketRecByDate: (market, date) =>
+    get(`/api/recommendations/${market}/${date}`),
 
   // screening
   runScreen: (d) => post("/api/screen", d),
@@ -80,11 +90,11 @@ const api = {
   adminDeleteUser: (username) => del(`/api/admin/users/${username}`),
   adminRunRecs: (d) => post("/api/admin/recommendations/run", d),
   adminTaskStatus: () => get("/api/admin/recommendations/task-status"),
-  adminPublish: (refDate) =>
-    post(`/api/admin/recommendations/publish?ref_date=${refDate || ""}`),
-  adminBothTables: (refDate) =>
+  adminPublish: (refDate, market) =>
+    post(`/api/admin/recommendations/publish?ref_date=${refDate || ""}&market=${market || "us_stock"}`),
+  adminBothTables: (refDate, market) =>
     get(
-      `/api/admin/recommendations/both-tables${refDate ? `?ref_date=${refDate}` : ""}`,
+      `/api/admin/recommendations/both-tables${refDate ? `?ref_date=${refDate}` : ""}${market ? `${refDate ? "&" : "?"}market=${market}` : ""}`,
     ),
 };
 

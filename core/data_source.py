@@ -255,6 +255,64 @@ def _hstech_components() -> list[dict]:
     ]]
 
 
+def _get_market_breadth(market: str) -> dict:
+    """Get advance/decline breadth data for a market.
+
+    Uses a sample of major index components to estimate market breadth.
+    """
+    try:
+        if market == "us_stock":
+            symbols = [
+                "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA",
+                "BRK-B", "JPM", "V", "JNJ", "UNH", "XOM", "PG", "MA",
+                "HD", "CVX", "LLY", "ABBV", "MRK", "PEP", "KO", "COST",
+                "AVGO", "TMO", "WMT", "MCD", "CRM", "CSCO", "ACN",
+            ]
+        else:
+            symbols = [
+                "0700.HK", "9988.HK", "3690.HK", "1810.HK", "0005.HK",
+                "0388.HK", "0941.HK", "1299.HK", "0883.HK", "0002.HK",
+                "0016.HK", "0003.HK", "0011.HK", "2318.HK", "0027.HK",
+                "0001.HK", "0006.HK", "0012.HK", "1038.HK", "0017.HK",
+            ]
+
+        tickers_obj = yf.Tickers(" ".join(symbols))
+        advance = 0
+        decline = 0
+        unchanged = 0
+
+        for sym in symbols:
+            try:
+                info = tickers_obj.tickers[sym.replace("-", "-")].fast_info
+                price = getattr(info, "last_price", None)
+                prev = getattr(info, "previous_close", None)
+                if price and prev and prev > 0:
+                    pct = (price - prev) / prev * 100
+                    if pct > 0.05:
+                        advance += 1
+                    elif pct < -0.05:
+                        decline += 1
+                    else:
+                        unchanged += 1
+            except Exception:
+                continue
+
+        total = advance + decline + unchanged
+        if total == 0:
+            return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
+
+        return {
+            "advance": advance,
+            "decline": decline,
+            "unchanged": unchanged,
+            "total": total,
+            "advance_pct": round(advance / total * 100, 1),
+        }
+    except Exception as e:
+        logger.warning(f"Market breadth failed: {e}")
+        return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
+
+
 def get_market_indices() -> list[dict]:
     indices = [
         ("^GSPC", "标普500", "us_stock"), ("^IXIC", "纳斯达克", "us_stock"),

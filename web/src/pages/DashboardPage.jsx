@@ -73,7 +73,7 @@ export default function DashboardPage() {
             今日推荐
           </CardTitle>
           <Link
-            to="/recommendations"
+            to="/recommendations/us"
             className="text-xs text-brand-400 hover:underline"
           >
             查看全部

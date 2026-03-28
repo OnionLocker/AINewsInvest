@@ -32,10 +32,10 @@ class ScreeningConfig:
 class SynthesisConfig:
     """Score synthesis weights and thresholds."""
     news_weight: float = 0.35
-    tech_weight: float = 0.40
-    fundamental_weight: float = 0.25
-    min_confidence: int = 50
-    quality_threshold: int = 45
+    tech_weight: float = 0.65
+    fundamental_weight: float = 0.0
+    min_confidence: int = 55
+    quality_threshold: int = 50
     adaptive_threshold_drop: int = 20
     adaptive_threshold_floor: int = 30
     cross_fill_factor: float = 0.3
@@ -76,6 +76,15 @@ class WinRateConfig:
     swing_retention_days: int = 90
     evaluation_retention_days: int = 21
     enable_auto_cleanup: bool = True
+
+
+@dataclass
+class NewsSourceConfig:
+    """Multi-source news aggregation settings."""
+    finnhub_key: str = ""
+    marketaux_key: str = ""
+    max_per_source: int = 10
+    max_total: int = 15
 
 
 @dataclass
@@ -121,6 +130,14 @@ class AgentConfig:
 
 
 @dataclass
+class SchedulerConfig:
+    """Built-in pipeline scheduler settings."""
+    enabled: bool = False
+    us_run_time: str = "07:30"
+    hk_run_time: str = "07:30"
+
+
+@dataclass
 class MarketInfo:
     """Per-market metadata."""
     currency: str = "USD"
@@ -154,8 +171,10 @@ class PipelineConfig:
     short_term: ShortTermConfig = field(default_factory=ShortTermConfig)
     swing: SwingConfig = field(default_factory=SwingConfig)
     win_rate: WinRateConfig = field(default_factory=WinRateConfig)
+    news: NewsSourceConfig = field(default_factory=NewsSourceConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
     markets: dict[str, MarketInfo] = field(default_factory=dict)
     stock_pool: dict[str, list[IndexEntry]] = field(default_factory=dict)
@@ -175,9 +194,11 @@ class PipelineConfig:
 
         pipe = raw.get("pipeline", {}) or {}
         llm_raw = raw.get("llm", {}) or {}
+        news_raw = raw.get("news_sources", {}) or {}
         mkt_raw = raw.get("market", {}) or {}
         pool_raw = raw.get("stock_pool", {}) or {}
         agent_raw = raw.get("agent", {}) or {}
+        sched_raw = raw.get("scheduler", {}) or {}
 
         markets = {}
         for key, val in mkt_raw.items():
@@ -205,8 +226,10 @@ class PipelineConfig:
             short_term=_load_dc(ShortTermConfig, pipe.get("short_term", {})),
             swing=_load_dc(SwingConfig, pipe.get("swing", {})),
             win_rate=_load_dc(WinRateConfig, pipe.get("win_rate", {})),
+            news=_load_dc(NewsSourceConfig, news_raw),
             llm=_load_dc(LLMConfig, llm_raw),
             agent=agent_cfg,
+            scheduler=_load_dc(SchedulerConfig, sched_raw),
             markets=markets,
             stock_pool=stock_pool,
         )

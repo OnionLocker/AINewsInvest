@@ -1,8 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
-  LayoutDashboard,
-  Star,
+  DollarSign,
+  TrendingUp,
   Search,
   BarChart3,
   Heart,
@@ -14,8 +14,8 @@ import {
 import { useState } from "react";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "仪表盘" },
-  { to: "/recommendations", icon: Star, label: "推荐列表" },
+  { to: "/recommendations/us", icon: DollarSign, label: "美股推荐" },
+  { to: "/recommendations/hk", icon: TrendingUp, label: "港股推荐" },
   { to: "/screening", icon: Search, label: "选股筛选" },
   { to: "/analysis", icon: BarChart3, label: "深度分析" },
   { to: "/watchlist", icon: Heart, label: "自选股" },
@@ -25,17 +25,16 @@ function SideLink({ to, icon: Icon, label, onClick }) {
   return (
     <NavLink
       to={to}
-      end={to === "/"}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+        `flex items-center gap-3 rounded-lg px-5 py-3.5 text-lg font-medium transition-colors ${
           isActive
             ? "bg-brand-600/20 text-brand-400"
             : "text-gray-400 hover:bg-surface-2 hover:text-gray-200"
         }`
       }
     >
-      <Icon size={18} />
+      <Icon size={22} />
       {label}
     </NavLink>
   );
@@ -54,7 +53,7 @@ export default function Layout() {
         <span className="text-lg font-semibold tracking-tight">Alpha Vault</span>
       </div>
 
-      <div className="flex-1 space-y-1 px-3 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 space-y-1.5 px-3 overflow-y-auto scrollbar-thin">
         {navItems.map((item) => (
           <SideLink key={item.to} {...item} onClick={() => setSidebarOpen(false)} />
         ))}
@@ -90,7 +89,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-surface-0">
-      <aside className="hidden w-56 shrink-0 border-r border-surface-3 bg-surface-1 lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-surface-3 bg-surface-1 lg:block">
         {sidebar}
       </aside>
 
@@ -101,7 +100,7 @@ export default function Layout() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-surface-1 transition-transform lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface-1 transition-transform lg:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

@@ -96,17 +96,17 @@ def llm_analyze_stock(
     if not _is_enabled():
         return None
     blocks = [
-        f"閺嶅洨娈�: {ticker} ({name or 'N/A'}) 鐢倸婧€: {market}",
+        f"Stock: {ticker} ({name or 'N/A'}) Market: {market}",
         "## Technical Analysis\n```json\n"
         + json.dumps(tech_data, ensure_ascii=False, default=str, indent=2)
         + "\n```",
-        "## 閺備即妞圽n```json\n"
+        "## News\n```json\n"
         + json.dumps(news_items[:15], ensure_ascii=False, default=str, indent=2)
         + "\n```",
     ]
     if fundamental_data is not None:
         blocks.append(
-            "## 閸╃儤婀伴棃顣俷```json\n"
+            "## Fundamentals\n```json\n"
             + json.dumps(fundamental_data, ensure_ascii=False, default=str, indent=2)
             + "\n```"
         )

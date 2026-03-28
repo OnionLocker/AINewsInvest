@@ -1,4 +1,4 @@
-"""Recommendation routes -- today, history, screen."""
+"""Recommendation routes -- today, history, screen, with market-scoped endpoints."""
 from __future__ import annotations
 
 from typing import Any
@@ -18,13 +18,22 @@ def _get_user_db(user: User) -> Database:
     return Database(user.db_path)
 
 
+def _tz_for_market(market: str) -> str:
+    return "Asia/Hong_Kong" if market == "hk_stock" else "America/New_York"
+
+
+def _ref_date_for_market(market: str) -> str:
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    return datetime.now(ZoneInfo(_tz_for_market(market))).strftime("%Y%m%d")
+
+
+# ---- Legacy (backward compat) ----
+
 @router.get("/recommendations/today")
 async def today_recommendations(user: User = Depends(get_current_user)):
     def _work():
-        from zoneinfo import ZoneInfo
-        from datetime import datetime
-        ref_date = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d")
-
+        ref_date = _ref_date_for_market("us_stock")
         db = Database(SYSTEM_DB_PATH)
         try:
             run_info, items = db.get_published_recommendations(ref_date)
@@ -36,21 +45,9 @@ async def today_recommendations(user: User = Depends(get_current_user)):
                         "display_message": f"显示最近一次推荐 ({last_run.get('ref_date', '?')})",
                     }
                 return {"run": None, "items": [], "display_message": "暂无推荐数据"}
-
-            user_db = _get_user_db(user)
-            try:
-                watchlist = user_db.list_watchlist()
-            finally:
-                user_db.close()
-
-            watch_tickers = {(w["ticker"], w["market"]) for w in watchlist}
-            for item in items:
-                item["in_watchlist"] = (item["ticker"], item["market"]) in watch_tickers
-
             return {"run": run_info, "items": items}
         finally:
             db.close()
-
     return await run_in_threadpool(_work)
 
 
@@ -67,7 +64,7 @@ async def recommendation_history(
             {
                 "id": int(row["id"]),
                 "ref_date": row["ref_date"],
-                "market": row.get("market", "all"),
+                "market": row.get("market", "us_stock"),
                 "result_count": int(row["result_count"]),
                 "published_count": int(row.get("published_count", row["result_count"])),
                 "run_status": row.get("run_status", "published"),
@@ -93,6 +90,97 @@ async def recommendations_by_date(
     finally:
         db.close()
 
+
+# ---- Market-scoped endpoints ----
+
+@router.get("/recommendations/{market}/today")
+async def market_today_recommendations(
+    market: str, user: User = Depends(get_current_user),
+):
+    if market not in ("us", "hk"):
+        raise HTTPException(400, "market 参数必须为 us 或 hk")
+    mkt = f"{market}_stock"
+
+    def _work():
+        ref_date = _ref_date_for_market(mkt)
+        db = Database(SYSTEM_DB_PATH)
+        try:
+            run_info, items = db.get_published_recommendations(ref_date, market=mkt)
+            if not run_info:
+                last_run, last_items = db.get_latest_published(market=mkt)
+                if last_run:
+                    return {
+                        "run": last_run, "items": last_items,
+                        "display_message": f"显示最近一次推荐 ({last_run.get('ref_date', '?')})",
+                    }
+                return {"run": None, "items": [], "display_message": "暂无推荐数据"}
+
+            user_db = _get_user_db(user)
+            try:
+                watchlist = user_db.list_watchlist()
+            finally:
+                user_db.close()
+
+            watch_tickers = {(w["ticker"], w["market"]) for w in watchlist}
+            for item in items:
+                item["in_watchlist"] = (item["ticker"], item["market"]) in watch_tickers
+
+            return {"run": run_info, "items": items}
+        finally:
+            db.close()
+
+    return await run_in_threadpool(_work)
+
+
+@router.get("/recommendations/{market}/history")
+async def market_recommendation_history(
+    market: str, limit: int = 20, user: User = Depends(get_current_user),
+):
+    if market not in ("us", "hk"):
+        raise HTTPException(400, "market 参数必须为 us 或 hk")
+    mkt = f"{market}_stock"
+
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        runs = db.list_published_runs(limit=limit, market=mkt)
+        if runs.empty:
+            return []
+        return [
+            {
+                "id": int(row["id"]),
+                "ref_date": row["ref_date"],
+                "market": row.get("market", mkt),
+                "result_count": int(row["result_count"]),
+                "published_count": int(row.get("published_count", row["result_count"])),
+                "run_status": row.get("run_status", "published"),
+                "created_at": row.get("created_at"),
+                "published_at": row.get("published_at"),
+            }
+            for _, row in runs.iterrows()
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/recommendations/{market}/{ref_date}")
+async def market_recommendations_by_date(
+    market: str, ref_date: str, user: User = Depends(get_current_user),
+):
+    if market not in ("us", "hk"):
+        raise HTTPException(400, "market 参数必须为 us 或 hk")
+    mkt = f"{market}_stock"
+
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        run_info, items = db.get_published_recommendations(ref_date, market=mkt)
+        if not run_info:
+            raise HTTPException(404, f"该日期 ({ref_date}) 暂无{mkt}推荐")
+        return {"run": run_info, "items": items}
+    finally:
+        db.close()
+
+
+# ---- Screening (unchanged) ----
 
 @router.post("/screen")
 async def run_screening(req: ScreenRequest, user: User = Depends(get_current_user)):

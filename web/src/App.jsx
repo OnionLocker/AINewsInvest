@@ -3,7 +3,6 @@ import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import PrivateRoute from "./components/PrivateRoute";
 import LoginPage from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import ScreeningPage from "./pages/ScreeningPage";
 import AnalysisPage from "./pages/AnalysisPage";
@@ -26,8 +25,9 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route element={<PrivateRoute />}>
         <Route element={<Layout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="recommendations" element={<RecommendationsPage />} />
+          <Route index element={<Navigate to="/recommendations/us" replace />} />
+          <Route path="recommendations/us" element={<RecommendationsPage market="us" />} />
+          <Route path="recommendations/hk" element={<RecommendationsPage market="hk" />} />
           <Route path="screening" element={<ScreeningPage />} />
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="watchlist" element={<WatchlistPage />} />
