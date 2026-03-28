@@ -1,0 +1,6 @@
+# Alpha Vault scheduled tasks
+# Run daily pipeline at 9:00 PM ET (US market close + buffer)
+0 21 * * 1-5 /root/AINewsInvest/AINewsInvest/deploy/daily_pipeline.sh
+
+# Rebuild stock pool weekly on Sunday
+0 10 * * 0 /root/AINewsInvest/AINewsInvest/deploy/build_pool.sh

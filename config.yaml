@@ -1,57 +1,120 @@
-# config.yaml - AI 投研系统全局配置
-# 修改此文件不需要重启，系统会自动热重载
+# Alpha Vault - 港股/美股 AI 投研系统
+# 修改此文件后需重启服务生效
 
 app:
-  name: "AI 投研系统"
-  version: "0.2.0"
+  name: "Alpha Vault"
+  version: "2.0.0"
   host: "0.0.0.0"
-  port: 5000
+  port: 8000
   debug: false
 
-# Gunicorn 生产部署参数
-gunicorn:
-  workers: 2
-  bind: "0.0.0.0:5000"
-  timeout: 120
-
-# 通知设置
-notify:
-  telegram_timeout: 10       # Telegram API 请求超时（秒）
-  webhook_timeout: 10        # Webhook 请求超时（秒）
-
-# ═══════════════════════════════════════════════════════
 # LLM 设置（兼容 OpenAI API 协议）
-# 支持：OpenClaw / vLLM / Ollama / ChatGPT / DeepSeek
-# ═══════════════════════════════════════════════════════
 llm:
-  enabled: false              # 设为 true 启用 LLM 深度分析
-  base_url: ""                # 例: http://127.0.0.1:8000 (OpenClaw/vLLM)
-                              #     http://127.0.0.1:11434 (Ollama)
-                              #     https://api.openai.com  (ChatGPT)
-                              #     https://api.deepseek.com (DeepSeek)
-  model: ""                   # 模型名称，例: openclaw-7b / llama3 / gpt-4o / deepseek-chat
-  api_key: ""                 # 可留空（本地部署通常不需要 key）
-  temperature: 0.3            # 生成温度，越低越确定
-  max_tokens: 2048            # 单次最大生成 token
-  timeout: 60                 # 请求超时（秒）
+  enabled: false
+  base_url: ""
+  model: ""
+  api_key: ""
+  temperature: 0.3
+  max_tokens: 2048
+  timeout: 60
 
-# 基本面分析
-fundamental:
-  enabled: true                 # 是否启用基本面分析
-  cache_ttl: 86400              # 财务数据缓存TTL（秒），默认24小时
+# LLM Agent 设置
+agent:
+  enabled: false                   # 是否启用 LLM Agent 参与每日推荐评分
+  news_version: "news-sentiment-v1"
+  tech_version: "technical-v1"
+  max_retries: 1                   # LLM 调用失败后重试次数
+  batch_size: 20                   # 每批发送给 Agent 的股票数量
 
-# 股票筛选参数
-screener:
-  vol_multiplier: 2.0         # 量能放大倍数阈值
-  price_change_threshold: 3.0 # 日涨跌幅异常阈值 (%)
-  max_screened_per_market: 10 # 每市场最多筛出标的数
-  # 基本面筛选参数
-  pe_range: [3, 25]           # PE(TTM) 范围
-  pb_range: [0.3, 3.0]        # PB 范围
-  min_roe: 5.0                # 最低ROE(%)
-  min_dividend_yield: 2.0     # 最低股息率(%)
+  fallback:                        # Agent 失败时的确定性打分参数
+    base_score: 50
+    ma_bullish_bonus: 12
+    ma_short_golden_bonus: 5
+    ma_bearish_penalty: 10
+    volume_ratio_strong: 1.5
+    volume_strong_bonus: 8
+    volume_ratio_medium: 1.0
+    volume_medium_bonus: 3
+    entry_discount: 0.995
+    stop_loss_pct: 0.95
+    take_profit_pct: 1.08
+    holding_days: 3
 
-# 准确率追踪
-tracking:
-  eval_days: 10               # 评估周期（交易日）
-  auto_expire: true           # 超期自动标记 expired
+# Pipeline 参数
+pipeline:
+  max_candidates: 40
+  max_recommendations: 20
+
+  screening:
+    min_market_cap: 1.0e9          # 最小市值（美元），10亿
+    min_avg_volume: 500000         # 最近20日均成交量
+    max_pe: 80.0                   # PE(TTM) 上限
+    min_pe: 0                      # PE 下限（排除负值设0）
+    max_pb: 15.0                   # PB 上限
+    weight_volume: 0.25            # 成交量排名权重
+    weight_momentum: 0.30          # 动量排名权重
+    weight_market_cap: 0.20        # 市值排名权重
+    weight_volatility: 0.25        # 波动率排名权重
+
+  synthesis:
+    news_weight: 0.35
+    tech_weight: 0.40
+    fundamental_weight: 0.25
+    min_confidence: 50
+    quality_threshold: 45
+    adaptive_threshold_drop: 20    # 弱市自适应降低阈值幅度
+    adaptive_threshold_floor: 30   # 自适应阈值下限
+
+  short_term:
+    max_recommendations: 8
+    news_weight: 0.30
+    tech_weight: 0.50
+    fundamental_weight: 0.20
+    default_stop_loss_pct: 0.95
+    default_take_profit_pct: 1.08
+    take_profit_2_pct: 1.12
+    default_holding_days: 3
+    max_holding_days: 5
+
+  swing:
+    max_recommendations: 8
+    news_weight: 0.40
+    tech_weight: 0.35
+    fundamental_weight: 0.25
+    default_stop_loss_pct: 0.92
+    default_take_profit_pct: 1.15
+    take_profit_2_pct: 1.25
+    default_holding_days: 10
+    max_holding_days: 30
+
+  win_rate:
+    short_retention_days: 21
+    swing_retention_days: 90
+    evaluation_retention_days: 21
+    enable_auto_cleanup: true
+
+# 股票池配置
+stock_pool:
+  us_stock:
+    - index: "^GSPC"               # 标普500
+      name: "S&P 500"
+    - index: "^NDX"                # 纳斯达克100
+      name: "Nasdaq 100"
+  hk_stock:
+    - index: "^HSI"                # 恒生指数
+      name: "Hang Seng Index"
+    - index: "^HSTECH"             # 恒生科技指数
+      name: "Hang Seng Tech"
+
+# 市场参数
+market:
+  us_stock:
+    currency: "USD"
+    currency_symbol: "$"
+    timezone: "America/New_York"
+    trading_hours: "09:30-16:00"
+  hk_stock:
+    currency: "HKD"
+    currency_symbol: "HK$"
+    timezone: "Asia/Hong_Kong"
+    trading_hours: "09:30-16:00"

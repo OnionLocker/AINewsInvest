@@ -1,395 +1,129 @@
-"""
-analysis/valuation.py - 估值引擎
+"""US/HK stock floor valuation helpers."""
+from __future__ import annotations
 
-职责: 基于财务数据和市场价格, 计算多维度估值指标与安全边际。
-     本模块不获取数据, 所有数据通过参数传入。
+from typing import Any
 
-公开接口:
-    valuate(financial_data, current_price) -> dict | None
+from loguru import logger
 
-估值方法来源:
-    - 地板价 5 种方法 (龟龟框架 screener_core.py)
-    - 穿透回报率 / Owner Earnings (龟龟框架 Phase 3)
-    - 安全边际计算
-"""
-from utils.logger import app_logger
+_DDM_REQUIRED_RETURN = 0.10
+_FCF_CAP_RATE = 0.12
+_PENETRATION_A = 12.0
+_PENETRATION_B = 6.0
 
 
-# ══════════════════════════════════════════════════════════════
-# 公开接口
-# ══════════════════════════════════════════════════════════════
+def _f(x: Any) -> float | None:
+    if x is None:
+        return None
+    try:
+        v = float(x)
+        return v if v == v else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _floor_bvps(fin: dict) -> float | None:
+    bv = _f(fin.get("book_value"))
+    if bv is None or bv <= 0:
+        return None
+    return bv
+
+
+def _floor_ddm(fin: dict, current_price: float) -> float | None:
+    y = _f(fin.get("dividend_yield"))
+    if y is None or y <= 0 or current_price <= 0:
+        return None
+    dps = current_price * y
+    return dps / _DDM_REQUIRED_RETURN
+
+
+def _floor_fcf_cap(fin: dict) -> float | None:
+    fcf = _f(fin.get("free_cashflow"))
+    sh = _f(fin.get("shares_outstanding"))
+    if fcf is None or sh is None or sh <= 0 or fcf <= 0:
+        return None
+    fcf_ps = fcf / sh
+    return fcf_ps / _FCF_CAP_RATE
+
+
+def _penetration_grade(pct: float) -> str:
+    if pct >= _PENETRATION_A:
+        return "A"
+    if pct >= _PENETRATION_B:
+        return "B"
+    return "C"
+
+
+def _pe_pb_summary(pe: float | None, pb: float | None) -> str:
+    parts: list[str] = []
+    if pe is not None and pe > 0:
+        if pe < 12:
+            parts.append(f"PE(TTM)≈{pe:.1f} 相对偏低")
+        elif pe > 28:
+            parts.append(f"PE(TTM)≈{pe:.1f} 相对偏高")
+        else:
+            parts.append(f"PE(TTM)≈{pe:.1f} 处于常见区间")
+    else:
+        parts.append("PE(TTM)缺失或为负，不宜直接横向比较")
+    if pb is not None and pb > 0:
+        if pb < 1.0:
+            parts.append(f"PB≈{pb:.2f} 低于账面折价区间")
+        elif pb > 3.0:
+        parts.append(f"PB={pb:.2f} 高于常规价值区间")
+        else:
+            parts.append(f"PB≈{pb:.2f} 处于常见区间")
+    else:
+        parts.append("PB缺失，需结合资产质量判断")
+        return "; ".join(parts)
+
 
 def valuate(financial_data: dict, current_price: float) -> dict | None:
-    """
-    对标的进行估值分析。
+    if not financial_data:
+        return None
+    price = _f(current_price)
+    if price is None or price <= 0:
+        logger.debug("valuate: invalid current_price")
+        return None
 
-    参数:
-        financial_data: data.financial.get_financial_data() 的返回值
-        current_price:  当前股价 (本币)
+    floors: list[float] = []
+    b = _floor_bvps(financial_data)
+    if b is not None:
+        floors.append(b)
+    d = _floor_ddm(financial_data, price)
+    if d is not None:
+        floors.append(d)
+    fcfp = _floor_fcf_cap(financial_data)
+    if fcfp is not None:
+        floors.append(fcfp)
 
-    返回:
-    {
-        "ticker", "market",
-        "floor_price": {
-            "net_current_asset": float|None,   # 方法1: 净流动资产/股
-            "bvps": float|None,                # 方法2: 每股净资产
-            "dividend_discount": float|None,   # 方法3: 股息折现
-            "pessimistic_fcf": float|None,     # 方法4: 悲观FCF资本化
-            "average": float|None,             # 有效方法的平均
-        },
+    if not floors:
+        logger.debug("valuate: no floor components")
+        return None
+
+    floor_price = sum(floors) / len(floors)
+    safety_margin = (floor_price - price) / price * 100.0
+
+    fcf = _f(financial_data.get("free_cashflow"))
+    sh = _f(financial_data.get("shares_outstanding"))
+    oe_ps: float | None = None
+    if fcf is not None and sh is not None and sh > 0:
+        oe_ps = fcf / sh
+    pen_pct: float | None = None
+    pen_grade: str | None = None
+    if oe_ps is not None and oe_ps > 0:
+        pen_pct = oe_ps / price * 100.0
+        pen_grade = _penetration_grade(pen_pct)
+
+    pe_ttm = _f(financial_data.get("pe_ttm"))
+    pb = _f(financial_data.get("pb"))
+
+    return {
+        "floor_price": round(floor_price, 4),
+        "safety_margin": round(safety_margin, 2),
         "penetration_return": {
-            "owner_earnings_per_share": float|None,
-            "rate": float|None,                # %
-            "grade": str,                      # "A" / "B" / "C" / "N/A"
+            "return_pct": round(pen_pct, 2) if pen_pct is not None else None,
+            "grade": pen_grade,
         },
-        "ev_ebitda": {
-            "value": float|None,
-        },
-        "safety_margin": {
-            "current_price": float,
-            "floor_price": float|None,
-            "margin_pct": float|None,          # %
-            "verdict": str,
-        },
-        "valuation_summary": str,
+        "pe_ttm": pe_ttm,
+        "pb": pb,
+        "valuation_summary": _pe_pb_summary(pe_ttm, pb),
     }
-    失败返回 None。
-    """
-    if not financial_data or not financial_data.get("indicators"):
-        return None
-    if not current_price or current_price <= 0:
-        return None
-
-    try:
-        return _valuate_core(financial_data, current_price)
-    except Exception as e:
-        app_logger.warning(
-            f"[估值] 分析失败 {financial_data.get('ticker')}: {e}")
-        return None
-
-
-# ══════════════════════════════════════════════════════════════
-# 核心估值逻辑
-# ══════════════════════════════════════════════════════════════
-
-def _valuate_core(data: dict, price: float) -> dict:
-    indicators = data["indicators"]
-    market_info = data.get("market_info", {})
-    dividends = data.get("dividends", [])
-    latest = indicators[0]
-
-    total_shares_yi = market_info.get("total_shares_yi")
-    total_shares = total_shares_yi * 1e8 if total_shares_yi else None
-
-    floor = _calc_floor_price(indicators, dividends, total_shares)
-    penetration = _calc_penetration_return(indicators, price, total_shares)
-    ev_ebitda = _calc_ev_ebitda(market_info, latest)
-    safety = _calc_safety_margin(price, floor.get("average"))
-
-    cigbutt = None
-    pb = market_info.get("pb")
-    if data["market"] == "a_share" and pb is not None and pb < 1.5:
-        cigbutt = _cigbutt_asset_cushion(indicators, market_info, total_shares)
-
-    result = {
-        "ticker": data["ticker"],
-        "market": data["market"],
-        "floor_price": floor,
-        "penetration_return": penetration,
-        "ev_ebitda": ev_ebitda,
-        "safety_margin": safety,
-        "cigbutt": cigbutt,
-        "valuation_summary": "",
-    }
-    result["valuation_summary"] = _build_summary(result)
-    return result
-
-
-# ══════════════════════════════════════════════════════════════
-# 地板价计算 (4 种方法)
-# ══════════════════════════════════════════════════════════════
-
-def _calc_floor_price(indicators: list[dict], dividends: list[dict],
-                      total_shares: float | None) -> dict:
-    result = {
-        "net_current_asset": None,
-        "bvps": None,
-        "dividend_discount": None,
-        "pessimistic_fcf": None,
-        "average": None,
-    }
-
-    latest = indicators[0] if indicators else {}
-
-    # 方法1: 净流动资产/股 = (流动资产 - 总负债) / 总股本
-    ca = latest.get("current_assets")
-    td = latest.get("total_debt")
-    if ca is not None and td is not None and total_shares and total_shares > 0:
-        nca = (ca - td) * 1e4 / total_shares
-        result["net_current_asset"] = round(nca, 2) if nca > 0 else 0
-
-    # 方法2: 每股净资产 (BVPS)
-    bvps = latest.get("bvps")
-    if bvps is not None and bvps > 0:
-        result["bvps"] = round(bvps, 2)
-
-    # 方法3: 股息折现 = 近3年平均每股股利 / 无风险利率
-    RISK_FREE_RATE = 0.025
-    recent_divs = [d["dps"] for d in dividends[:3] if d.get("dps") and d["dps"] > 0]
-    if recent_divs:
-        avg_dps = sum(recent_divs) / len(recent_divs)
-        result["dividend_discount"] = round(avg_dps / RISK_FREE_RATE, 2)
-
-    # 方法4: 悲观FCF资本化
-    # FCF ≈ 净利润 × OCF/利润比 (简化, 未扣除 CapEx, 留待 Phase 2 增强)
-    # 取近3年最低 FCF 近似值 / (无风险利率 + 风险溢价)
-    DISCOUNT_RATE = RISK_FREE_RATE + 0.03
-    fcf_estimates = []
-    for ind in indicators[:3]:
-        np_val = ind.get("net_profit")
-        ocf_r = ind.get("ocf_to_profit")
-        if np_val is not None and ocf_r is not None and ocf_r > 0:
-            fcf_approx = np_val * min(ocf_r, 1.0)
-            fcf_estimates.append(fcf_approx)
-    if fcf_estimates and total_shares and total_shares > 0:
-        min_fcf = min(fcf_estimates)
-        if min_fcf > 0:
-            result["pessimistic_fcf"] = round(
-                min_fcf * 1e4 / total_shares / DISCOUNT_RATE, 2)
-
-    # 平均地板价
-    valid = [v for v in result.values() if isinstance(v, (int, float)) and v > 0]
-    if valid:
-        result["average"] = round(sum(valid) / len(valid), 2)
-
-    return result
-
-
-# ══════════════════════════════════════════════════════════════
-# 穿透回报率
-# ══════════════════════════════════════════════════════════════
-
-def _calc_penetration_return(indicators: list[dict], price: float,
-                             total_shares: float | None) -> dict:
-    """
-    穿透回报率 = Owner Earnings / 市值
-    Owner Earnings ≈ 净利润 × min(OCF/利润比, 1.0)
-    (简化版: 未单独扣除维护性 CapEx, 用 OCF/利润比作为近似)
-    """
-    empty = {"owner_earnings_per_share": None, "rate": None, "grade": "N/A"}
-
-    if not total_shares or total_shares <= 0 or price <= 0:
-        return empty
-
-    latest = indicators[0] if indicators else {}
-    np_val = latest.get("net_profit")
-    ocf_r = latest.get("ocf_to_profit")
-
-    if np_val is None:
-        return empty
-
-    ocf_factor = min(ocf_r, 1.2) if ocf_r is not None and ocf_r > 0 else 0.7
-    owner_earnings = np_val * ocf_factor * 1e4
-    oe_per_share = owner_earnings / total_shares
-    market_cap = price * total_shares
-    rate = (owner_earnings / market_cap) * 100 if market_cap > 0 else None
-
-    if rate is None:
-        grade = "N/A"
-    elif rate >= 15:
-        grade = "A"
-    elif rate >= 8:
-        grade = "B"
-    else:
-        grade = "C"
-
-    return {
-        "owner_earnings_per_share": round(oe_per_share, 2),
-        "rate": round(rate, 2) if rate is not None else None,
-        "grade": grade,
-    }
-
-
-# ══════════════════════════════════════════════════════════════
-# EV/EBITDA (简化)
-# ══════════════════════════════════════════════════════════════
-
-def _calc_ev_ebitda(market_info: dict, latest_ind: dict) -> dict:
-    """
-    EV/EBITDA 简化计算
-    EV = 市值 + 净负债
-    EBITDA ≈ 净利润 / 净利率 × (1 + 折旧摊销估算)
-    由于缺少精确折旧数据, 此处用 PE 的 0.7-0.85 倍做粗略估算
-    """
-    pe = market_info.get("pe_ttm")
-    if pe is not None and pe > 0:
-        ev_ebitda_approx = pe * 0.75
-        return {"value": round(ev_ebitda_approx, 1)}
-    return {"value": None}
-
-
-# ══════════════════════════════════════════════════════════════
-# 安全边际
-# ══════════════════════════════════════════════════════════════
-
-def _calc_safety_margin(current_price: float,
-                        floor_price: float | None) -> dict:
-    if floor_price is None or floor_price <= 0:
-        return {
-            "current_price": current_price,
-            "floor_price": None,
-            "margin_pct": None,
-            "verdict": "数据不足",
-        }
-
-    margin = (floor_price - current_price) / current_price * 100
-
-    if margin >= 30:
-        verdict = "充足"
-    elif margin >= 10:
-        verdict = "适中"
-    elif margin >= 0:
-        verdict = "不足"
-    else:
-        verdict = "溢价"
-
-    return {
-        "current_price": round(current_price, 2),
-        "floor_price": round(floor_price, 2),
-        "margin_pct": round(margin, 1),
-        "verdict": verdict,
-    }
-
-
-
-# ══════════════════════════════════════════════════════════════
-# 烟蒂股资产垫分析 (A股 PB<1.5 时触发)
-# ══════════════════════════════════════════════════════════════
-
-def _cigbutt_asset_cushion(indicators: list[dict], market_info: dict,
-                           total_shares: float | None) -> dict | None:
-    """
-    参考烟蒂股 Prompt v1.8 的三层资产垫体系:
-    T0: 净有息负债 / EBITDA < 3 (负债安全度)
-    T1: (现金+短期投资 - 有息负债) / 市值 (净现金占比)
-    T2: (净流动资产 - 总负债) / 市值 (Ben Graham NCAV 折价)
-
-    仅在 A股 + PB<1.5 时调用, 用于识别深度价值标的。
-    """
-    latest = indicators[0] if indicators else {}
-    market_cap_yi = market_info.get("market_cap")
-    if not market_cap_yi or market_cap_yi <= 0:
-        return None
-
-    market_cap_wan = market_cap_yi * 1e4
-
-    net_profit = latest.get("net_profit")
-    total_debt = latest.get("total_debt")
-    current_assets = latest.get("current_assets")
-
-    cash = latest.get("cash", 0) or 0
-    short_invest = latest.get("short_invest", 0) or 0
-    interest_debt = latest.get("interest_debt") or total_debt or 0
-
-    # T0: 净有息负债 / EBITDA
-    t0_ratio = None
-    t0_safe = None
-    if net_profit and net_profit > 0 and interest_debt is not None:
-        net_margin = latest.get("net_margin")
-        if net_margin and net_margin > 0:
-            revenue_approx = net_profit / (net_margin / 100)
-            ebitda_approx = revenue_approx * 0.15
-            if ebitda_approx > 0:
-                net_interest_debt = interest_debt - cash - short_invest
-                t0_ratio = round(net_interest_debt / ebitda_approx, 2)
-                t0_safe = t0_ratio < 3
-
-    # T1: (现金+短投 - 有息负债) / 市值
-    t1_ratio = None
-    if market_cap_wan > 0:
-        net_cash = (cash + short_invest - interest_debt)
-        t1_ratio = round(net_cash / market_cap_wan * 100, 2)
-
-    # T2: NCAV / 市值 (Ben Graham 公式)
-    t2_ratio = None
-    if current_assets is not None and total_debt is not None and market_cap_wan > 0:
-        ncav = current_assets - total_debt
-        t2_ratio = round(ncav / market_cap_wan * 100, 2)
-
-    # 综合评级
-    score = 0
-    if t0_safe is True:
-        score += 1
-    if t1_ratio is not None and t1_ratio > 0:
-        score += 1
-    if t2_ratio is not None and t2_ratio > 50:
-        score += 1
-
-    if score >= 3:
-        grade = "强资产垫"
-    elif score >= 2:
-        grade = "中等资产垫"
-    elif score >= 1:
-        grade = "弱资产垫"
-    else:
-        grade = "无资产垫"
-
-    return {
-        "t0_net_debt_ebitda": t0_ratio,
-        "t0_safe": t0_safe,
-        "t1_net_cash_pct": t1_ratio,
-        "t2_ncav_pct": t2_ratio,
-        "score": score,
-        "grade": grade,
-    }
-
-
-# ══════════════════════════════════════════════════════════════
-# 文字总结
-# ══════════════════════════════════════════════════════════════
-
-def _build_summary(result: dict) -> str:
-    parts = []
-    pr = result["penetration_return"]
-    sm = result["safety_margin"]
-    fp = result["floor_price"]
-    ev = result["ev_ebitda"]
-
-    # 穿透回报率
-    rate = pr.get("rate")
-    grade = pr.get("grade", "N/A")
-    if rate is not None:
-        grade_zh = {"A": "极具吸引力", "B": "合理偏低估", "C": "一般"}.get(grade, "")
-        parts.append(f"穿透回报率{rate:.1f}%（{grade_zh}）。")
-
-    # 地板价
-    avg_fp = fp.get("average")
-    if avg_fp is not None:
-        parts.append(f"综合地板价{avg_fp:.2f}，")
-
-    # 安全边际
-    margin = sm.get("margin_pct")
-    verdict = sm.get("verdict", "")
-    if margin is not None:
-        if margin >= 0:
-            parts.append(f"安全边际{margin:.0f}%（{verdict}）。")
-        else:
-            parts.append(f"当前溢价{abs(margin):.0f}%。")
-
-    # EV/EBITDA
-    ev_val = ev.get("value")
-    if ev_val is not None:
-        if ev_val < 8:
-            parts.append(f"EV/EBITDA约{ev_val:.0f}倍，估值偏低。")
-        elif ev_val < 15:
-            parts.append(f"EV/EBITDA约{ev_val:.0f}倍，估值合理。")
-        else:
-            parts.append(f"EV/EBITDA约{ev_val:.0f}倍，估值偏高。")
-
-    # 烟蒂股资产垫
-    cig = result.get("cigbutt")
-    if cig:
-        grade = cig.get("grade", "")
-        parts.append(f"资产垫评级: {grade}。")
-
-    return "".join(parts) if parts else "估值数据不足，无法生成完整评估。"

@@ -1,19 +1,17 @@
 [Unit]
-Description=Alpha Vault AI投研系统
+Description=Alpha Vault API Server
 After=network.target
 
 [Service]
-Type=notify
-User=www-data
-Group=www-data
-WorkingDirectory=/opt/alphavault
-ExecStart=/opt/alphavault/venv/bin/gunicorn -c gunicorn.conf.py app:app
-ExecReload=/bin/kill -s HUP $MAINPID
-Restart=on-failure
+Type=simple
+User=root
+WorkingDirectory=/root/AINewsInvest/AINewsInvest
+EnvironmentFile=/root/AINewsInvest/AINewsInvest/.env
+ExecStart=/root/AINewsInvest/AINewsInvest/venv/bin/python -m uvicorn api.server:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-Environment="FLASK_ENV=production"
 
 [Install]
 WantedBy=multi-user.target
