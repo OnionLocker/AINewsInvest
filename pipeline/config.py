@@ -31,9 +31,9 @@ class ScreeningConfig:
 @dataclass
 class SynthesisConfig:
     """Score synthesis weights and thresholds."""
-    news_weight: float = 0.35
-    tech_weight: float = 0.65
-    fundamental_weight: float = 0.0
+    news_weight: float = 0.30
+    tech_weight: float = 0.45
+    fundamental_weight: float = 0.25
     min_confidence: int = 55
     quality_threshold: int = 50
     adaptive_threshold_drop: int = 20

@@ -612,12 +612,14 @@ def synthesize_agent_results(
     tech_results: list[dict],
     strategy_type: str = "short",
     max_count: int | None = None,
+    regime: dict | None = None,
 ) -> list[dict]:
     """Combine news + tech scores into ranked recommendations.
 
     Implements:
     - Weighted merge (short: news 0.35, tech 0.65)
-    - Confidence filter (< 55 removed, adaptive fallback)
+    - Confidence filter (strict: below threshold = no recommendation)
+    - Market regime adjustment (bearish = higher bar)
     - Quality marking (< 50 hides trade params, both < 40 = low quality)
     - Code-enforced trade params (Layer 6)
     """
@@ -634,6 +636,14 @@ def synthesize_agent_results(
     min_confidence = syn.min_confidence
     quality_threshold = syn.quality_threshold
     low_score_both = 40
+
+    regime_level = (regime or {}).get("level", "normal")
+    if regime_level == "bearish":
+        min_confidence = min(95, min_confidence + 10)
+        logger.info(f"Bearish regime: min_confidence raised to {min_confidence}")
+    elif regime_level == "crisis":
+        min_confidence = min(95, min_confidence + 20)
+        logger.info(f"Crisis regime: min_confidence raised to {min_confidence}")
 
     if max_count is None:
         max_count = cfg.max_recommendations
@@ -661,7 +671,15 @@ def synthesize_agent_results(
         elif news and not tech:
             ts = int(NEUTRAL + (ns - NEUTRAL) * BLEND)
 
-        combined = int(round(ns * news_weight + ts * tech_weight))
+        fs = _safe_int(c.get("fundamental_score", 50))
+        fw = syn.fundamental_weight
+        if fw > 0:
+            total_w = news_weight + tech_weight + fw
+            combined = int(round(
+                (ns * news_weight + ts * tech_weight + fs * fw) / total_w
+            ))
+        else:
+            combined = int(round(ns * news_weight + ts * tech_weight))
         combined = max(0, min(100, combined))
 
         sector_bonus = _safe_int(news.get("sector_bonus", 0))
@@ -707,6 +725,14 @@ def synthesize_agent_results(
             list(tech.get("risk_flags") or [])
         ))
 
+        holding_days_final = trade["holding_days"]
+        earnings_imminent = c.get("earnings_imminent", False)
+        earnings_days = c.get("earnings_days_away")
+        if earnings_imminent and earnings_days is not None and earnings_days >= 0:
+            all_risk_flags.append("earnings_imminent")
+            if earnings_days < holding_days_final:
+                holding_days_final = max(1, earnings_days - 1)
+
         news_analysis = str(news.get("analysis", ""))
         tech_analysis = str(tech.get("analysis", ""))
 
@@ -720,7 +746,7 @@ def synthesize_agent_results(
             "confidence": combined,
             "tech_score": ts,
             "news_score": ns,
-            "fundamental_score": 50,
+            "fundamental_score": fs,
             "combined_score": combined,
             "action": action_str,
             "entry_price": trade["entry_price"] if is_quality else None,
@@ -730,7 +756,7 @@ def synthesize_agent_results(
             "take_profit_2": trade["take_profit_2"] if is_quality else None,
             "take_profit_3": trade["take_profit_3"] if is_quality else None,
             "show_trading_params": is_quality,
-            "holding_days": trade["holding_days"],
+            "holding_days": holding_days_final,
             "tech_reason": tech_analysis,
             "news_reason": news_analysis,
             "fundamental_reason": "",
@@ -741,6 +767,9 @@ def synthesize_agent_results(
             "safety_margin": None,
             "risk_flags": all_risk_flags,
             "risk_note": str(tech.get("risk_note", "")),
+            "position_pct": _suggest_position_pct(combined, regime_level),
+            "earnings_days_away": c.get("earnings_days_away"),
+            "earnings_date_str": c.get("earnings_date_str"),
             "position_note": str(tech.get("position_note", "")),
             "themes": news.get("themes", []) if isinstance(news.get("themes"), list) else [],
             "price": price,
@@ -751,21 +780,35 @@ def synthesize_agent_results(
 
     filtered = [s for s in all_scored if s["combined_score"] >= min_confidence]
 
-    if not filtered and all_scored:
-        adaptive_min = max(
-            syn.adaptive_threshold_floor,
-            min_confidence - syn.adaptive_threshold_drop,
-        )
-        filtered = [s for s in all_scored if s["combined_score"] >= adaptive_min]
-        if not filtered:
-            filtered = all_scored[:max(1, len(all_scored) // 2)]
+    if not filtered:
+        top_score = all_scored[0]["combined_score"] if all_scored else 0
         logger.info(
-            f"Adaptive threshold: {min_confidence}->{adaptive_min}, "
-            f"keeping {len(filtered)} (top={all_scored[0]['combined_score']})"
+            f"No stocks passed min_confidence={min_confidence} "
+            f"(top_score={top_score}). Returning empty - sit out today."
         )
+        return []
 
     filtered = _limit_sector_concentration(filtered, max_ratio=0.4)
     return filtered[:max_count]
+
+
+def _suggest_position_pct(score: int, regime_level: str = "normal") -> int:
+    """Suggest position size as % of portfolio based on score and regime."""
+    if score >= 85:
+        pct = 10
+    elif score >= 75:
+        pct = 8
+    elif score >= 65:
+        pct = 5
+    else:
+        pct = 3
+
+    if regime_level == "cautious":
+        pct = max(2, pct - 2)
+    elif regime_level in ("bearish", "crisis"):
+        pct = max(2, pct // 2)
+
+    return pct
 
 
 def _limit_sector_concentration(
@@ -857,6 +900,7 @@ def run_agent_pipeline(
     market: str = "all",
     strategy_type: str = "short",
     progress_cb: Callable[[dict], None] | None = None,
+    regime: dict | None = None,
 ) -> list[dict]:
     """Run the full 6-layer agent pipeline on enriched candidates.
 
@@ -914,6 +958,7 @@ def run_agent_pipeline(
         news_results,
         tech_results,
         strategy_type=strategy_type,
+        regime=regime,
     )
 
     _progress(78.0, f"Pipeline complete: {len(recommendations)} recommendations")

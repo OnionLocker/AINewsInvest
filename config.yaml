@@ -52,10 +52,11 @@ agent:
     holding_days: 3
 
 # Built-in scheduler (triggers pipelines independently per market)
-# Times are in local timezone: US = Eastern Time, HK = Hong Kong Time
+# US: 19:30 Beijing = 07:30 ET (2h before open, captures overnight news + pre-market)
+# HK: 07:30 Beijing = 07:30 HKT (2h before open, captures overnight US moves)
 scheduler:
   enabled: false
-  us_run_time: "07:30"
+  us_run_time: "19:30"
   hk_run_time: "07:30"
 
 # Pipeline parameters

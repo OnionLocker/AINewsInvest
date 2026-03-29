@@ -17,6 +17,8 @@ from typing import Any
 from loguru import logger
 from zoneinfo import ZoneInfo
 
+import yfinance as yf
+
 from core.database import Database
 from core.user import SYSTEM_DB_PATH
 from pipeline.config import get_config
@@ -26,6 +28,77 @@ _MARKET_TZ = {
     "us_stock": "America/New_York",
     "hk_stock": "Asia/Hong_Kong",
 }
+
+
+def _check_market_regime(market: str) -> dict:
+    """Check market-level conditions. Returns regime dict with level and flags.
+
+    Levels: normal, cautious, bearish, crisis
+    """
+    try:
+        if market == "us_stock":
+            spy = yf.Ticker("SPY").history(period="6d")
+            vix_data = yf.Ticker("^VIX").history(period="1d")
+        else:
+            spy = yf.Ticker("^HSI").history(period="6d")
+            vix_data = None
+
+        if spy.empty or len(spy) < 2:
+            return {"level": "normal", "flags": [], "details": {}}
+
+        last_close = float(spy["Close"].iloc[-1])
+        prev_close = float(spy["Close"].iloc[-2])
+        daily_change = (last_close - prev_close) / prev_close * 100
+
+        five_day_change = 0.0
+        if len(spy) >= 5:
+            five_ago = float(spy["Close"].iloc[-5])
+            five_day_change = (last_close - five_ago) / five_ago * 100
+
+        vix_val = 0.0
+        if vix_data is not None and not vix_data.empty:
+            vix_val = float(vix_data["Close"].iloc[-1])
+
+        flags = []
+        level = "normal"
+
+        if daily_change < -3.0:
+            flags.append("single_day_crash")
+            level = "crisis"
+        elif daily_change < -2.0:
+            flags.append("large_daily_drop")
+            level = max(level, "bearish", key=["normal", "cautious", "bearish", "crisis"].index)
+
+        if five_day_change < -5.0:
+            flags.append("sustained_decline")
+            level = "crisis"
+        elif five_day_change < -3.0:
+            flags.append("weekly_weakness")
+            level = max(level, "bearish", key=["normal", "cautious", "bearish", "crisis"].index)
+
+        if vix_val > 35:
+            flags.append("extreme_vix")
+            level = max(level, "bearish", key=["normal", "cautious", "bearish", "crisis"].index)
+        elif vix_val > 25:
+            flags.append("elevated_vix")
+            level = max(level, "cautious", key=["normal", "cautious", "bearish", "crisis"].index)
+
+        details = {
+            "daily_change_pct": round(daily_change, 2),
+            "five_day_change_pct": round(five_day_change, 2),
+            "vix": round(vix_val, 1) if vix_val > 0 else None,
+        }
+
+        logger.info(
+            f"Market regime {market}: {level} | "
+            f"1d={daily_change:+.1f}% 5d={five_day_change:+.1f}% VIX={vix_val:.0f} "
+            f"flags={flags}"
+        )
+        return {"level": level, "flags": flags, "details": details}
+
+    except Exception as e:
+        logger.warning(f"Market regime check failed: {e}")
+        return {"level": "normal", "flags": ["check_failed"], "details": {}}
 
 
 def _ref_date_for_market(market: str) -> str:
@@ -70,6 +143,10 @@ def run_daily_pipeline(
         logger.info(f"Pre-run evaluation: {eval_result}")
     except Exception as e:
         logger.warning(f"Pre-run evaluation failed: {e}")
+
+    _progress(progress_cb, 4.0, "Checking market regime")
+    regime = _check_market_regime(market)
+    logger.info(f"Market regime: {regime}")
 
     db = Database(SYSTEM_DB_PATH)
     try:
@@ -118,6 +195,25 @@ def run_daily_pipeline(
             }
 
         # Phase 3: Layers 3-6 - Agent pipeline
+        max_recs = cfg.max_recommendations
+        if regime["level"] == "crisis":
+            max_recs = 0
+            logger.warning(f"Market CRISIS mode - skipping all long recs for {market}")
+        elif regime["level"] == "bearish":
+            max_recs = max(3, max_recs // 2)
+            logger.info(f"Market bearish - reducing max_recs to {max_recs}")
+
+        if regime["level"] == "crisis" and market == "hk_stock":
+            _progress(progress_cb, 100.0, "Market crisis - no recommendations")
+            return {
+                "ref_date": ref_date,
+                "market": market,
+                "candidate_count": len(candidates),
+                "published_count": 0,
+                "regime": regime,
+                "items": [],
+            }
+
         _progress(progress_cb, 30.0, f"Layers 3-6: Agent pipeline on {len(enriched)} candidates")
         from pipeline.agents import run_agent_pipeline
         analyzed = run_agent_pipeline(
@@ -125,6 +221,7 @@ def run_daily_pipeline(
             market=market,
             strategy_type="short",
             progress_cb=progress_cb,
+            regime=regime,
         )
 
         if not analyzed:
@@ -134,10 +231,11 @@ def run_daily_pipeline(
                 "market": market,
                 "candidate_count": len(candidates),
                 "published_count": 0,
+                "regime": regime,
                 "items": [],
             }
 
-        top_items = analyzed[:cfg.max_recommendations]
+        top_items = analyzed[:max_recs]
 
         # Phase 4: Save and publish
         _progress(progress_cb, 80.0, f"Saving {len(top_items)} recommendations for {market}")
@@ -194,6 +292,7 @@ def run_daily_pipeline(
             "published_run_id": pub_id,
             "candidate_count": len(candidates),
             "published_count": len(saved_items),
+            "regime": regime,
             "items": [dict(x) for x in saved_items],
         }
     finally:

@@ -115,6 +115,11 @@ def get_financial_data(ticker: str, market: str) -> dict[str, Any] | None:
             "free_cashflow": info.get("freeCashflow"),
             "book_value": info.get("bookValue"),
             "shares_outstanding": info.get("sharesOutstanding"),
+            "short_ratio": info.get("shortRatio"),
+            "short_pct_of_float": info.get("shortPercentOfFloat"),
+            "held_pct_insiders": info.get("heldPercentInsiders"),
+            "held_pct_institutions": info.get("heldPercentInstitutions"),
+            "insider_purchases": info.get("netIncomeToCommon"),
             "indicators": indicators,
         }
     except Exception as e:

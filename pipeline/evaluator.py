@@ -109,17 +109,27 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
             low = float(row["Low"])
 
             if is_short:
-                if sl > 0 and high >= sl:
+                hit_sl = sl > 0 and high >= sl
+                hit_tp = low <= tp1
+                if hit_sl and hit_tp:
                     ret_pct = round((entry - sl) / entry * 100, 2)
                     return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
-                if low <= tp1:
+                if hit_sl:
+                    ret_pct = round((entry - sl) / entry * 100, 2)
+                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                if hit_tp:
                     ret_pct = round((entry - tp1) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
             else:
-                if sl > 0 and low <= sl:
+                hit_sl = sl > 0 and low <= sl
+                hit_tp = high >= tp1
+                if hit_sl and hit_tp:
                     ret_pct = round((sl - entry) / entry * 100, 2)
                     return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
-                if high >= tp1:
+                if hit_sl:
+                    ret_pct = round((sl - entry) / entry * 100, 2)
+                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                if hit_tp:
                     ret_pct = round((tp1 - entry) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
 

@@ -205,7 +205,11 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         else:
             moms.append(0.5)
         mcs.append(max(np.log10(max(q.get("market_cap") or 1, 1)), 0))
-        changes.append(abs(float(q.get("change_pct") or 0)))
+        chg = abs(float(q.get("change_pct") or 0))
+        if chg <= 3.0:
+            changes.append(chg / 3.0)
+        else:
+            changes.append(max(0.0, 1.0 - (chg - 3.0) / 5.0))
 
     nv = _norm_series(vols, higher_is_better=True)
     nm = _norm_series(moms, higher_is_better=True)
@@ -424,6 +428,138 @@ def batch_fetch_klines(
     return results
 
 
+def _check_earnings_proximity(ticker: str, market: str) -> dict:
+    """Check if earnings are within the next 5 trading days."""
+    try:
+        from core.data_source import to_yf_ticker
+        from datetime import datetime, timedelta
+        import yfinance as yf
+
+        symbol = to_yf_ticker(ticker, market)
+        t = yf.Ticker(symbol)
+        cal = t.calendar
+        if cal is None or (hasattr(cal, 'empty') and cal.empty):
+            return {"days_away": None, "date_str": None, "imminent": False}
+
+        if isinstance(cal, dict):
+            ed = cal.get("Earnings Date")
+            if isinstance(ed, list) and ed:
+                ed = ed[0]
+        elif hasattr(cal, 'iloc'):
+            ed = cal.iloc[0, 0] if cal.shape[1] > 0 else None
+        else:
+            ed = None
+
+        if ed is None:
+            return {"days_away": None, "date_str": None, "imminent": False}
+
+        if hasattr(ed, 'date'):
+            ed_date = ed.date()
+        elif isinstance(ed, str):
+            ed_date = datetime.strptime(ed[:10], "%Y-%m-%d").date()
+        else:
+            return {"days_away": None, "date_str": None, "imminent": False}
+
+        today = datetime.now().date()
+        days_away = (ed_date - today).days
+
+        return {
+            "days_away": days_away,
+            "date_str": ed_date.strftime("%Y-%m-%d"),
+            "imminent": 0 <= days_away <= 5,
+        }
+    except Exception:
+        return {"days_away": None, "date_str": None, "imminent": False}
+
+
+def _compute_fundamental_score(candidate: dict) -> float:
+    """Lightweight fundamental scoring from available financial data.
+
+    Returns 0-100 score. 50 = neutral baseline.
+    """
+    score = 50.0
+    fin = candidate.get("financial") or {}
+
+    roe = fin.get("roe")
+    if roe is not None:
+        if roe > 0.20:
+            score += 12
+        elif roe > 0.15:
+            score += 8
+        elif roe > 0.08:
+            score += 3
+        elif roe < 0:
+            score -= 15
+
+    rev_growth = fin.get("revenue_growth")
+    if rev_growth is not None:
+        if rev_growth > 0.20:
+            score += 10
+        elif rev_growth > 0.10:
+            score += 6
+        elif rev_growth > 0:
+            score += 2
+        elif rev_growth < -0.10:
+            score -= 10
+
+    de = fin.get("debt_to_equity")
+    if de is not None:
+        if de > 3.0:
+            score -= 12
+        elif de > 2.0:
+            score -= 6
+        elif de < 0.5:
+            score += 5
+
+    cr = fin.get("current_ratio")
+    if cr is not None:
+        if cr > 2.0:
+            score += 5
+        elif cr > 1.5:
+            score += 3
+        elif cr < 1.0:
+            score -= 8
+
+    margin = fin.get("profit_margins") or fin.get("profit_margin")
+    if margin is not None:
+        if margin > 0.20:
+            score += 8
+        elif margin > 0.10:
+            score += 4
+        elif margin < 0:
+            score -= 10
+
+    fcf = fin.get("free_cash_flow") or fin.get("free_cashflow")
+    if fcf is not None:
+        if fcf > 0:
+            score += 5
+        else:
+            score -= 8
+
+    short_pct = fin.get("short_pct_of_float")
+    if short_pct is not None:
+        if short_pct > 0.20:
+            score -= 5
+        elif short_pct > 0.10:
+            score -= 2
+
+    insider_pct = fin.get("held_pct_insiders")
+    if insider_pct is not None:
+        if insider_pct > 0.10:
+            score += 3
+        elif insider_pct > 0.30:
+            score += 5
+
+    inst_pct = fin.get("held_pct_institutions")
+    if inst_pct is not None:
+        if inst_pct > 0.80:
+            score += 3
+        elif inst_pct < 0.30:
+            score -= 3
+
+    return max(0, min(100, score))
+
+
 def build_enriched_candidates(
     candidates: list[dict],
     kline_map: dict[str, pd.DataFrame],
@@ -522,11 +658,15 @@ def build_enriched_candidates(
             and not volume_expansion
         )
 
+        fundamental_score = _compute_fundamental_score(c)
+        earnings_info = _check_earnings_proximity(ticker, market)
+
         enriched.append({
             "ticker": ticker,
             "name": c.get("name", ticker),
             "market": market,
             "price": price,
+            "fundamental_score": fundamental_score,
             "change_pct": _safe_float(c.get("change_pct")),
             "volume": _safe_float(c.get("volume")),
             "market_cap": _safe_float(c.get("market_cap")),
@@ -563,6 +703,9 @@ def build_enriched_candidates(
             },
             "kline_recent_part1": kline_part1,
             "kline_recent_part2": kline_part2,
+            "earnings_days_away": earnings_info.get("days_away"),
+            "earnings_date_str": earnings_info.get("date_str"),
+            "earnings_imminent": earnings_info.get("imminent", False),
         })
 
     logger.info(f"Layer 2 enrichment: {len(enriched)} candidates with technical data")

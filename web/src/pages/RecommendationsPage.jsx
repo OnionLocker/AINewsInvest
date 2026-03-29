@@ -194,8 +194,9 @@ export default function RecommendationsPage({ market = "us" }) {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex items-center justify-center rounded-lg border border-[#2a2e39] bg-[#1e222d] py-16">
-            <p className="text-sm text-[#787b86]">该日期暂无推荐数据</p>
+          <div className="flex flex-col items-center justify-center rounded-lg border border-[#2962ff]/20 bg-[#2962ff]/5 py-16">
+            <p className="text-lg font-bold text-[#2962ff]">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
+            <p className="mt-2 text-sm text-[#787b86]">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
           </div>
         ) : (
           <div className="space-y-2">
