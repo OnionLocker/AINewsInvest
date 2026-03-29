@@ -2,9 +2,9 @@ import { Activity, TrendingUp, TrendingDown, Minus, Lightbulb } from "lucide-rea
 
 function SentimentLabel({ label }) {
   const map = {
-    bullish:  { text: "偏多", color: "#089981" },
-    bearish:  { text: "偏空", color: "#f23645" },
-    neutral:  { text: "中性", color: "#787b86" },
+    bullish:  { text: "\u504f\u591a", color: "#089981" },
+    bearish:  { text: "\u504f\u7a7a", color: "#f23645" },
+    neutral:  { text: "\u4e2d\u6027", color: "#787b86" },
   };
   const info = map[label] || map.neutral;
   return (
@@ -21,7 +21,7 @@ function Dot({ color = "#089981" }) {
 function StatItem({ label, value, color }) {
   return (
     <span className="text-xs text-[#787b86]">
-      {label}：<span className="font-semibold" style={{ color: color || "#d1d4dc" }}>{value}</span>
+      {label}{"\uFF1A"}<span className="font-semibold" style={{ color: color || "#d1d4dc" }}>{value}</span>
     </span>
   );
 }
@@ -29,36 +29,37 @@ function StatItem({ label, value, color }) {
 export default function MarketSentimentPanel({ data, market }) {
   if (!data) return null;
 
-  const { sentiment, breadth, fear_greed: fg, headlines, analysis } = data;
+  const { sentiment, breadth, breadth_scope, fear_greed: fg, headlines, analysis } = data;
   const fgValue = fg?.value != null ? Math.round(fg.value) : null;
-  const fgLabel = fg?.label || (fgValue >= 75 ? "极度贪婪" : fgValue >= 60 ? "贪婪" : fgValue >= 40 ? "中性" : fgValue >= 25 ? "恐惧" : "极度恐惧");
+  const fgLabel = fg?.label || (fgValue >= 75 ? "\u6781\u5ea6\u8d2a\u5a6a" : fgValue >= 60 ? "\u8d2a\u5a6a" : fgValue >= 40 ? "\u4e2d\u6027" : fgValue >= 25 ? "\u6050\u60e7" : "\u6781\u5ea6\u6050\u60e7");
   const fgColor = fgValue >= 60 ? "#089981" : fgValue >= 40 ? "#787b86" : "#f23645";
 
   const advN = breadth?.advance ?? 0;
   const decN = breadth?.decline ?? 0;
   const unchN = breadth?.unchanged ?? 0;
   const totalN = breadth?.total ?? 0;
+  const scopeLabel = breadth_scope || (market === "hk" ? "\u6052\u6307+\u6052\u751f\u79d1\u6280\u6210\u5206\u80a1" : "\u6807\u666e500\u6210\u5206\u80a1");
 
   const bullPoints = [];
   const bearPoints = [];
 
-  if (advN > decN) bullPoints.push("上涨家数多于下跌，多头占优");
-  else if (decN > advN) bearPoints.push("下跌家数多于上涨，空头占优");
+  if (advN > decN) bullPoints.push("\u4e0a\u6da8\u5bb6\u6570\u591a\u4e8e\u4e0b\u8dcc\uff0c\u591a\u5934\u5360\u4f18");
+  else if (decN > advN) bearPoints.push("\u4e0b\u8dcc\u5bb6\u6570\u591a\u4e8e\u4e0a\u6da8\uff0c\u7a7a\u5934\u5360\u4f18");
 
-  if (fgValue != null && fgValue >= 60) bullPoints.push(`情绪评分${fgValue}分，市场偏乐观`);
-  else if (fgValue != null && fgValue < 40) bearPoints.push(`情绪评分${fgValue}分，市场偏悲观`);
+  if (fgValue != null && fgValue >= 60) bullPoints.push(`\u60c5\u7eea\u8bc4\u5206${fgValue}\u5206\uff0c\u5e02\u573a\u504f\u4e50\u89c2`);
+  else if (fgValue != null && fgValue < 40) bearPoints.push(`\u60c5\u7eea\u8bc4\u5206${fgValue}\u5206\uff0c\u5e02\u573a\u504f\u60b2\u89c2`);
 
-  if (sentiment?.positive > sentiment?.negative) bullPoints.push("正面新闻多于负面，情绪偏暖");
-  else if (sentiment?.negative > sentiment?.positive) bearPoints.push("负面新闻多于正面，情绪偏冷");
+  if (sentiment?.positive > sentiment?.negative) bullPoints.push("\u6b63\u9762\u65b0\u95fb\u591a\u4e8e\u8d1f\u9762\uff0c\u60c5\u7eea\u504f\u6696");
+  else if (sentiment?.negative > sentiment?.positive) bearPoints.push("\u8d1f\u9762\u65b0\u95fb\u591a\u4e8e\u6b63\u9762\uff0c\u60c5\u7eea\u504f\u51b7");
 
   if ((headlines || []).length > 0) {
-    bullPoints.push("有" + headlines.length + "条相关新闻，市场关注度高");
+    bullPoints.push("\u6709" + headlines.length + "\u6761\u76f8\u5173\u65b0\u95fb\uff0c\u5e02\u573a\u5173\u6ce8\u5ea6\u9ad8");
   }
 
-  const riskLevel = fgValue >= 70 ? "中" : fgValue >= 40 ? "低" : "高";
-  const strategyLevel = fgValue >= 60 ? "激进" : fgValue >= 40 ? "稳健" : "保守";
-  const riskColor = riskLevel === "高" ? "#f23645" : riskLevel === "中" ? "#fb8c00" : "#089981";
-  const strategyColor = strategyLevel === "激进" ? "#089981" : strategyLevel === "保守" ? "#f23645" : "#2962ff";
+  const riskLevel = fgValue >= 70 ? "\u4e2d" : fgValue >= 40 ? "\u4f4e" : "\u9ad8";
+  const strategyLevel = fgValue >= 60 ? "\u6fc0\u8fdb" : fgValue >= 40 ? "\u7a33\u5065" : "\u4fdd\u5b88";
+  const riskColor = riskLevel === "\u9ad8" ? "#f23645" : riskLevel === "\u4e2d" ? "#fb8c00" : "#089981";
+  const strategyColor = strategyLevel === "\u6fc0\u8fdb" ? "#089981" : strategyLevel === "\u4fdd\u5b88" ? "#f23645" : "#2962ff";
 
   return (
     <div className="space-y-3">
@@ -67,29 +68,30 @@ export default function MarketSentimentPanel({ data, market }) {
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-semibold text-[#d1d4dc]">市场情绪</span>
+              <span className="text-sm font-semibold text-[#d1d4dc]">{"\u5e02\u573a\u60c5\u7eea"}</span>
               <SentimentLabel label={sentiment?.label} />
             </div>
             {fgValue != null && (
               <p className="text-2xl font-bold" style={{ color: fgColor }}>{fgLabel}</p>
             )}
             <p className="mt-1 text-xs text-[#787b86]">
-              上涨 {advN} 家，下跌 {decN} 家
-              {advN > decN ? "，多头占优" : decN > advN ? "，空头占优" : ""}
+              {scopeLabel}{"\uFF1A"}{"\u4e0a\u6da8"} {advN} {"\u5bb6\uff0c\u4e0b\u8dcc"} {decN} {"\u5bb6"}
+              {unchN > 0 ? `\uff0c\u5e73\u76d8 ${unchN} \u5bb6` : ""}
+              {advN > decN ? "\uff0c\u591a\u5934\u5360\u4f18" : decN > advN ? "\uff0c\u7a7a\u5934\u5360\u4f18" : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-right">
-            <StatItem label="上涨家数" value={advN} color="#089981" />
-            <StatItem label="下跌家数" value={decN} color="#f23645" />
-            {unchN > 0 && <StatItem label="平盘家数" value={unchN} />}
+            <StatItem label={"\u4e0a\u6da8\u5bb6\u6570"} value={advN} color="#089981" />
+            <StatItem label={"\u4e0b\u8dcc\u5bb6\u6570"} value={decN} color="#f23645" />
+            {unchN > 0 && <StatItem label={"\u5e73\u76d8\u5bb6\u6570"} value={unchN} />}
           </div>
         </div>
         {fgValue != null && (
           <p className="mt-2 text-xs text-[#787b86]">
-            市场情绪评分{fgValue}分（{fgLabel}），
-            {fgValue >= 60 ? "多头气氛浓厚，资金做多意愿较强" :
-             fgValue >= 40 ? "市场情绪平稳，观望气氛偏重" :
-             "恐慌情绪蔓延，谨慎为主"}。
+            {"\u5e02\u573a\u60c5\u7eea\u8bc4\u5206"}{fgValue}{"\u5206\uff08"}{fgLabel}{"\uff09\uff0c"}
+            {fgValue >= 60 ? "\u591a\u5934\u6c14\u6c1b\u6d53\u539a\uff0c\u8d44\u91d1\u505a\u591a\u610f\u613f\u8f83\u5f3a" :
+             fgValue >= 40 ? "\u5e02\u573a\u60c5\u7eea\u5e73\u7a33\uff0c\u89c2\u671b\u6c14\u6c1b\u504f\u91cd" :
+             "\u6050\u614c\u60c5\u7eea\u8513\u5ef6\uff0c\u8c28\u614e\u4e3a\u4e3b"}{"\u3002"}
           </p>
         )}
       </div>
@@ -97,15 +99,15 @@ export default function MarketSentimentPanel({ data, market }) {
       {/* Market Analysis Block */}
       <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-[#d1d4dc]">市场分析</span>
+          <span className="text-sm font-semibold text-[#d1d4dc]">{"\u5e02\u573a\u5206\u6790"}</span>
           <div className="flex gap-2">
             <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
               style={{ color: strategyColor, background: strategyColor + "18" }}>
-              策略：{strategyLevel}
+              {"\u7b56\u7565\uff1a"}{strategyLevel}
             </span>
             <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
               style={{ color: riskColor, background: riskColor + "18" }}>
-              风险：{riskLevel}
+              {"\u98ce\u9669\uff1a"}{riskLevel}
             </span>
           </div>
         </div>
@@ -142,14 +144,14 @@ export default function MarketSentimentPanel({ data, market }) {
         <div className="mt-4 rounded-lg border border-[#fb8c00]/25 bg-[#fb8c00]/5 p-3">
           <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#fb8c00]">
             <Lightbulb size={13} />
-            操作建议
+            {"\u64cd\u4f5c\u5efa\u8bae"}
           </div>
           <p className="text-xs leading-relaxed text-[#fb8c00]/80">
             {fgValue >= 60
-              ? "市场情绪偏热，可适当参与强势标的，但注意控制仓位，防范追高风险。"
+              ? "\u5e02\u573a\u60c5\u7eea\u504f\u70ed\uff0c\u53ef\u9002\u5f53\u53c2\u4e0e\u5f3a\u52bf\u6807\u7684\uff0c\u4f46\u6ce8\u610f\u63a7\u5236\u4ed3\u4f4d\uff0c\u9632\u8303\u8ffd\u9ad8\u98ce\u9669\u3002"
               : fgValue >= 40
-                ? "市场情绪中性，建议以观望为主，精选个股，轻仓试探。"
-                : "市场情绪偏冷，建议减仓防守，等待企稳信号后再入场。"}
+                ? "\u5e02\u573a\u60c5\u7eea\u4e2d\u6027\uff0c\u5efa\u8bae\u4ee5\u89c2\u671b\u4e3a\u4e3b\uff0c\u7cbe\u9009\u4e2a\u80a1\uff0c\u8f7b\u4ed3\u8bd5\u63a2\u3002"
+                : "\u5e02\u573a\u60c5\u7eea\u504f\u51b7\uff0c\u5efa\u8bae\u51cf\u4ed3\u9632\u5b88\uff0c\u7b49\u5f85\u4f01\u7a33\u4fe1\u53f7\u540e\u518d\u5165\u573a\u3002"}
           </p>
         </div>
       </div>

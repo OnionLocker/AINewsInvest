@@ -272,51 +272,79 @@ def _hstech_components() -> list[dict]:
 
 
 def _get_market_breadth(market: str) -> dict:
-    """Get advance/decline breadth data for a market.
+    """Get advance/decline breadth from FULL index components.
 
-    Uses a sample of major index components to estimate market breadth.
+    US: all S&P 500 components (~500 stocks)
+    HK: all HSI + HSTECH components (~80 stocks)
+    Uses yf.download batch API for efficiency.
     """
     try:
         if market == "us_stock":
-            symbols = [
-                "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA",
-                "BRK-B", "JPM", "V", "JNJ", "UNH", "XOM", "PG", "MA",
-                "HD", "CVX", "LLY", "ABBV", "MRK", "PEP", "KO", "COST",
-                "AVGO", "TMO", "WMT", "MCD", "CRM", "CSCO", "ACN",
-            ]
+            components = _sp500_components()
+            symbols = [c["ticker"] for c in components]
         else:
-            symbols = [
-                "0700.HK", "9988.HK", "3690.HK", "1810.HK", "0005.HK",
-                "0388.HK", "0941.HK", "1299.HK", "0883.HK", "0002.HK",
-                "0016.HK", "0003.HK", "0011.HK", "2318.HK", "0027.HK",
-                "0001.HK", "0006.HK", "0012.HK", "1038.HK", "0017.HK",
-            ]
+            hsi = _hsi_components()
+            hstech = _hstech_components()
+            seen = set()
+            symbols = []
+            for c in hsi + hstech:
+                sym = to_yf_ticker(c["ticker"], "hk_stock")
+                if sym not in seen:
+                    symbols.append(sym)
+                    seen.add(sym)
 
-        tickers_obj = yf.Tickers(" ".join(symbols))
+        if not symbols:
+            return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
+
+        logger.info(f"Market breadth: downloading {len(symbols)} components for {market}")
+        df = yf.download(symbols, period="2d", group_by="ticker", progress=False, threads=True)
+
         advance = 0
         decline = 0
         unchanged = 0
 
-        for sym in symbols:
-            try:
-                info = tickers_obj.tickers[sym.replace("-", "-")].fast_info
-                price = getattr(info, "last_price", None)
-                prev = getattr(info, "previous_close", None)
-                if price and prev and prev > 0:
-                    pct = (price - prev) / prev * 100
+        if len(symbols) == 1:
+            if "Close" in df.columns and len(df) >= 2:
+                prev_close = float(df["Close"].iloc[-2])
+                last_close = float(df["Close"].iloc[-1])
+                if prev_close > 0:
+                    pct = (last_close - prev_close) / prev_close * 100
+                    if pct > 0.05:
+                        advance = 1
+                    elif pct < -0.05:
+                        decline = 1
+                    else:
+                        unchanged = 1
+        else:
+            for sym in symbols:
+                try:
+                    if sym not in df.columns.get_level_values(0):
+                        continue
+                    sym_df = df[sym]
+                    if "Close" not in sym_df.columns or len(sym_df.dropna(subset=["Close"])) < 2:
+                        continue
+                    closes = sym_df["Close"].dropna()
+                    if len(closes) < 2:
+                        continue
+                    prev_close = float(closes.iloc[-2])
+                    last_close = float(closes.iloc[-1])
+                    if prev_close <= 0:
+                        continue
+                    pct = (last_close - prev_close) / prev_close * 100
                     if pct > 0.05:
                         advance += 1
                     elif pct < -0.05:
                         decline += 1
                     else:
                         unchanged += 1
-            except Exception:
-                continue
+                except Exception:
+                    continue
 
         total = advance + decline + unchanged
         if total == 0:
             return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
 
+        logger.info(f"Market breadth {market}: {advance} up / {decline} down / {unchanged} flat (total {total})")
         return {
             "advance": advance,
             "decline": decline,

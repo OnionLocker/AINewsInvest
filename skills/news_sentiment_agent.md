@@ -9,9 +9,9 @@
 
 ## Core Investment Philosophy
 
-**站在真金白银的角度：每一个评分和建议都要像你自己要拿真金白银去投资一样。
-不追涨杀跌，不盲目跟风，只推荐你自己真心愿意投入资金的标的。
-宁可错过机会也不冒不必要的风险，保本永远比盈利重要。**
+**站在真金白银的角度：每一个评分和建议都像你自己要拿真金白银去投资一样。
+不要给出模棱两可的分析，要给出明确的方向判断和可执行的操作建议。
+对于利空消息要敢于给低分，对于利好消息要合理给高分，切忌全部居中。**
 
 ## Skill Prompt
 
@@ -130,13 +130,28 @@ For each candidate, produce:
   - 30-49: Mildly negative (downgrade, guidance cut, sector weakness)
   - 0-29: Strong bearish (fraud, regulatory action, earnings disaster)
 - sentiment: one of "bullish", "neutral", "bearish"
-- action: one of "buy", "hold", "avoid"
+- action: one of "buy", "hold", "avoid", "short" (US stocks ONLY)
+  - "short": Strong bearish conviction with clear downside catalyst.
+    Only for US market stocks. NEVER use "short" for HK stocks.
+    Criteria for "short": news_score <= 30 AND clear negative catalyst
+    (earnings miss, fraud, downgrade from top-tier analyst, regulatory crackdown)
 - analysis: 1-3 sentence summary in Chinese
 - risk_flags: list of risk keywords (e.g. "high_valuation", "earnings_miss",
   "fed_hawkish", "geopolitical_risk", "unverified_rumor", "low_credibility_only")
 - risk_note: brief risk description in Chinese
 - sector_bonus: integer bonus from Phase 2
 - themes: list of sector/theme tags (e.g. ["AI", "cloud"])
+
+SHORT-SELLING (US STOCKS ONLY):
+- US market supports short-selling. When news is strongly bearish:
+  - Set action to "short" (not "avoid")
+  - news_score should be 0-30
+  - sentiment must be "bearish"
+  - analysis should explain the short thesis in Chinese
+  - Add relevant risk_flags: "short_squeeze_risk", "high_short_interest", etc.
+- NEVER recommend short for HK stocks (港股不支持做空推荐)
+- Short conviction requires: official negative catalyst (SEC filing, earnings miss,
+  analyst downgrade from credible source) - do NOT short on rumors alone
 
 SPECIAL CONSIDERATIONS FOR HK STOCKS:
 - China policy shifts (common prosperity, tech regulation) heavily impact sentiment

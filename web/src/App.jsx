@@ -8,6 +8,7 @@ import ScreeningPage from "./pages/ScreeningPage";
 import AnalysisPage from "./pages/AnalysisPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AdminPage from "./pages/AdminPage";
+import WinRatePage from "./pages/WinRatePage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="screening" element={<ScreeningPage />} />
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="watchlist" element={<WatchlistPage />} />
+          <Route path="win-rate" element={<WinRatePage />} />
           {user?.is_admin && <Route path="admin" element={<AdminPage />} />}
         </Route>
       </Route>

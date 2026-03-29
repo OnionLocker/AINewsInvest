@@ -28,6 +28,7 @@ class Database:
         self._conn = sqlite3.connect(self.db_path, timeout=30)
         self._conn.row_factory = sqlite3.Row
         self._init_tables()
+        self._migrate_add_columns()
         self._migrate_market_isolation()
 
     def close(self):
@@ -94,6 +95,7 @@ class Database:
                 market          TEXT    NOT NULL,
                 strategy        TEXT    NOT NULL DEFAULT 'short_term',
                 direction       TEXT    NOT NULL DEFAULT 'buy',
+                action          TEXT    DEFAULT 'hold',
                 score           REAL    NOT NULL,
                 confidence      INTEGER DEFAULT 0,
                 tech_score      INTEGER DEFAULT 0,
@@ -105,15 +107,20 @@ class Database:
                 stop_loss       REAL    DEFAULT 0,
                 take_profit     REAL    DEFAULT 0,
                 take_profit_2   REAL    DEFAULT 0,
+                take_profit_3   REAL    DEFAULT 0,
                 holding_days    INTEGER DEFAULT 5,
                 tech_reason     TEXT    DEFAULT '',
                 news_reason     TEXT    DEFAULT '',
                 fundamental_reason TEXT DEFAULT '',
                 llm_reason      TEXT    DEFAULT '',
+                recommendation_reason TEXT DEFAULT '',
                 valuation_summary TEXT  DEFAULT '',
                 quality_score   REAL,
                 safety_margin   REAL,
                 risk_flags      TEXT    DEFAULT '[]',
+                risk_note       TEXT    DEFAULT '',
+                position_note   TEXT    DEFAULT '',
+                themes          TEXT    DEFAULT '[]',
                 price           REAL    DEFAULT 0,
                 change_pct      REAL    DEFAULT 0,
                 FOREIGN KEY (run_id) REFERENCES daily_recommendation_runs(id)
@@ -143,6 +150,7 @@ class Database:
                 market          TEXT    NOT NULL,
                 strategy        TEXT    NOT NULL DEFAULT 'short_term',
                 direction       TEXT    NOT NULL DEFAULT 'buy',
+                action          TEXT    DEFAULT 'hold',
                 score           REAL    NOT NULL,
                 confidence      INTEGER DEFAULT 0,
                 tech_score      INTEGER DEFAULT 0,
@@ -154,15 +162,20 @@ class Database:
                 stop_loss       REAL    DEFAULT 0,
                 take_profit     REAL    DEFAULT 0,
                 take_profit_2   REAL    DEFAULT 0,
+                take_profit_3   REAL    DEFAULT 0,
                 holding_days    INTEGER DEFAULT 5,
                 tech_reason     TEXT    DEFAULT '',
                 news_reason     TEXT    DEFAULT '',
                 fundamental_reason TEXT DEFAULT '',
                 llm_reason      TEXT    DEFAULT '',
+                recommendation_reason TEXT DEFAULT '',
                 valuation_summary TEXT  DEFAULT '',
                 quality_score   REAL,
                 safety_margin   REAL,
                 risk_flags      TEXT    DEFAULT '[]',
+                risk_note       TEXT    DEFAULT '',
+                position_note   TEXT    DEFAULT '',
+                themes          TEXT    DEFAULT '[]',
                 price           REAL    DEFAULT 0,
                 change_pct      REAL    DEFAULT 0,
                 FOREIGN KEY (run_id) REFERENCES published_recommendation_runs(id)
@@ -209,6 +222,13 @@ class Database:
                 UNIQUE(ticker, market)
             );
 
+            -- Market sentiment cache (computed during pipeline run)
+            CREATE TABLE IF NOT EXISTS market_sentiment_cache (
+                market      TEXT    PRIMARY KEY,
+                data        TEXT    NOT NULL,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- Watchlist (per-user db)
             CREATE TABLE IF NOT EXISTS watchlist_items (
                 id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,6 +243,29 @@ class Database:
             );
         """)
         self._conn.commit()
+
+    def _migrate_add_columns(self):
+        """Add missing columns to existing recommendation tables."""
+        new_cols = [
+            ("take_profit_3", "REAL DEFAULT 0"),
+            ("action", "TEXT DEFAULT 'hold'"),
+            ("recommendation_reason", "TEXT DEFAULT ''"),
+            ("risk_note", "TEXT DEFAULT ''"),
+            ("position_note", "TEXT DEFAULT ''"),
+            ("themes", "TEXT DEFAULT '[]'"),
+        ]
+        for table in ("daily_recommendation_items", "published_recommendation_items"):
+            existing = {
+                row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for col_name, col_def in new_cols:
+                if col_name not in existing:
+                    try:
+                        self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        logger.info(f"Added column {col_name} to {table}")
+                    except Exception as e:
+                        logger.debug(f"Column {col_name} on {table}: {e}")
+            self._conn.commit()
 
     def _migrate_market_isolation(self):
         """Migrate old single-column UNIQUE(ref_date) to UNIQUE(ref_date, market)."""
@@ -497,12 +540,19 @@ class Database:
         self._conn.commit()
 
     def get_win_rate_summary(self, market: str | None = None,
-                             days: int = 90) -> dict:
-        where = "WHERE outcome != 'pending'"
+                             days: int | None = None) -> dict:
+        where_parts = ["outcome != 'pending'"]
         params: list = []
         if market:
-            where += " AND market = ?"
+            where_parts.append("market = ?")
             params.append(market)
+        if days:
+            where_parts.append("run_date >= ?")
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            params.append(cutoff)
+
+        where = "WHERE " + " AND ".join(where_parts)
 
         rows = self._conn.execute(
             f"SELECT outcome, COUNT(*) as cnt, AVG(return_pct) as avg_ret "
@@ -513,17 +563,71 @@ class Database:
         total = sum(r["cnt"] for r in rows)
         wins = sum(r["cnt"] for r in rows if r["outcome"] in ("win", "partial"))
         losses = sum(r["cnt"] for r in rows if r["outcome"] == "loss")
+        timeouts = sum(r["cnt"] for r in rows if r["outcome"] == "timeout")
         avg_return = 0.0
+        avg_win_return = 0.0
+        avg_loss_return = 0.0
         if rows:
-            avg_return = sum(r["avg_ret"] * r["cnt"] for r in rows) / max(total, 1)
+            avg_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in rows) / max(total, 1)
+        win_rows = [r for r in rows if r["outcome"] in ("win", "partial")]
+        loss_rows = [r for r in rows if r["outcome"] == "loss"]
+        if win_rows:
+            avg_win_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in win_rows) / max(wins, 1)
+        if loss_rows:
+            avg_loss_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in loss_rows) / max(losses, 1)
+
+        pending_cnt = self._conn.execute(
+            "SELECT COUNT(*) FROM win_rate_records WHERE outcome='pending'"
+            + (" AND market=?" if market else ""),
+            ([market] if market else []),
+        ).fetchone()[0]
 
         return {
-            "total": total,
+            "total_evaluated": total,
+            "pending": pending_cnt,
             "wins": wins,
             "losses": losses,
+            "timeouts": timeouts,
             "win_rate": round(wins / max(total, 1) * 100, 1),
-            "avg_return": round(avg_return, 2),
+            "avg_return_pct": round(avg_return, 2),
+            "avg_win_return_pct": round(avg_win_return, 2),
+            "avg_loss_return_pct": round(avg_loss_return, 2),
         }
+
+    def get_win_rate_details(self, market: str | None = None,
+                              limit: int = 50) -> list[dict]:
+        where_parts = ["outcome != 'pending'"]
+        params: list = []
+        if market:
+            where_parts.append("market = ?")
+            params.append(market)
+        where = "WHERE " + " AND ".join(where_parts)
+        params.append(limit)
+        rows = self._conn.execute(
+            f"SELECT * FROM win_rate_records {where} ORDER BY evaluated_at DESC LIMIT ?",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_win_rate_by_date(self, market: str | None = None) -> list[dict]:
+        """Aggregate win rate by run_date for chart display."""
+        where_parts = ["outcome != 'pending'"]
+        params: list = []
+        if market:
+            where_parts.append("market = ?")
+            params.append(market)
+        where = "WHERE " + " AND ".join(where_parts)
+        rows = self._conn.execute(
+            f"""SELECT run_date,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN outcome IN ('win','partial') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
+                       AVG(return_pct) as avg_return
+                FROM win_rate_records {where}
+                GROUP BY run_date ORDER BY run_date DESC LIMIT 30""",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Deep analysis cache
@@ -592,27 +696,63 @@ class Database:
             risk_flags = item.get("risk_flags", [])
             if isinstance(risk_flags, list):
                 risk_flags = json.dumps(risk_flags, ensure_ascii=False)
+            themes = item.get("themes", [])
+            if isinstance(themes, list):
+                themes = json.dumps(themes, ensure_ascii=False)
             self._conn.execute(
                 f"""INSERT INTO {table}
-                    (run_id, ticker, name, market, strategy, direction, score,
-                     confidence, tech_score, news_score, fundamental_score,
+                    (run_id, ticker, name, market, strategy, direction, action,
+                     score, confidence, tech_score, news_score, fundamental_score,
                      combined_score, entry_price, entry_2, stop_loss,
-                     take_profit, take_profit_2, holding_days,
+                     take_profit, take_profit_2, take_profit_3, holding_days,
                      tech_reason, news_reason, fundamental_reason,
-                     llm_reason, valuation_summary, quality_score,
-                     safety_margin, risk_flags, price, change_pct)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     llm_reason, recommendation_reason, valuation_summary,
+                     quality_score, safety_margin, risk_flags, risk_note,
+                     position_note, themes, price, change_pct)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
-                 item.get("direction", "buy"), item.get("score", 0),
+                 item.get("direction", "buy"), item.get("action", "hold"),
+                 item.get("score", 0),
                  item.get("confidence", 0), item.get("tech_score", 0),
                  item.get("news_score", 0), item.get("fundamental_score", 0),
                  item.get("combined_score", 0), item.get("entry_price", 0),
                  item.get("entry_2", 0), item.get("stop_loss", 0),
                  item.get("take_profit", 0), item.get("take_profit_2", 0),
-                 item.get("holding_days", 5), item.get("tech_reason", ""),
-                 item.get("news_reason", ""), item.get("fundamental_reason", ""),
-                 item.get("llm_reason", ""), item.get("valuation_summary", ""),
+                 item.get("take_profit_3", 0), item.get("holding_days", 5),
+                 item.get("tech_reason", ""), item.get("news_reason", ""),
+                 item.get("fundamental_reason", ""),
+                 item.get("llm_reason", ""),
+                 item.get("recommendation_reason", ""),
+                 item.get("valuation_summary", ""),
                  item.get("quality_score"), item.get("safety_margin"),
-                 risk_flags, item.get("price", 0), item.get("change_pct", 0)),
+                 risk_flags, item.get("risk_note", ""),
+                 item.get("position_note", ""), themes,
+                 item.get("price", 0), item.get("change_pct", 0)),
             )
+
+    # ------------------------------------------------------------------
+    # Market sentiment cache
+    # ------------------------------------------------------------------
+
+    def save_market_sentiment(self, market: str, data: dict):
+        import json
+        self._conn.execute(
+            """INSERT INTO market_sentiment_cache (market, data, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(market) DO UPDATE SET data=excluded.data, updated_at=CURRENT_TIMESTAMP""",
+            (market, json.dumps(data, ensure_ascii=False)),
+        )
+        self._conn.commit()
+
+    def get_market_sentiment(self, market: str) -> dict | None:
+        import json
+        row = self._conn.execute(
+            "SELECT data, updated_at FROM market_sentiment_cache WHERE market = ?",
+            (market,),
+        ).fetchone()
+        if not row:
+            return None
+        result = json.loads(row["data"])
+        result["_cached_at"] = row["updated_at"]
+        return result

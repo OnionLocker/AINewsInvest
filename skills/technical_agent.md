@@ -106,11 +106,24 @@ PER-STOCK OUTPUT:
   - 55-74: Moderate opportunity (some signals conflicting)
   - 40-54: Neutral/weak (mixed signals, wait)
   - 0-39: Bearish (downtrend, breakdown, high risk)
-- action: one of "buy", "hold", "avoid"
+- action: one of "buy", "hold", "avoid", "short" (US stocks ONLY)
+  - "short": Clear bearish technical setup. Only for US market stocks.
+    Criteria: MA bearish alignment (MA5 < MA10 < MA20), breakdown below support,
+    volume expansion on decline, weekly_trend = "bearish".
+    NEVER use "short" for HK stocks.
 - analysis: 1-3 sentence technical assessment in Chinese
 - risk_flags: list of risk keywords
 - risk_note: brief risk description in Chinese
 - position_note: position sizing suggestion in Chinese
+
+SHORT-SELLING TECHNICAL SETUPS (US STOCKS ONLY):
+- MA bearish alignment (MA5 < MA10 < MA20) + price below MA20: strong short signal
+- Breakdown below key support with volume expansion: confirmed short entry
+- Volume-price divergence at highs (rising price, falling volume): distribution
+- Weekly bearish trend confirmation adds conviction
+- When action="short", technical_score should be 0-35
+  (lower score = stronger short conviction)
+- NEVER recommend short for HK stocks
 
 SPECIAL CONSIDERATIONS FOR HK STOCKS:
 - No daily price limit, larger intraday swings expected

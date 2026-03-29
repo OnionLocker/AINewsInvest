@@ -63,6 +63,14 @@ def run_daily_pipeline(
     ref_date = _ref_date_for_market(market)
     st = cfg.short_term
 
+    _progress(progress_cb, 2.0, "Evaluating pending win-rate records")
+    try:
+        from pipeline.evaluator import evaluate_pending_records
+        eval_result = evaluate_pending_records()
+        logger.info(f"Pre-run evaluation: {eval_result}")
+    except Exception as e:
+        logger.warning(f"Pre-run evaluation failed: {e}")
+
     db = Database(SYSTEM_DB_PATH)
     try:
         if not force:
@@ -172,6 +180,12 @@ def run_daily_pipeline(
             except Exception as e:
                 logger.warning(f"win_rate record {it.get('ticker')}: {e}")
 
+        _progress(progress_cb, 95.0, "Computing market sentiment cache")
+        try:
+            _cache_market_sentiment(db, market)
+        except Exception as e:
+            logger.warning(f"Market sentiment cache failed: {e}")
+
         _progress(progress_cb, 100.0, f"Done - {market}")
         return {
             "ref_date": ref_date,
@@ -184,3 +198,58 @@ def run_daily_pipeline(
         }
     finally:
         db.close()
+
+
+def _cache_market_sentiment(db: Database, market: str):
+    """Compute full market sentiment and store in DB for instant API reads."""
+    from analysis.news_fetcher import fetch_market_news, analyze_sentiment
+    from core.data_source import _get_market_breadth
+
+    mkt_short = "us" if market == "us_stock" else "hk"
+
+    news = fetch_market_news(market=market, limit=25)
+    sentiment = analyze_sentiment(news)
+    breadth = _get_market_breadth(market)
+
+    top_headlines = []
+    for n in news[:6]:
+        top_headlines.append({
+            "title": n.get("title", ""),
+            "publisher": n.get("publisher", ""),
+            "link": n.get("link", ""),
+            "credibility": n.get("credibility", 0.5),
+        })
+
+    s = sentiment.get("score", 0.0)
+    adv = breadth.get("advance_pct", 50.0)
+    raw = (s + 1) / 2 * 50 + adv / 100 * 50
+    raw = max(0, min(100, raw))
+    if raw >= 75:
+        label = "\u6781\u5ea6\u8d2a\u5a6a"
+    elif raw >= 60:
+        label = "\u8d2a\u5a6a"
+    elif raw >= 40:
+        label = "\u4e2d\u6027"
+    elif raw >= 25:
+        label = "\u6050\u60e7"
+    else:
+        label = "\u6781\u5ea6\u6050\u60e7"
+    fear_greed = {"value": round(raw, 1), "label": label}
+
+    total = breadth.get("total", 0)
+    if mkt_short == "us":
+        scope_label = f"\u6807\u666e500\u6210\u5206\u80a1({total}\u53ea)"
+    else:
+        scope_label = f"\u6052\u6307+\u6052\u751f\u79d1\u6280\u6210\u5206\u80a1({total}\u53ea)"
+
+    result = {
+        "market": market,
+        "sentiment": sentiment,
+        "breadth": breadth,
+        "breadth_scope": scope_label,
+        "fear_greed": fear_greed,
+        "headlines": top_headlines,
+    }
+
+    db.save_market_sentiment(market, result)
+    logger.info(f"Market sentiment cached for {market}: fg={fear_greed['value']}, breadth={total}")

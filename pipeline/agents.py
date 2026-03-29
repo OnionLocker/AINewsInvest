@@ -100,13 +100,8 @@ def _build_news_payload(
     }
 
 
-def _call_news_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict]:
-    """Invoke the News Sentiment Agent and normalize results."""
-    response = agent_analyze("news_sentiment_agent", payload, max_retries=max_retries)
-    if response is None:
-        return []
-
-    results = response.get("results", [])
+def _normalize_news_results(results: list[dict]) -> list[dict]:
+    """Normalize raw news agent results."""
     normalized = []
     for r in results:
         ticker = r.get("ticker") or r.get("code", "")
@@ -123,6 +118,17 @@ def _call_news_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
             "sector_bonus": _safe_int(r.get("sector_bonus", 0)),
             "themes": list(r.get("themes") or []),
         })
+    return normalized
+
+
+def _call_news_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict]:
+    """Invoke the News Sentiment Agent and normalize results."""
+    response = agent_analyze("news_sentiment_agent", payload, max_retries=max_retries)
+    if response is None:
+        return []
+
+    results = response.get("results", [])
+    normalized = _normalize_news_results(results)
     logger.info(f"News Agent returned {len(normalized)} results")
     return normalized
 
@@ -231,13 +237,8 @@ def _build_tech_payload(
     }
 
 
-def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict]:
-    """Invoke the Technical Analysis Agent and normalize results."""
-    response = agent_analyze("technical_agent", payload, max_retries=max_retries)
-    if response is None:
-        return []
-
-    results = response.get("results", [])
+def _normalize_tech_results(results: list[dict]) -> list[dict]:
+    """Normalize raw tech agent results."""
     normalized = []
     for r in results:
         ticker = r.get("ticker") or r.get("code", "")
@@ -252,6 +253,17 @@ def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
             "risk_note": str(r.get("risk_note", ""))[:200],
             "position_note": str(r.get("position_note", ""))[:100],
         })
+    return normalized
+
+
+def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict]:
+    """Invoke the Technical Analysis Agent and normalize results."""
+    response = agent_analyze("technical_agent", payload, max_retries=max_retries)
+    if response is None:
+        return []
+
+    results = response.get("results", [])
+    normalized = _normalize_tech_results(results)
     logger.info(f"Tech Agent returned {len(normalized)} results")
     return normalized
 
@@ -333,11 +345,14 @@ _ACTION_SCORE_RANGES: dict[str, tuple[int, int]] = {
     "buy": (60, 100),
     "hold": (35, 70),
     "avoid": (0, 45),
+    "short": (0, 35),
 }
 
 
 def _classify_action(action_str: str) -> str:
     a = (action_str or "").lower().strip()
+    if any(k in a for k in ("short", "sell_short")):
+        return "short"
     if any(k in a for k in ("strong", "aggressive")):
         return "strong_buy"
     if any(k in a for k in ("buy", "positive", "long", "bullish")):
@@ -518,6 +533,75 @@ def _compute_trade_params(
     }
 
 
+def _compute_short_trade_params(
+    price: float,
+    enriched: dict,
+    strategy_type: str = "short",
+) -> dict[str, Any]:
+    """Compute SHORT (sell) trade parameters. TP below price, SL above price."""
+    cfg = get_config()
+    strat = cfg.swing if strategy_type == "swing" else cfg.short_term
+
+    if price <= 0:
+        return {
+            "entry_price": 0, "entry_2": 0,
+            "stop_loss": 0, "take_profit": 0,
+            "take_profit_2": 0, "take_profit_3": 0,
+            "holding_days": strat.default_holding_days,
+        }
+
+    atr_20d = _safe_float(enriched.get("atr_20d", 0))
+    volatility_class = str(enriched.get("volatility_class", "medium"))
+    support_levels = enriched.get("support_levels", [])
+    resistance_levels = enriched.get("resistance_levels", [])
+    support_1 = _safe_float(support_levels[0]) if support_levels else price * 0.95
+    support_2 = _safe_float(support_levels[1]) if len(support_levels) > 1 else price * 0.91
+    resist_1 = _safe_float(resistance_levels[0]) if resistance_levels else price * 1.03
+
+    entry_price = round(price * 1.003, 2)
+    entry_price = max(entry_price, price)
+    entry_2 = round(entry_price * 1.015, 2)
+
+    if volatility_class == "high":
+        sl_buffer_pct = 0.025
+        holding_days = 3
+    elif volatility_class == "low":
+        sl_buffer_pct = 0.012
+        holding_days = strat.default_holding_days
+    else:
+        sl_buffer_pct = 0.018
+        holding_days = strat.default_holding_days
+
+    stop_loss = round(max(resist_1 * 1.01, entry_price * (1 + sl_buffer_pct)), 2)
+
+    atr_pct = atr_20d / price if (atr_20d > 0 and price > 0) else 0
+    if atr_pct > 0:
+        sl_max_pct = min(0.10, atr_pct * 2.5)
+    else:
+        sl_max_pct = 0.08
+    stop_loss = min(stop_loss, round(entry_price * (1 + sl_max_pct), 2))
+    stop_loss = max(stop_loss, round(entry_price * 1.015, 2))
+
+    risk = stop_loss - entry_price
+    min_rr = 1.5
+    take_profit = round(min(support_1, entry_price * (1 - strat.default_stop_loss_pct + 1)), 2)
+    take_profit = round(min(take_profit, entry_price - risk * min_rr), 2)
+    take_profit = min(take_profit, round(entry_price * 0.97, 2))
+
+    take_profit_2 = round(min(support_2, take_profit * 0.97), 2)
+    take_profit_3 = round(take_profit_2 * 0.96, 2)
+
+    return {
+        "entry_price": entry_price,
+        "entry_2": entry_2,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
+        "take_profit_2": take_profit_2,
+        "take_profit_3": take_profit_3,
+        "holding_days": holding_days,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Layer 5: Score synthesis
 # ---------------------------------------------------------------------------
@@ -588,17 +672,35 @@ def synthesize_agent_results(
             continue
 
         action_str = str(tech.get("action", news.get("action", "hold")))
+        action_bucket = _classify_action(action_str)
+        market_str = c.get("market", "")
 
-        trade = _compute_trade_params(
-            price=price,
-            enriched=c,
-            action=action_str,
-            strategy_type=strategy_type,
+        is_short = (
+            action_bucket == "short"
+            and market_str == "us_stock"
         )
+
+        if is_short:
+            trade = _compute_short_trade_params(
+                price=price,
+                enriched=c,
+                strategy_type=strategy_type,
+            )
+            direction = "short"
+        else:
+            trade = _compute_trade_params(
+                price=price,
+                enriched=c,
+                action=action_str,
+                strategy_type=strategy_type,
+            )
+            direction = "buy" if action_bucket in ("buy", "strong_buy") else "hold"
 
         is_quality = combined >= quality_threshold and not (
             ns < low_score_both and ts < low_score_both
         )
+        if is_short:
+            is_quality = ns <= 35 and ts <= 40
 
         all_risk_flags = list(set(
             list(news.get("risk_flags") or []) +
@@ -611,9 +713,9 @@ def synthesize_agent_results(
         all_scored.append({
             "ticker": ticker,
             "name": c.get("name", ticker),
-            "market": c.get("market", ""),
+            "market": market_str,
             "strategy": "swing" if strategy_type == "swing" else "short_term",
-            "direction": "buy" if _classify_action(action_str) in ("buy", "strong_buy") else "hold",
+            "direction": direction,
             "score": round(combined, 2),
             "confidence": combined,
             "tech_score": ts,
@@ -692,6 +794,64 @@ def _limit_sector_concentration(
 # Main agent pipeline entry point
 # ---------------------------------------------------------------------------
 
+LLM_BATCH_SIZE = 10
+
+
+def _batched_news_agent(
+    candidates: list[dict],
+    market: str,
+    max_retries: int,
+    progress_cb: Callable[[dict], None] | None = None,
+) -> list[dict]:
+    """Call News Agent in small batches to avoid LLM timeout."""
+    all_results: list[dict] = []
+    total = len(candidates)
+    for i in range(0, total, LLM_BATCH_SIZE):
+        batch = candidates[i : i + LLM_BATCH_SIZE]
+        batch_num = i // LLM_BATCH_SIZE + 1
+        total_batches = (total + LLM_BATCH_SIZE - 1) // LLM_BATCH_SIZE
+        logger.info(f"News Agent batch {batch_num}/{total_batches}: {len(batch)} stocks")
+
+        payload = _build_news_payload(batch, market)
+        results = _call_news_agent(payload, max_retries=max_retries)
+        if results:
+            all_results.extend(results)
+            logger.info(f"News Agent batch {batch_num}: got {len(results)} results")
+        else:
+            logger.warning(f"News Agent batch {batch_num}: no results")
+
+    logger.info(f"News Agent total: {len(all_results)} results from {total} candidates")
+    return all_results
+
+
+def _batched_tech_agent(
+    candidates: list[dict],
+    market: str,
+    max_retries: int,
+    progress_cb: Callable[[dict], None] | None = None,
+) -> list[dict]:
+    """Call Tech Agent in small batches to avoid LLM timeout."""
+    all_results: list[dict] = []
+    total = len(candidates)
+    for i in range(0, total, LLM_BATCH_SIZE):
+        batch = candidates[i : i + LLM_BATCH_SIZE]
+        batch_num = i // LLM_BATCH_SIZE + 1
+        total_batches = (total + LLM_BATCH_SIZE - 1) // LLM_BATCH_SIZE
+        logger.info(f"Tech Agent batch {batch_num}/{total_batches}: {len(batch)} stocks")
+
+        payload = _build_tech_payload(batch, market)
+        results = _call_tech_agent(payload, max_retries=max_retries)
+        if results:
+            all_results.extend(results)
+            logger.info(f"Tech Agent batch {batch_num}: got {len(results)} results")
+        else:
+            logger.warning(f"Tech Agent batch {batch_num}: no results, using fallback")
+            all_results.extend(fallback_technical_scores(batch))
+
+    logger.info(f"Tech Agent total: {len(all_results)} results from {total} candidates")
+    return all_results
+
+
 def run_agent_pipeline(
     enriched: list[dict],
     market: str = "all",
@@ -725,10 +885,9 @@ def run_agent_pipeline(
 
     candidates = enriched[:batch_size]
 
-    # Layer 3: News Agent
+    # Layer 3: News Agent (batched)
     _progress(35.0, f"Layer 3: News Agent analyzing {len(candidates)} candidates")
-    news_payload = _build_news_payload(candidates, market)
-    news_results = _call_news_agent(news_payload, max_retries=max_retries)
+    news_results = _batched_news_agent(candidates, market, max_retries, progress_cb)
 
     if not news_results:
         logger.warning("News Agent returned no results, sending all to Tech Agent")
@@ -736,10 +895,9 @@ def run_agent_pipeline(
     else:
         tech_candidates = run_news_filter(candidates, news_results, top_n=batch_size // 2)
 
-    # Layer 4: Technical Agent
+    # Layer 4: Technical Agent (batched)
     _progress(55.0, f"Layer 4: Tech Agent analyzing {len(tech_candidates)} candidates")
-    tech_payload = _build_tech_payload(tech_candidates, market)
-    tech_results = _call_tech_agent(tech_payload, max_retries=max_retries)
+    tech_results = _batched_tech_agent(tech_candidates, market, max_retries, progress_cb)
 
     if not tech_results:
         logger.warning("Tech Agent returned no results, using fallback scoring")

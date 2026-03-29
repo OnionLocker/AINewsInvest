@@ -10,15 +10,17 @@ import {
   LogOut,
   Menu,
   X,
+  Trophy,
 } from "lucide-react";
 import { useState } from "react";
 
 const navItems = [
-  { to: "/recommendations/us", icon: DollarSign, label: "美股推荐" },
-  { to: "/recommendations/hk", icon: TrendingUp, label: "港股推荐" },
-  { to: "/screening", icon: Search, label: "选股筛选" },
-  { to: "/analysis", icon: BarChart3, label: "深度分析" },
-  { to: "/watchlist", icon: Heart, label: "自选股" },
+  { to: "/recommendations/us", icon: DollarSign, label: "\u7F8E\u80A1\u63A8\u8350" },
+  { to: "/recommendations/hk", icon: TrendingUp, label: "\u6E2F\u80A1\u63A8\u8350" },
+  { to: "/win-rate", icon: Trophy, label: "\u80DC\u7387\u7EDF\u8BA1" },
+  { to: "/screening", icon: Search, label: "\u9009\u80A1\u7B5B\u9009" },
+  { to: "/analysis", icon: BarChart3, label: "\u6DF1\u5EA6\u5206\u6790" },
+  { to: "/watchlist", icon: Heart, label: "\u81EA\u9009\u80A1" },
 ];
 
 function SideLink({ to, icon: Icon, label, onClick }) {
@@ -64,7 +66,7 @@ export default function Layout() {
           <SideLink
             to="/admin"
             icon={Shield}
-            label="管理后台"
+            label={"\u7BA1\u7406\u540E\u53F0"}
             onClick={() => setSidebarOpen(false)}
           />
         )}
@@ -78,7 +80,7 @@ export default function Layout() {
           <div>
             <p className="text-xs text-[#d1d4dc]">{user?.username}</p>
             {user?.is_admin && (
-              <span className="text-[10px] text-brand-500">管理员</span>
+              <span className="text-[10px] text-brand-500">{"\u7BA1\u7406\u5458"}</span>
             )}
           </div>
         </div>
@@ -87,7 +89,7 @@ export default function Layout() {
           className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-[#787b86] transition-colors hover:text-[#f23645]"
         >
           <LogOut size={14} />
-          退出登录
+          {"\u9000\u51FA\u767B\u5F55"}
         </button>
       </div>
     </nav>
