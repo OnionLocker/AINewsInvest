@@ -8,20 +8,20 @@ function SentimentLabel({ label }) {
   };
   const info = map[label] || map.neutral;
   return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ color: info.color, background: info.color + "18" }}>
+    <span className="text-sm font-bold px-2.5 py-0.5 rounded" style={{ color: info.color, background: info.color + "18" }}>
       {info.text}
     </span>
   );
 }
 
 function Dot({ color = "#089981" }) {
-  return <span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />;
+  return <span className="mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />;
 }
 
 function StatItem({ label, value, color }) {
   return (
-    <span className="text-xs text-[#787b86]">
-      {label}{"\uFF1A"}<span className="font-semibold" style={{ color: color || "#d1d4dc" }}>{value}</span>
+    <span className="text-base font-medium text-[#787b86]">
+      {label}{"\uFF1A"}<span className="font-bold" style={{ color: color || "#d1d4dc" }}>{value}</span>
     </span>
   );
 }
@@ -68,15 +68,15 @@ export default function MarketSentimentPanel({ data, market }) {
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-semibold text-[#d1d4dc]">{"\u5e02\u573a\u60c5\u7eea"}</span>
+              <span className="text-base font-bold text-[#d1d4dc]">{"\u5e02\u573a\u60c5\u7eea"}</span>
               <SentimentLabel label={sentiment?.label} />
             </div>
             {fgValue != null && (
-              <p className="text-2xl font-bold" style={{ color: fgColor }}>{fgLabel}</p>
+              <p className="text-3xl font-extrabold" style={{ color: fgColor }}>{fgLabel}</p>
             )}
-            <p className="mt-1 text-xs text-[#787b86]">
-              {scopeLabel}{"\uFF1A"}{"\u4e0a\u6da8"} {advN} {"\u5bb6\uff0c\u4e0b\u8dcc"} {decN} {"\u5bb6"}
-              {unchN > 0 ? `\uff0c\u5e73\u76d8 ${unchN} \u5bb6` : ""}
+            <p className="mt-1 text-base font-medium text-[#787b86]">
+              {scopeLabel}{"("}{totalN}{"\u53EA)\uFF1A"}{"\u4e0a\u6da8"} {advN} {"\u5bb6\u3001\u4e0b\u8dcc"} {decN} {"\u5bb6"}
+              {unchN > 0 ? `\u3001\u5e73\u76d8 ${unchN} \u5bb6` : ""}
               {advN > decN ? "\uff0c\u591a\u5934\u5360\u4f18" : decN > advN ? "\uff0c\u7a7a\u5934\u5360\u4f18" : ""}
             </p>
           </div>
@@ -87,7 +87,7 @@ export default function MarketSentimentPanel({ data, market }) {
           </div>
         </div>
         {fgValue != null && (
-          <p className="mt-2 text-xs text-[#787b86]">
+          <p className="mt-2 text-base font-medium text-[#787b86]">
             {"\u5e02\u573a\u60c5\u7eea\u8bc4\u5206"}{fgValue}{"\u5206\uff08"}{fgLabel}{"\uff09\uff0c"}
             {fgValue >= 60 ? "\u591a\u5934\u6c14\u6c1b\u6d53\u539a\uff0c\u8d44\u91d1\u505a\u591a\u610f\u613f\u8f83\u5f3a" :
              fgValue >= 40 ? "\u5e02\u573a\u60c5\u7eea\u5e73\u7a33\uff0c\u89c2\u671b\u6c14\u6c1b\u504f\u91cd" :
@@ -99,13 +99,13 @@ export default function MarketSentimentPanel({ data, market }) {
       {/* Market Analysis Block */}
       <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-[#d1d4dc]">{"\u5e02\u573a\u5206\u6790"}</span>
+          <span className="text-base font-bold text-[#d1d4dc]">{"\u5e02\u573a\u5206\u6790"}</span>
           <div className="flex gap-2">
-            <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+            <span className="rounded px-2.5 py-1 text-sm font-bold"
               style={{ color: strategyColor, background: strategyColor + "18" }}>
               {"\u7b56\u7565\uff1a"}{strategyLevel}
             </span>
-            <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+            <span className="rounded px-2.5 py-1 text-sm font-bold"
               style={{ color: riskColor, background: riskColor + "18" }}>
               {"\u98ce\u9669\uff1a"}{riskLevel}
             </span>
@@ -114,13 +114,13 @@ export default function MarketSentimentPanel({ data, market }) {
 
         <div className="grid gap-2 md:grid-cols-2">
           {bullPoints.map((p, i) => (
-            <div key={"b"+i} className="flex items-start gap-2 text-xs text-[#d1d4dc]">
+            <div key={"b"+i} className="flex items-start gap-2 text-base font-medium text-[#d1d4dc]">
               <Dot color="#089981" />
               <span>{p}</span>
             </div>
           ))}
           {bearPoints.map((p, i) => (
-            <div key={"r"+i} className="flex items-start gap-2 text-xs text-[#d1d4dc]">
+            <div key={"r"+i} className="flex items-start gap-2 text-base font-medium text-[#d1d4dc]">
               <Dot color="#f23645" />
               <span>{p}</span>
             </div>
@@ -132,7 +132,7 @@ export default function MarketSentimentPanel({ data, market }) {
           <div className="mt-3 space-y-1.5">
             {headlines.slice(0, 3).map((h, i) => (
               <a key={i} href={h.link} target="_blank" rel="noopener noreferrer"
-                className="flex items-start gap-2 text-xs text-[#787b86] hover:text-brand-500 transition-colors">
+                className="flex items-start gap-2 text-sm font-medium text-[#787b86] hover:text-brand-500 transition-colors">
                 <Dot color="#363a45" />
                 <span className="line-clamp-1">{h.title}</span>
               </a>
@@ -141,12 +141,12 @@ export default function MarketSentimentPanel({ data, market }) {
         )}
 
         {/* Operation Suggestion */}
-        <div className="mt-4 rounded-lg border border-[#fb8c00]/25 bg-[#fb8c00]/5 p-3">
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#fb8c00]">
-            <Lightbulb size={13} />
+        <div className="mt-4 rounded-lg border border-[#fb8c00]/25 bg-[#fb8c00]/5 p-4">
+          <div className="mb-1 flex items-center gap-1.5 text-base font-bold text-[#fb8c00]">
+            <Lightbulb size={16} />
             {"\u64cd\u4f5c\u5efa\u8bae"}
           </div>
-          <p className="text-xs leading-relaxed text-[#fb8c00]/80">
+          <p className="text-base font-medium leading-relaxed text-[#fb8c00]/80">
             {fgValue >= 60
               ? "\u5e02\u573a\u60c5\u7eea\u504f\u70ed\uff0c\u53ef\u9002\u5f53\u53c2\u4e0e\u5f3a\u52bf\u6807\u7684\uff0c\u4f46\u6ce8\u610f\u63a7\u5236\u4ed3\u4f4d\uff0c\u9632\u8303\u8ffd\u9ad8\u98ce\u9669\u3002"
               : fgValue >= 40

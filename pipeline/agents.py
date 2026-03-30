@@ -166,7 +166,7 @@ def run_news_filter(
     for c in enriched:
         ticker = c["ticker"]
         nr = news_map.get(ticker)
-        ns = nr["news_score"] if nr else 0
+        ns = nr["news_score"] if nr else 50
         scored.append((ns, c))
 
     scored.sort(key=lambda x: x[0], reverse=True)

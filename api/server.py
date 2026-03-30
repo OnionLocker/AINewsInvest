@@ -96,7 +96,12 @@ if FRONTEND_DIST_DIR.exists():
             from fastapi import HTTPException
             raise HTTPException(404, "Not found")
         if asset.is_file():
-            return FileResponse(asset)
+            headers = {}
+            if "/assets/" in full_path:
+                headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                headers["Cache-Control"] = "no-cache"
+            return FileResponse(asset, headers=headers)
         return FileResponse(FRONTEND_DIST_DIR / "index.html",
                             headers={"Cache-Control": "no-cache"})
 

@@ -201,7 +201,14 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         yh = float(q.get("year_high") or price)
         yl = float(q.get("year_low") or price)
         if yh > yl:
-            moms.append((price - yl) / (yh - yl))
+            rel_pos = (price - yl) / (yh - yl)
+            if rel_pos > 0.85:
+                mom = 0.6 - (rel_pos - 0.85) * 2.0
+            elif rel_pos >= 0.35:
+                mom = 0.4 + (rel_pos - 0.35) * 0.4
+            else:
+                mom = rel_pos * 1.14
+            moms.append(max(0.0, min(1.0, mom)))
         else:
             moms.append(0.5)
         mcs.append(max(np.log10(max(q.get("market_cap") or 1, 1)), 0))
@@ -240,8 +247,31 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    logger.info(f"Layer 1 ranking: {len(filtered)} -> top {min(top_n, len(results))} candidates")
-    return results[:top_n]
+
+    max_per_sector = max(top_n // 3, 5)
+    sector_count: dict[str, int] = {}
+    diversified: list[dict] = []
+    overflow: list[dict] = []
+    for r in results:
+        sec = (r.get("financial") or {}).get("sector", "") or "Unknown"
+        if sector_count.get(sec, 0) < max_per_sector:
+            diversified.append(r)
+            sector_count[sec] = sector_count.get(sec, 0) + 1
+        else:
+            overflow.append(r)
+        if len(diversified) >= top_n:
+            break
+    if len(diversified) < top_n:
+        for r in overflow:
+            diversified.append(r)
+            if len(diversified) >= top_n:
+                break
+
+    logger.info(
+        f"Layer 1 ranking: {len(filtered)} -> {len(diversified)} candidates "
+        f"(sectors: {len(sector_count)}, max/sector: {max_per_sector})"
+    )
+    return diversified
 
 
 # ---------------------------------------------------------------------------
@@ -405,12 +435,12 @@ def batch_fetch_klines(
 ) -> dict[str, pd.DataFrame]:
     """Fetch K-line data for all candidates concurrently."""
     results: dict[str, pd.DataFrame] = {}
-    max_workers = min(16, max(4, len(candidates) // 2))
+    max_workers = min(8, max(3, len(candidates) // 3))
 
     def _fetch(ticker: str, market: str):
         return get_klines(ticker, market, days=days)
 
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futs = {
             ex.submit(_fetch, c["ticker"], c["market"]): c["ticker"]
             for c in candidates
@@ -545,10 +575,10 @@ def _compute_fundamental_score(candidate: dict) -> float:
 
     insider_pct = fin.get("held_pct_insiders")
     if insider_pct is not None:
-        if insider_pct > 0.10:
-            score += 3
-        elif insider_pct > 0.30:
+        if insider_pct > 0.30:
             score += 5
+        elif insider_pct > 0.10:
+            score += 3
 
     inst_pct = fin.get("held_pct_institutions")
     if inst_pct is not None:
@@ -568,6 +598,19 @@ def build_enriched_candidates(
 
     Output is the unified data payload that feeds into both LLM Agents.
     """
+    earnings_map: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=min(6, max(2, len(candidates) // 4))) as ex:
+        futs = {
+            ex.submit(_check_earnings_proximity, c["ticker"], c.get("market", "us_stock")): c["ticker"]
+            for c in candidates
+        }
+        for fut in as_completed(futs):
+            ticker = futs[fut]
+            try:
+                earnings_map[ticker] = fut.result()
+            except Exception:
+                earnings_map[ticker] = {"days_away": None, "date_str": None, "imminent": False}
+
     enriched: list[dict] = []
 
     for c in candidates:
@@ -659,7 +702,7 @@ def build_enriched_candidates(
         )
 
         fundamental_score = _compute_fundamental_score(c)
-        earnings_info = _check_earnings_proximity(ticker, market)
+        earnings_info = earnings_map.get(ticker, {"days_away": None, "date_str": None, "imminent": False})
 
         enriched.append({
             "ticker": ticker,

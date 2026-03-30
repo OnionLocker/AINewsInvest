@@ -18,8 +18,8 @@ function ConfidenceBar({ value }) {
   const color = v >= 70 ? "#089981" : v >= 50 ? "#2962ff" : v >= 35 ? "#fb8c00" : "#f23645";
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="text-xs text-[#787b86]">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
-      <span className="inline-block h-1.5 w-20 overflow-hidden rounded-full bg-[#2a2e39]">
+      <span className="text-base font-semibold text-[#787b86]">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
+      <span className="inline-block h-2.5 w-28 overflow-hidden rounded-full bg-[#2a2e39]">
         <span className="block h-full rounded-full" style={{ width: `${v}%`, background: color }} />
       </span>
     </span>
@@ -38,7 +38,7 @@ function ActionArrow({ action, direction }) {
   const isShort = direction === "short" || a === "short";
   const info = isShort ? map.short : (map[a] || map.hold);
   return (
-    <span className="text-sm font-bold" style={{ color: info.color }}>
+    <span className="text-lg font-extrabold" style={{ color: info.color }}>
       --&gt;{info.label}
     </span>
   );
@@ -46,8 +46,8 @@ function ActionArrow({ action, direction }) {
 
 function ThemeTag({ text }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-[#787b86]">
-      <span className="h-1 w-1 rounded-full bg-[#363a45]" />
+    <span className="inline-flex items-center gap-1 text-sm font-medium text-[#787b86]">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#363a45]" />
       {text}
     </span>
   );
@@ -61,7 +61,7 @@ function PriceBar({ sl, entry, tp, isShort }) {
     if (range <= 0) return null;
     const entryPct = Math.max(12, Math.min(88, ((sl - entry) / range) * 100));
     return (
-      <div className="mt-3 flex h-7 w-full overflow-hidden rounded text-[11px] font-bold">
+      <div className="mt-3 flex h-9 w-full overflow-hidden rounded text-sm font-bold">
         <div className="flex items-center justify-center text-[#089981]"
           style={{ width: `${Math.max(10, 100 - entryPct - 20)}%`, background: "#089981" + "30" }}>
           TP {fmt(tp)}
@@ -81,7 +81,7 @@ function PriceBar({ sl, entry, tp, isShort }) {
   const range = tp - sl;
   const entryPct = Math.max(12, Math.min(88, ((entry - sl) / range) * 100));
   return (
-    <div className="mt-3 flex h-7 w-full overflow-hidden rounded text-[11px] font-bold">
+    <div className="mt-3 flex h-9 w-full overflow-hidden rounded text-sm font-bold">
       <div className="flex items-center justify-center text-[#f23645]"
         style={{ width: `${entryPct}%`, background: "#f23645" + "30" }}>
         SL {fmt(sl)}
@@ -125,28 +125,28 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
   return (
     <div className="mt-4 rounded-lg border border-[#2a2e39] bg-[#131722] p-5">
       <div className="mb-4 flex items-center gap-2">
-        {isShort ? <TrendingDown size={14} style={{ color: "#e040fb" }} /> : <Target size={14} className="text-brand-500" />}
-        <span className="text-sm font-bold text-[#d1d4dc]" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
-        <span className="rounded bg-[#2a2e39] px-2 py-0.5 text-[11px] text-[#787b86]">
+        {isShort ? <TrendingDown size={16} style={{ color: "#e040fb" }} /> : <Target size={16} className="text-brand-500" />}
+        <span className="text-base font-bold text-[#d1d4dc]" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
+        <span className="rounded bg-[#2a2e39] px-2.5 py-0.5 text-sm font-semibold text-[#787b86]">
           {"\u5efa\u8bae\u6301\u4ed3"} {item.holding_days || 3} {"\u5929"}
         </span>
         {isShort && (
-          <span className="rounded bg-[#e040fb]/15 px-2 py-0.5 text-[11px] font-bold text-[#e040fb]">SHORT</span>
+          <span className="rounded bg-[#e040fb]/15 px-2.5 py-0.5 text-sm font-bold text-[#e040fb]">SHORT</span>
         )}
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div className={`rounded-lg border p-4 text-center ${isShort ? "border-[#e040fb]/20 bg-[#e040fb]/5" : "border-[#2a2e39] bg-[#1e222d]"}`}>
-          <div className={`text-xs ${isShort ? "text-[#e040fb]" : "text-[#2962ff]"}`}>{entryLabel}</div>
-          <div className="mt-2 text-2xl font-bold text-[#d1d4dc] tabular-nums">{fmt(entry)}</div>
-          <div className="mt-1 text-[10px] text-[#787b86]">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
+          <div className={`text-base font-bold ${isShort ? "text-[#e040fb]" : "text-[#2962ff]"}`}>{entryLabel}</div>
+          <div className="mt-2 text-3xl font-extrabold text-[#d1d4dc] tabular-nums">{fmt(entry)}</div>
+          <div className="mt-1 text-sm font-medium text-[#787b86]">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
         </div>
         <div className="rounded-lg border border-[#f23645]/20 bg-[#f23645]/5 p-4 text-center">
-          <div className="text-xs text-[#f23645]">{slLabel}</div>
-          <div className="mt-2 text-2xl font-bold text-[#f23645] tabular-nums">{fmt(item.stop_loss)}</div>
+          <div className="text-base font-bold text-[#f23645]">{slLabel}</div>
+          <div className="mt-2 text-3xl font-extrabold text-[#f23645] tabular-nums">{fmt(item.stop_loss)}</div>
         </div>
         <div className="rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/5 p-4 text-center">
-          <div className="text-xs text-[#fb8c00]">{addLabel}</div>
-          <div className="mt-2 text-2xl font-bold text-[#fb8c00] tabular-nums">{fmt(item.entry_2)}</div>
+          <div className="text-base font-bold text-[#fb8c00]">{addLabel}</div>
+          <div className="mt-2 text-3xl font-extrabold text-[#fb8c00] tabular-nums">{fmt(item.entry_2)}</div>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-3">
@@ -156,15 +156,15 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
           { label: "TP3 \u6fc0\u8fdb", val: tp3Auto, pct: pctTP3 },
         ].map((tp) => (
           <div key={tp.label} className="rounded-lg border border-[#089981]/20 bg-[#089981]/5 p-4 text-center">
-            <div className="text-xs text-[#089981]">{tp.label}</div>
-            <div className="mt-2 text-2xl font-bold text-[#d1d4dc] tabular-nums">{fmt(tp.val)}</div>
-            {tp.pct && <div className="mt-1 text-xs text-[#089981]">{isShort ? "" : "+"}{tp.pct}%</div>}
+            <div className="text-base font-bold text-[#089981]">{tp.label}</div>
+            <div className="mt-2 text-3xl font-extrabold text-[#d1d4dc] tabular-nums">{fmt(tp.val)}</div>
+            {tp.pct && <div className="mt-1 text-base font-bold text-[#089981]">{isShort ? "" : "+"}{tp.pct}%</div>}
           </div>
         ))}
       </div>
       <PriceBar sl={item.stop_loss} entry={entry} tp={item.take_profit} isShort={isShort} />
-      <p className="mt-2 flex items-center gap-1 text-[11px] text-[#787b86]">
-        <Lightbulb size={11} className="text-[#fb8c00]" />
+      <p className="mt-2 flex items-center gap-1 text-sm font-medium text-[#787b86]">
+        <Lightbulb size={13} className="text-[#fb8c00]" />
         {isShort
           ? "\u505a\u7a7a\u64cd\u4f5c\uff1a\u5728\u5165\u573a\u4ef7\u4f4d\u5356\u51fa\uff0c\u80a1\u4ef7\u4e0b\u8dcc\u81f3TP\u65f6\u4e70\u5165\u5e73\u4ed3\u83b7\u5229\uff0c\u4e0a\u6da8\u81f3SL\u65f6\u4e70\u5165\u6b62\u635f\u3002"
           : "\u5165\u573a\u4ef7\u4e3a\u5efa\u8bae\u6302\u9650\u4ef7\u5355\u4f4d\uff0c\u7b49\u56de\u843d\u81f3\u8be5\u4ef7\u4f4d\u81ea\u52a8\u6210\u4ea4\u3002"}
@@ -177,21 +177,128 @@ function AnalysisSection({ newsReason, techReason }) {
   return (
     <div className="mt-3 grid gap-3 md:grid-cols-2">
       <div className="rounded-lg border border-[#2a2e39] bg-[#131722] p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d1d4dc]">
-          <span className="h-2 w-2 rounded-full border-2 border-[#787b86]" />
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-[#d1d4dc]">
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-[#787b86]" />
           {"\u65b0\u95fb\u9762"}
         </div>
-        <p className="text-xs leading-relaxed text-[#787b86]">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-[#787b86]">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
       </div>
       <div className="rounded-lg border border-[#2a2e39] bg-[#131722] p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d1d4dc]">
-          <span className="h-2 w-2 rounded-full border-2 border-[#787b86]" />
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-[#d1d4dc]">
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-[#787b86]" />
           {"\u6280\u672f\u9762"}
         </div>
-        <p className="text-xs leading-relaxed text-[#787b86]">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-[#787b86]">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
       </div>
     </div>
   );
+}
+
+const RISK_FLAG_CN = {
+  high_valuation: "\u9ad8\u4f30\u503c\u98ce\u9669",
+  earnings_miss: "\u8d22\u62a5\u4e0d\u53ca\u9884\u671f",
+  earnings_imminent: "\u8d22\u62a5\u53d1\u5e03\u5728\u5373",
+  sell_the_fact: "\u5229\u597d\u5151\u73b0\u98ce\u9669",
+  unverified_rumor: "\u672a\u8bc1\u5b9e\u4f20\u95fb",
+  short_squeeze_risk: "\u8f67\u7a7a\u98ce\u9669",
+  high_short_interest: "\u9ad8\u7a7a\u5934\u6301\u4ed3",
+  overbought_extended: "\u4e25\u91cd\u8d85\u4e70",
+  overbought_mild: "\u8f7b\u5fae\u8d85\u4e70",
+  volume_price_divergence: "\u91cf\u4ef7\u80cc\u79bb",
+  distribution_risk: "\u7b79\u7801\u6d3e\u53d1\u98ce\u9669",
+  consumer_demand_risk: "\u6d88\u8d39\u9700\u6c42\u98ce\u9669",
+  regulatory_risk: "\u76d1\u7ba1\u653f\u7b56\u98ce\u9669",
+  competition_risk: "\u7ade\u4e89\u52a0\u5267\u98ce\u9669",
+  macro_risk: "\u5b8f\u89c2\u7ecf\u6d4e\u98ce\u9669",
+  liquidity_risk: "\u6d41\u52a8\u6027\u98ce\u9669",
+  sector_rotation: "\u677f\u5757\u8f6e\u52a8\u98ce\u9669",
+  geopolitical_risk: "\u5730\u7f18\u653f\u6cbb\u98ce\u9669",
+  debt_risk: "\u503a\u52a1\u98ce\u9669",
+  dilution_risk: "\u80a1\u6743\u7a00\u91ca\u98ce\u9669",
+  insider_selling: "\u5185\u90e8\u4eba\u51cf\u6301",
+  technical_breakdown: "\u6280\u672f\u7834\u4f4d\u98ce\u9669",
+  supply_chain_risk: "\u4f9b\u5e94\u94fe\u98ce\u9669",
+  currency_risk: "\u6c47\u7387\u98ce\u9669",
+  margin_pressure: "\u5229\u6da6\u7387\u627f\u538b",
+  no_official_catalyst: "\u7f3a\u4e4f\u660e\u786e\u50ac\u5316\u5242",
+  no_clear_catalyst: "\u7f3a\u4e4f\u50ac\u5316\u5242",
+  turnaround_risk: "\u8f6c\u578b\u98ce\u9669",
+  execution_risk: "\u6267\u884c\u98ce\u9669",
+  untested_support: "\u652f\u6491\u4f4d\u672a\u7ecf\u9a8c\u8bc1",
+  insufficient_signal: "\u4fe1\u53f7\u4e0d\u8db3",
+  market_volatility: "\u5e02\u573a\u6ce2\u52a8\u98ce\u9669",
+  ai_competition: "AI\u7ade\u4e89\u98ce\u9669",
+  antitrust_risk: "\u53cd\u5782\u65ad\u98ce\u9669",
+  sell_the_news_risk: "\u5229\u597d\u5151\u73b0\u98ce\u9669",
+  cyclical_demand_risk: "\u5468\u671f\u6027\u9700\u6c42\u98ce\u9669",
+  run_up_too_fast: "\u6da8\u5e45\u8fc7\u5feb\u98ce\u9669",
+  tariff_risk: "\u5173\u7a0e\u98ce\u9669",
+  trade_war_risk: "\u8d38\u6613\u6218\u98ce\u9669",
+  recession_risk: "\u8870\u9000\u98ce\u9669",
+  policy_risk: "\u653f\u7b56\u98ce\u9669",
+  guidance_risk: "\u4e1a\u7ee9\u6307\u5f15\u98ce\u9669",
+  demand_slowdown: "\u9700\u6c42\u653e\u7f13",
+  margin_compression: "\u5229\u6da6\u7387\u538b\u7f29",
+  management_risk: "\u7ba1\u7406\u5c42\u98ce\u9669",
+  competitive_pressure: "\u7ade\u4e89\u538b\u529b",
+  sector_weakness: "\u677f\u5757\u8d70\u5f31",
+  momentum_fading: "\u52a8\u80fd\u8870\u51cf",
+  valuation_concern: "\u4f30\u503c\u62c5\u5fe7",
+  gap_risk: "\u7f3a\u53e3\u98ce\u9669",
+  earnings_uncertainty: "\u4e1a\u7ee9\u4e0d\u786e\u5b9a\u6027",
+  dividend_cut_risk: "\u524a\u51cf\u80a1\u606f\u98ce\u9669",
+  supply_chain_disruption: "\u4f9b\u5e94\u94fe\u4e2d\u65ad",
+  weak_fundamentals: "\u57fa\u672c\u9762\u504f\u5f31",
+  low_liquidity: "\u6d41\u52a8\u6027\u4f4e",
+  high_volatility: "\u9ad8\u6ce2\u52a8\u98ce\u9669",
+  resistance_overhead: "\u4e0a\u65b9\u538b\u529b\u4f4d",
+  downtrend: "\u4e0b\u884c\u8d8b\u52bf",
+  oversold_bounce: "\u8d85\u5356\u53cd\u5f39",
+  overbought: "\u8d85\u4e70",
+};
+
+const RISK_PHRASE_CN = {
+  "no official catalyst": "\u7f3a\u4e4f\u660e\u786e\u50ac\u5316\u5242",
+  "turnaround risk": "\u8f6c\u578b\u98ce\u9669",
+  "execution risk": "\u6267\u884c\u98ce\u9669",
+  "untested support": "\u652f\u6491\u4f4d\u672a\u7ecf\u9a8c\u8bc1",
+  "insufficient signal": "\u4fe1\u53f7\u4e0d\u8db3",
+  "high volatility": "\u9ad8\u6ce2\u52a8\u98ce\u9669",
+  "low liquidity": "\u6d41\u52a8\u6027\u4f4e",
+  "valuation concern": "\u4f30\u503c\u62c5\u5fe7",
+  "momentum fading": "\u52a8\u80fd\u8870\u51cf",
+  "downtrend": "\u4e0b\u884c\u8d8b\u52bf",
+  "resistance overhead": "\u4e0a\u65b9\u538b\u529b\u4f4d",
+  "weak fundamentals": "\u57fa\u672c\u9762\u504f\u5f31",
+  "sector weakness": "\u677f\u5757\u8d70\u5f31",
+  "overbought": "\u8d85\u4e70",
+  "oversold bounce": "\u8d85\u5356\u53cd\u5f39",
+  "gap risk": "\u7f3a\u53e3\u98ce\u9669",
+  "earnings uncertainty": "\u4e1a\u7ee9\u4e0d\u786e\u5b9a\u6027",
+  "policy risk": "\u653f\u7b56\u98ce\u9669",
+  "tariff risk": "\u5173\u7a0e\u98ce\u9669",
+  "trade war risk": "\u8d38\u6613\u6218\u98ce\u9669",
+  "recession risk": "\u8870\u9000\u98ce\u9669",
+  "dividend cut risk": "\u524a\u51cf\u80a1\u606f\u98ce\u9669",
+  "guidance risk": "\u4e1a\u7ee9\u6307\u5f15\u98ce\u9669",
+  "margin compression": "\u5229\u6da6\u7387\u538b\u7f29",
+  "demand slowdown": "\u9700\u6c42\u653e\u7f13",
+  "supply chain disruption": "\u4f9b\u5e94\u94fe\u4e2d\u65ad",
+  "technical breakdown": "\u6280\u672f\u7834\u4f4d",
+  "no clear catalyst": "\u7f3a\u4e4f\u50ac\u5316\u5242",
+  "management risk": "\u7ba1\u7406\u5c42\u98ce\u9669",
+  "competitive pressure": "\u7ade\u4e89\u538b\u529b",
+};
+
+function translateFlag(flag) {
+  const trimmed = flag.trim();
+  if (RISK_FLAG_CN[trimmed]) return RISK_FLAG_CN[trimmed];
+  const lower = trimmed.toLowerCase();
+  if (RISK_FLAG_CN[lower]) return RISK_FLAG_CN[lower];
+  const asSnake = lower.replace(/\s+/g, "_");
+  if (RISK_FLAG_CN[asSnake]) return RISK_FLAG_CN[asSnake];
+  if (RISK_PHRASE_CN[lower]) return RISK_PHRASE_CN[lower];
+  return trimmed.replace(/_/g, " ");
 }
 
 function RiskSection({ riskFlags, riskNote }) {
@@ -206,13 +313,19 @@ function RiskSection({ riskFlags, riskNote }) {
   if (flags.length === 0 && !riskNote) return null;
   return (
     <div className="mt-3 rounded-lg border border-[#f23645]/15 bg-[#f23645]/5 p-4">
-      <div className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#f23645]">
-        <AlertTriangle size={14} />
+      <div className="mb-1.5 flex items-center gap-2 text-base font-bold text-[#f23645]">
+        <AlertTriangle size={16} />
         {"\u98ce\u9669\u63d0\u793a"}
       </div>
-      {riskNote && <p className="text-xs leading-relaxed text-[#f23645]/70">{riskNote}</p>}
+      {riskNote && <p className="text-base font-medium leading-relaxed text-[#f23645]/70">{riskNote}</p>}
       {flags.length > 0 && (
-        <p className="text-xs text-[#f23645]/70">{flags.join("\uff0c")}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {flags.map((f, i) => (
+            <span key={i} className="rounded bg-[#f23645]/10 px-2.5 py-1 text-sm font-bold text-[#f23645]/80">
+              {translateFlag(f)}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -246,17 +359,17 @@ export default function RecCard({ item, rank }) {
       <div className="cursor-pointer px-5 py-4" onClick={() => setExpanded(!expanded)}>
         {/* Row 1 */}
         <div className="flex items-center gap-3">
-          <span className={`rounded px-2 py-0.5 text-xs font-bold font-mono ${
+          <span className={`rounded px-3 py-1 text-base font-extrabold font-mono ${
             isShort ? "bg-[#e040fb]/15 text-[#e040fb]" : "bg-[#089981]/15 text-[#089981]"
           }`}>
             {item.ticker}
           </span>
           {isShort && (
-            <span className="rounded bg-[#e040fb]/20 px-1.5 py-0.5 text-[10px] font-bold text-[#e040fb]">
+            <span className="rounded bg-[#e040fb]/20 px-2 py-0.5 text-sm font-bold text-[#e040fb]">
               SHORT
             </span>
           )}
-          <span className="text-lg font-bold text-[#d1d4dc]">{item.name}</span>
+          <span className="text-xl font-extrabold text-[#d1d4dc]">{item.name}</span>
           {themes.slice(0, 3).map((t, i) => (
             <ThemeTag key={i} text={String(t)} />
           ))}
@@ -264,23 +377,23 @@ export default function RecCard({ item, rank }) {
             <Link
               to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
               onClick={(e) => e.stopPropagation()}
-              className="rounded bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 transition-colors"
+              className="rounded bg-brand-500 px-4 py-2 text-sm font-bold text-white hover:bg-brand-600 transition-colors"
             >
               {"\u67e5\u770b\u8be6\u60c5"}
             </Link>
             <button className="text-[#787b86] hover:text-[#d1d4dc] transition-colors"
               onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
-              {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
           </div>
         </div>
 
         {/* Row 2 */}
         <div className="mt-2 flex flex-wrap items-center gap-4">
-          <span className="text-2xl font-bold tabular-nums text-[#d1d4dc]">
+          <span className="text-3xl font-extrabold tabular-nums text-[#d1d4dc]">
             {currencySymbol}{fmt(item.price)}
           </span>
-          <span className={`text-sm font-bold tabular-nums ${
+          <span className={`text-lg font-bold tabular-nums ${
             (item.change_pct || 0) >= 0 ? "text-[#089981]" : "text-[#f23645]"
           }`}>
             {(item.change_pct || 0) >= 0 ? "+" : ""}{fmt(item.change_pct, 2)}%
@@ -288,7 +401,7 @@ export default function RecCard({ item, rank }) {
           <ActionArrow action={item.action || item.direction} direction={item.direction} />
           <ConfidenceBar value={score} />
           {showTrading && (
-            <span className="text-xs text-[#787b86]">
+            <span className="text-base font-semibold text-[#787b86]">
               {"\u98ce\u9669\u56de\u62a5"} 1:{rrRatio}
             </span>
           )}
@@ -300,7 +413,7 @@ export default function RecCard({ item, rank }) {
         <div className="border-t border-[#2a2e39] px-5 pb-5">
           {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
           {!showTrading && (
-            <div className="mt-4 rounded-lg border border-[#363a45] bg-[#131722] p-4 text-xs text-[#787b86]">
+            <div className="mt-4 rounded-lg border border-[#363a45] bg-[#131722] p-4 text-base font-medium text-[#787b86]">
               {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
             </div>
           )}
@@ -311,13 +424,13 @@ export default function RecCard({ item, rank }) {
           <div className={`mt-3 rounded-lg border p-4 ${
             isShort ? "border-[#e040fb]/15 bg-[#e040fb]/5" : "border-[#fb8c00]/15 bg-[#fb8c00]/5"
           }`}>
-            <div className={`mb-1 flex items-center gap-2 text-sm font-semibold ${
+            <div className={`mb-1 flex items-center gap-2 text-base font-bold ${
               isShort ? "text-[#e040fb]" : "text-[#fb8c00]"
             }`}>
-              <Crosshair size={14} />
+              <Crosshair size={16} />
               {isShort ? "\u505a\u7a7a\u4ed3\u4f4d\u5efa\u8bae" : "\u4ed3\u4f4d\u5efa\u8bae"}
             </div>
-            <p className={`text-xs ${isShort ? "text-[#e040fb]/70" : "text-[#fb8c00]/70"}`}>
+            <p className={`text-base font-medium ${isShort ? "text-[#e040fb]/70" : "text-[#fb8c00]/70"}`}>
               {isShort
                 ? (score >= 70
                   ? "\u505a\u7a7a\u4fe1\u53f7\u8f83\u5f3a\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u7a7a\u5934\u4ed3\u4f4d\uff0c\u4f46\u6ce8\u610f\u8bbe\u7f6e\u4e25\u683c\u6b62\u635f\u3002"
