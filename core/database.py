@@ -30,6 +30,7 @@ class Database:
         self._init_tables()
         self._migrate_add_columns()
         self._migrate_market_isolation()
+        self._migrate_win_rate_scores()
 
     def close(self):
         try:
@@ -327,6 +328,32 @@ class Database:
             except Exception as e:
                 logger.warning(f"Migration check for {table}: {e}")
 
+    def _migrate_win_rate_scores(self):
+        """Add score/sector columns to win_rate_records for existing databases."""
+        table = "win_rate_records"
+        new_cols = [
+            ("news_score", "INTEGER DEFAULT 0"),
+            ("tech_score", "INTEGER DEFAULT 0"),
+            ("fundamental_score", "INTEGER DEFAULT 0"),
+            ("combined_score", "INTEGER DEFAULT 0"),
+            ("confidence", "INTEGER DEFAULT 0"),
+            ("sector", "TEXT DEFAULT ''"),
+        ]
+        try:
+            existing = {
+                row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for col_name, col_def in new_cols:
+                if col_name not in existing:
+                    try:
+                        self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        logger.info(f"Added column {col_name} to {table}")
+                    except Exception as e:
+                        logger.debug(f"Column {col_name} on {table}: {e}")
+            self._conn.commit()
+        except Exception as e:
+            logger.warning(f"win_rate_records migration: {e}")
+
     # ------------------------------------------------------------------
     # Screening
     # ------------------------------------------------------------------
@@ -514,12 +541,20 @@ class Database:
         self._conn.execute(
             """INSERT INTO win_rate_records
                (run_date, ticker, name, market, strategy, direction,
-                entry_price, stop_loss, take_profit, holding_days, outcome)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                entry_price, stop_loss, take_profit, holding_days, outcome,
+                news_score, tech_score, fundamental_score, combined_score,
+                confidence, sector)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (record["run_date"], record["ticker"], record["name"],
              record["market"], record["strategy"], record["direction"],
              record["entry_price"], record["stop_loss"], record["take_profit"],
-             record["holding_days"], "pending"),
+             record["holding_days"], "pending",
+             int(record.get("news_score", 0)),
+             int(record.get("tech_score", 0)),
+             int(record.get("fundamental_score", 0)),
+             int(record.get("combined_score", 0)),
+             int(record.get("confidence", 0)),
+             str(record.get("sector", ""))),
         )
         self._conn.commit()
 
@@ -561,7 +596,7 @@ class Database:
         ).fetchall()
 
         total = sum(r["cnt"] for r in rows)
-        wins = sum(r["cnt"] for r in rows if r["outcome"] in ("win", "partial"))
+        wins = sum(r["cnt"] for r in rows if r["outcome"] in ("win", "partial", "partial_win"))
         losses = sum(r["cnt"] for r in rows if r["outcome"] == "loss")
         timeouts = sum(r["cnt"] for r in rows if r["outcome"] == "timeout")
         avg_return = 0.0
@@ -569,7 +604,7 @@ class Database:
         avg_loss_return = 0.0
         if rows:
             avg_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in rows) / max(total, 1)
-        win_rows = [r for r in rows if r["outcome"] in ("win", "partial")]
+        win_rows = [r for r in rows if r["outcome"] in ("win", "partial", "partial_win")]
         loss_rows = [r for r in rows if r["outcome"] == "loss"]
         if win_rows:
             avg_win_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in win_rows) / max(wins, 1)
@@ -620,7 +655,7 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT run_date,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome IN ('win','partial') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome IN ('win','partial','partial_win') THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}

@@ -10,6 +10,7 @@ The ref_date is computed from the market's local timezone.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -263,6 +264,15 @@ def run_daily_pipeline(
 
         for it in saved_items:
             try:
+                themes = it.get("themes", [])
+                if isinstance(themes, str):
+                    try:
+                        themes = json.loads(themes) if themes.strip() else []
+                    except Exception:
+                        themes = []
+                elif themes is None:
+                    themes = []
+                sector = themes[0] if themes else ""
                 db.save_win_rate_record({
                     "run_date": ref_date,
                     "ticker": it["ticker"],
@@ -274,6 +284,12 @@ def run_daily_pipeline(
                     "stop_loss": float(it.get("stop_loss") or 0),
                     "take_profit": float(it.get("take_profit") or 0),
                     "holding_days": int(it.get("holding_days") or st.default_holding_days),
+                    "news_score": it.get("news_score", 0),
+                    "tech_score": it.get("tech_score", 0),
+                    "fundamental_score": it.get("fundamental_score", 0),
+                    "combined_score": it.get("combined_score", 0),
+                    "confidence": it.get("confidence", 0),
+                    "sector": sector,
                 })
             except Exception as e:
                 logger.warning(f"win_rate record {it.get('ticker')}: {e}")

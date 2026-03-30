@@ -31,9 +31,9 @@ class ScreeningConfig:
 @dataclass
 class SynthesisConfig:
     """Score synthesis weights and thresholds."""
-    news_weight: float = 0.30
-    tech_weight: float = 0.45
-    fundamental_weight: float = 0.25
+    news_weight: float = 0.15
+    tech_weight: float = 0.55
+    fundamental_weight: float = 0.30
     min_confidence: int = 55
     quality_threshold: int = 50
     adaptive_threshold_drop: int = 20
@@ -45,9 +45,9 @@ class SynthesisConfig:
 class ShortTermConfig:
     """Short-term strategy parameters."""
     max_recommendations: int = 8
-    news_weight: float = 0.30
-    tech_weight: float = 0.50
-    fundamental_weight: float = 0.20
+    news_weight: float = 0.15
+    tech_weight: float = 0.55
+    fundamental_weight: float = 0.30
     default_stop_loss_pct: float = 0.95
     default_take_profit_pct: float = 1.08
     take_profit_2_pct: float = 1.12

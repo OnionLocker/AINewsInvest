@@ -119,7 +119,7 @@ def get_financial_data(ticker: str, market: str) -> dict[str, Any] | None:
             "short_pct_of_float": info.get("shortPercentOfFloat"),
             "held_pct_insiders": info.get("heldPercentInsiders"),
             "held_pct_institutions": info.get("heldPercentInstitutions"),
-            "insider_purchases": info.get("netIncomeToCommon"),
+            "net_income_common": info.get("netIncomeToCommon"),
             "indicators": indicators,
         }
     except Exception as e:
@@ -364,9 +364,9 @@ def _get_market_breadth(market: str) -> dict:
 
 def get_market_indices() -> list[dict]:
     indices = [
-        ("^GSPC", "标普500", "us_stock"), ("^IXIC", "纳斯达克", "us_stock"),
-        ("^DJI", "道琼斯", "us_stock"),
-        ("^HSI", "恒生指数", "hk_stock"), ("^HSTECH", "恒生科技", "hk_stock"),
+        ("^GSPC", "閺嶅洦娅�500", "us_stock"), ("^IXIC", "缁捐櫕鏌夋潏鎯у帬", "us_stock"),
+        ("^DJI", "闁挾鎯ｉ弬锟�", "us_stock"),
+        ("^HSI", "閹帞鏁撻幐鍥ㄦ殶", "hk_stock"), ("^HSTECH", "閹帞鏁撶粔鎴炲Η", "hk_stock"),
     ]
     results = []
     for symbol, label, market in indices:
@@ -382,3 +382,120 @@ def get_market_indices() -> list[dict]:
         except Exception:
             pass
     return results
+
+
+def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
+    """Extract insider trading signals from yfinance.
+
+    Returns net insider buying/selling activity.
+    """
+    if market != "us_stock":
+        return None
+    symbol = to_yf_ticker(ticker, market)
+    try:
+        t = yf.Ticker(symbol)
+        insiders = t.insider_transactions
+        if insiders is None or (hasattr(insiders, "empty") and insiders.empty):
+            return None
+
+        buys = 0
+        sells = 0
+        buy_value = 0.0
+        sell_value = 0.0
+        recent_count = 0
+
+        for _, row in insiders.iterrows():
+            text = str(row.get("Text", "") or row.get("Transaction", "")).lower()
+            shares = abs(float(row.get("Shares", 0) or 0))
+            value = abs(float(row.get("Value", 0) or 0))
+
+            if any(kw in text for kw in ("purchase", "buy", "acquisition")):
+                buys += 1
+                buy_value += value
+                recent_count += 1
+            elif any(kw in text for kw in ("sale", "sell", "disposition")):
+                sells += 1
+                sell_value += value
+                recent_count += 1
+
+        if recent_count == 0:
+            return None
+
+        net_direction = "buying" if buys > sells else ("selling" if sells > buys else "neutral")
+        buy_sell_ratio = round(buys / max(sells, 1), 2)
+
+        return {
+            "total_buys": buys,
+            "total_sells": sells,
+            "buy_value": round(buy_value, 2),
+            "sell_value": round(sell_value, 2),
+            "net_direction": net_direction,
+            "buy_sell_ratio": buy_sell_ratio,
+            "signal_strength": (
+                "strong_buy" if buys >= 3 and sells == 0 else
+                "moderate_buy" if buys > sells else
+                "strong_sell" if sells >= 3 and buys == 0 else
+                "moderate_sell" if sells > buys else
+                "neutral"
+            ),
+        }
+    except Exception as e:
+        logger.debug(f"Insider trades failed {symbol}: {e}")
+        return None
+
+
+def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
+    """Extract options-based signals from yfinance.
+
+    Returns put/call ratio and unusual volume indicators.
+    Only works for US stocks (HK options data not available via yfinance).
+    """
+    if market != "us_stock":
+        return None
+    symbol = to_yf_ticker(ticker, market)
+    try:
+        t = yf.Ticker(symbol)
+        exp_dates = t.options
+        if not exp_dates:
+            return None
+
+        nearest_exp = exp_dates[0]
+        opt = t.option_chain(nearest_exp)
+        calls = opt.calls
+        puts = opt.puts
+
+        if calls.empty and puts.empty:
+            return None
+
+        total_call_vol = int(calls["volume"].sum()) if "volume" in calls.columns else 0
+        total_put_vol = int(puts["volume"].sum()) if "volume" in puts.columns else 0
+        total_call_oi = int(calls["openInterest"].sum()) if "openInterest" in calls.columns else 0
+        total_put_oi = int(puts["openInterest"].sum()) if "openInterest" in puts.columns else 0
+
+        pc_ratio_vol = round(total_put_vol / max(total_call_vol, 1), 2)
+        pc_ratio_oi = round(total_put_oi / max(total_call_oi, 1), 2)
+
+        unusual_call = total_call_vol > total_call_oi * 2 if total_call_oi > 0 else False
+        unusual_put = total_put_vol > total_put_oi * 2 if total_put_oi > 0 else False
+
+        return {
+            "expiry": nearest_exp,
+            "call_volume": total_call_vol,
+            "put_volume": total_put_vol,
+            "call_oi": total_call_oi,
+            "put_oi": total_put_oi,
+            "pc_ratio_volume": pc_ratio_vol,
+            "pc_ratio_oi": pc_ratio_oi,
+            "unusual_call_activity": unusual_call,
+            "unusual_put_activity": unusual_put,
+            "signal": (
+                "strong_bullish" if unusual_call and pc_ratio_vol < 0.5 else
+                "bullish" if pc_ratio_vol < 0.7 else
+                "strong_bearish" if unusual_put and pc_ratio_vol > 1.5 else
+                "bearish" if pc_ratio_vol > 1.3 else
+                "neutral"
+            ),
+        }
+    except Exception as e:
+        logger.debug(f"Options signal failed {symbol}: {e}")
+        return None

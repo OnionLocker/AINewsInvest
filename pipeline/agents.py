@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import pandas as pd
 from loguru import logger
 
 from analysis.llm_client import agent_analyze
@@ -268,6 +269,87 @@ def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
     return normalized
 
 
+def _compute_rsi(closes: list[float], period: int = 14) -> float:
+    """Relative Strength Index."""
+    if len(closes) < period + 1:
+        return 50.0
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    gains = gains[-(period):]
+    losses = losses[-(period):]
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 2)
+
+
+def _compute_macd(closes: list[float]) -> tuple[float, float, float]:
+    """MACD line, signal line, histogram. Returns (macd, signal, hist)."""
+    if len(closes) < 26:
+        return 0.0, 0.0, 0.0
+
+    def _ema(data, period):
+        mult = 2 / (period + 1)
+        ema = [data[0]]
+        for val in data[1:]:
+            ema.append(val * mult + ema[-1] * (1 - mult))
+        return ema
+
+    ema12 = _ema(closes, 12)
+    ema26 = _ema(closes, 26)
+    macd_line = [a - b for a, b in zip(ema12, ema26)]
+    signal = _ema(macd_line[-9:], 9) if len(macd_line) >= 9 else [0]
+    hist = macd_line[-1] - signal[-1]
+    return round(macd_line[-1], 4), round(signal[-1], 4), round(hist, 4)
+
+
+def _compute_bollinger_position(closes: list[float], period: int = 20) -> float:
+    """Position within Bollinger Bands. 0=lower band, 0.5=middle, 1=upper band."""
+    if len(closes) < period:
+        return 0.5
+    recent = closes[-period:]
+    sma = sum(recent) / period
+    std = (sum((x - sma) ** 2 for x in recent) / period) ** 0.5
+    if std == 0:
+        return 0.5
+    upper = sma + 2 * std
+    lower = sma - 2 * std
+    if upper == lower:
+        return 0.5
+    pos = (closes[-1] - lower) / (upper - lower)
+    return round(max(0.0, min(1.0, pos)), 3)
+
+
+def _compute_obv_trend(closes: list[float], volumes: list[float], period: int = 20) -> str:
+    """On-Balance Volume trend over last `period` bars."""
+    if len(closes) < period + 1 or len(volumes) < period + 1:
+        return "neutral"
+    obv = [0.0]
+    for i in range(1, len(closes)):
+        if closes[i] > closes[i - 1]:
+            obv.append(obv[-1] + volumes[i])
+        elif closes[i] < closes[i - 1]:
+            obv.append(obv[-1] - volumes[i])
+        else:
+            obv.append(obv[-1])
+    recent_obv = obv[-period:]
+    if len(recent_obv) < 5:
+        return "neutral"
+    first_half = sum(recent_obv[:len(recent_obv)//2]) / (len(recent_obv)//2)
+    second_half = sum(recent_obv[len(recent_obv)//2:]) / (len(recent_obv) - len(recent_obv)//2)
+    diff_pct = (second_half - first_half) / max(abs(first_half), 1) * 100
+    if diff_pct > 10:
+        return "bullish"
+    elif diff_pct < -10:
+        return "bearish"
+    return "neutral"
+
+
 def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
     """Deterministic fallback when Tech Agent fails.
     Uses pre-computed Layer 2 data for signal-based scoring.
@@ -312,6 +394,45 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
             score -= 8
         elif weekly_trend == "bullish":
             score += 3
+
+        # Enhanced indicators from K-line data
+        klines_1 = c.get("kline_recent_part1") or []
+        klines_2 = c.get("kline_recent_part2") or []
+        all_klines = klines_1 + klines_2
+        if len(all_klines) >= 14:
+            kl_closes = [float(k.get("close", 0)) for k in all_klines if k.get("close")]
+            kl_volumes = [float(k.get("volume", 0)) for k in all_klines if k.get("volume")]
+
+            if len(kl_closes) >= 14:
+                rsi = _compute_rsi(kl_closes)
+                if rsi > 75:
+                    score -= 8
+                elif rsi > 70:
+                    score -= 4
+                elif rsi < 25:
+                    score += 6
+                elif rsi < 30:
+                    score += 3
+
+            if len(kl_closes) >= 20:
+                bb_pos = _compute_bollinger_position(kl_closes)
+                if bb_pos > 0.95:
+                    score -= 5
+                elif bb_pos < 0.05:
+                    score += 4
+
+                macd_val, signal_val, macd_hist = _compute_macd(kl_closes)
+                if macd_hist > 0 and macd_val > signal_val:
+                    score += 3
+                elif macd_hist < 0 and macd_val < signal_val:
+                    score -= 3
+
+            if len(kl_closes) >= 14 and len(kl_volumes) >= 14:
+                obv_trend = _compute_obv_trend(kl_closes, kl_volumes)
+                if obv_trend == "bullish":
+                    score += 3
+                elif obv_trend == "bearish":
+                    score -= 3
 
         score = max(0, min(100, score))
 
@@ -633,6 +754,37 @@ def synthesize_agent_results(
         news_weight = syn.news_weight
         tech_weight = syn.tech_weight
 
+    # Adaptive weight adjustment based on historical win-rate data
+    try:
+        from pipeline.analyzer import analyze_score_effectiveness
+        effectiveness = analyze_score_effectiveness(min_records=50)
+        if effectiveness.get("status") == "ok":
+            corrs = effectiveness.get("correlation_summary", {})
+            nc = (corrs.get("news_score") or {}).get("correlation")
+            tc = (corrs.get("tech_score") or {}).get("correlation")
+            if nc is not None and tc is not None:
+                prior_blend = 0.7
+                if nc < 0.05:
+                    adj_news = max(0.05, news_weight * 0.5)
+                elif nc > 0.2:
+                    adj_news = min(0.35, news_weight * 1.3)
+                else:
+                    adj_news = news_weight
+                if tc > 0.2:
+                    adj_tech = min(0.70, tech_weight * 1.2)
+                elif tc < 0.05:
+                    adj_tech = max(0.30, tech_weight * 0.8)
+                else:
+                    adj_tech = tech_weight
+                news_weight = news_weight * prior_blend + adj_news * (1 - prior_blend)
+                tech_weight = tech_weight * prior_blend + adj_tech * (1 - prior_blend)
+                total = news_weight + tech_weight + syn.fundamental_weight
+                news_weight /= total
+                tech_weight /= total
+                logger.info(f"Adaptive weights: news={news_weight:.2f} tech={tech_weight:.2f} (nc={nc:.3f} tc={tc:.3f})")
+    except Exception as e:
+        logger.debug(f"Adaptive weights skipped: {e}")
+
     min_confidence = syn.min_confidence
     quality_threshold = syn.quality_threshold
     low_score_both = 40
@@ -789,6 +941,7 @@ def synthesize_agent_results(
         return []
 
     filtered = _limit_sector_concentration(filtered, max_ratio=0.4)
+    filtered = _check_pairwise_correlation(filtered)
     return filtered[:max_count]
 
 
@@ -833,6 +986,63 @@ def _limit_sector_concentration(
     return selected
 
 
+def _check_pairwise_correlation(items: list[dict], max_corr: float = 0.7) -> list[dict]:
+    """Remove highly correlated picks from the recommendation list.
+
+    Uses recent price change similarity as a correlation proxy.
+    """
+    if not items or len(items) <= 2:
+        return items
+
+    tickers = [it["ticker"] for it in items]
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        end = datetime.now()
+        start = end - timedelta(days=30)
+        data = yf.download(
+            tickers, start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"), progress=False,
+        )
+        if data.empty or "Close" not in data.columns.get_level_values(0):
+            return items
+
+        closes = data["Close"]
+        if isinstance(closes, pd.Series):
+            return items
+
+        returns = closes.pct_change().dropna()
+        if returns.empty or len(returns) < 5:
+            return items
+
+        corr_matrix = returns.corr()
+
+        removed: set[str] = set()
+        score_map = {it["ticker"]: it.get("combined_score", 0) for it in items}
+
+        for i, t1 in enumerate(tickers):
+            if t1 in removed:
+                continue
+            for t2 in tickers[i+1:]:
+                if t2 in removed:
+                    continue
+                if t1 in corr_matrix.columns and t2 in corr_matrix.columns:
+                    c = corr_matrix.loc[t1, t2]
+                    if abs(c) > max_corr:
+                        drop = t2 if score_map.get(t1, 0) >= score_map.get(t2, 0) else t1
+                        removed.add(drop)
+                        logger.info(f"Correlation filter: dropping {drop} (corr with {t1 if drop == t2 else t2}={c:.2f})")
+
+        if removed:
+            filtered = [it for it in items if it["ticker"] not in removed]
+            logger.info(f"Correlation filter: {len(items)} -> {len(filtered)} items")
+            return filtered
+    except Exception as e:
+        logger.debug(f"Correlation check skipped: {e}")
+
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Main agent pipeline entry point
 # ---------------------------------------------------------------------------
@@ -873,26 +1083,42 @@ def _batched_tech_agent(
     max_retries: int,
     progress_cb: Callable[[dict], None] | None = None,
 ) -> list[dict]:
-    """Call Tech Agent in small batches to avoid LLM timeout."""
-    all_results: list[dict] = []
-    total = len(candidates)
-    for i in range(0, total, LLM_BATCH_SIZE):
-        batch = candidates[i : i + LLM_BATCH_SIZE]
-        batch_num = i // LLM_BATCH_SIZE + 1
-        total_batches = (total + LLM_BATCH_SIZE - 1) // LLM_BATCH_SIZE
-        logger.info(f"Tech Agent batch {batch_num}/{total_batches}: {len(batch)} stocks")
+    """Deterministic scoring as primary, LLM as secondary for borderline cases."""
+    det_results = fallback_technical_scores(candidates)
+    det_map = {r["ticker"]: r for r in det_results}
 
+    borderline = [c for c in candidates if 45 <= det_map.get(c["ticker"], {}).get("technical_score", 0) <= 60]
+
+    if not borderline:
+        logger.info(f"Tech scoring: {len(det_results)} deterministic, 0 borderline -> skip LLM")
+        return det_results
+
+    logger.info(f"Tech scoring: {len(det_results)} deterministic, {len(borderline)} borderline -> LLM")
+    llm_results: list[dict] = []
+    total = len(borderline)
+    for i in range(0, total, LLM_BATCH_SIZE):
+        batch = borderline[i : i + LLM_BATCH_SIZE]
         payload = _build_tech_payload(batch, market)
         results = _call_tech_agent(payload, max_retries=max_retries)
         if results:
-            all_results.extend(results)
-            logger.info(f"Tech Agent batch {batch_num}: got {len(results)} results")
-        else:
-            logger.warning(f"Tech Agent batch {batch_num}: no results, using fallback")
-            all_results.extend(fallback_technical_scores(batch))
+            llm_results.extend(results)
 
-    logger.info(f"Tech Agent total: {len(all_results)} results from {total} candidates")
-    return all_results
+    if llm_results:
+        llm_map = {r["ticker"]: r for r in llm_results}
+        for ticker, det in det_map.items():
+            llm = llm_map.get(ticker)
+            if llm:
+                blended = int(round(det["technical_score"] * 0.6 + llm["technical_score"] * 0.4))
+                final_sc = max(0, min(100, blended))
+                det["technical_score"] = final_sc
+                det["action"] = "buy" if final_sc >= 60 else ("hold" if final_sc >= 45 else "avoid")
+                det["analysis"] = llm.get("analysis", det.get("analysis", ""))
+                det["risk_flags"] = list(set(det.get("risk_flags", []) + llm.get("risk_flags", [])))
+                if llm.get("risk_note"):
+                    det["risk_note"] = llm["risk_note"]
+
+    logger.info(f"Tech Agent total: {len(det_results)} results ({len(llm_results)} LLM-enhanced)")
+    return det_results
 
 
 def run_agent_pipeline(

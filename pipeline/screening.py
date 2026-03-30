@@ -21,7 +21,14 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from core.data_source import get_financial_data, get_index_components, get_klines, get_quote
+from core.data_source import (
+    get_financial_data,
+    get_index_components,
+    get_insider_trades,
+    get_klines,
+    get_options_signal,
+    get_quote,
+)
 from pipeline.config import get_config
 
 
@@ -566,6 +573,44 @@ def _compute_fundamental_score(candidate: dict) -> float:
         else:
             score -= 8
 
+    # FCF yield: free cash flow / market cap
+    market_cap_val = (candidate.get("quote") or {}).get("market_cap") or candidate.get("market_cap") or 0
+    if fcf is not None and market_cap_val and market_cap_val > 0:
+        fcf_yield = fcf / market_cap_val
+        if fcf_yield > 0.08:
+            score += 8
+        elif fcf_yield > 0.05:
+            score += 5
+        elif fcf_yield > 0.02:
+            score += 2
+        elif fcf_yield < -0.02:
+            score -= 5
+
+    # PEG ratio: PE / earnings growth rate
+    pe_val = fin.get("pe_ttm")
+    eg = fin.get("earnings_growth")
+    if pe_val is not None and eg is not None and eg > 0:
+        peg = pe_val / (eg * 100) if eg < 1 else pe_val / eg
+        if peg < 1.0:
+            score += 8
+        elif peg < 1.5:
+            score += 4
+        elif peg > 3.0:
+            score -= 5
+        elif peg > 2.0:
+            score -= 2
+
+    # Revenue acceleration: compare revenue_growth with earnings_growth as proxy
+    rev_g = fin.get("revenue_growth")
+    earn_g = fin.get("earnings_growth")
+    if rev_g is not None and earn_g is not None:
+        if rev_g > 0.10 and earn_g > rev_g:
+            score += 6
+        elif rev_g > 0.10 and earn_g > 0:
+            score += 3
+        elif rev_g < 0 and earn_g < 0:
+            score -= 6
+
     short_pct = fin.get("short_pct_of_float")
     if short_pct is not None:
         if short_pct > 0.20:
@@ -587,6 +632,19 @@ def _compute_fundamental_score(candidate: dict) -> float:
         elif inst_pct < 0.30:
             score -= 3
 
+    # Insider trading activity signal
+    insider_trades = candidate.get("insider_trades")
+    if insider_trades and isinstance(insider_trades, dict):
+        sig = insider_trades.get("signal_strength", "")
+        if sig == "strong_buy":
+            score += 10
+        elif sig == "moderate_buy":
+            score += 5
+        elif sig == "strong_sell":
+            score -= 8
+        elif sig == "moderate_sell":
+            score -= 3
+
     return max(0, min(100, score))
 
 
@@ -599,17 +657,33 @@ def build_enriched_candidates(
     Output is the unified data payload that feeds into both LLM Agents.
     """
     earnings_map: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=min(6, max(2, len(candidates) // 4))) as ex:
-        futs = {
-            ex.submit(_check_earnings_proximity, c["ticker"], c.get("market", "us_stock")): c["ticker"]
-            for c in candidates
-        }
+    insider_map: dict[str, dict | None] = {}
+    options_map: dict[str, dict[str, Any] | None] = {}
+    n = len(candidates)
+    max_workers = min(12, max(4, (n * 3) // 4)) if n else 4
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs: dict[Any, tuple[str, str]] = {}
+        for c in candidates:
+            t = c["ticker"]
+            m = c.get("market", "us_stock")
+            futs[ex.submit(_check_earnings_proximity, t, m)] = ("earnings", t)
+            futs[ex.submit(get_insider_trades, t, m)] = ("insider", t)
+            futs[ex.submit(get_options_signal, t, m)] = ("options", t)
         for fut in as_completed(futs):
-            ticker = futs[fut]
+            kind, ticker = futs[fut]
             try:
-                earnings_map[ticker] = fut.result()
+                res = fut.result()
             except Exception:
-                earnings_map[ticker] = {"days_away": None, "date_str": None, "imminent": False}
+                res = None
+            if kind == "earnings":
+                if res is None:
+                    earnings_map[ticker] = {"days_away": None, "date_str": None, "imminent": False}
+                else:
+                    earnings_map[ticker] = res
+            elif kind == "insider":
+                insider_map[ticker] = res
+            else:
+                options_map[ticker] = res
 
     enriched: list[dict] = []
 
@@ -701,8 +775,21 @@ def build_enriched_candidates(
             and not volume_expansion
         )
 
-        fundamental_score = _compute_fundamental_score(c)
+        insider_trades = insider_map.get(ticker)
+        c_for_fundamental = {**c, "insider_trades": insider_trades}
+        fundamental_score = _compute_fundamental_score(c_for_fundamental)
         earnings_info = earnings_map.get(ticker, {"days_away": None, "date_str": None, "imminent": False})
+        opt_info = options_map.get(ticker)
+        if opt_info:
+            options_signal_str = opt_info.get("signal", "unavailable")
+            options_pc_ratio_val = opt_info.get("pc_ratio_volume")
+            options_unusual = bool(
+                opt_info.get("unusual_call_activity") or opt_info.get("unusual_put_activity")
+            )
+        else:
+            options_signal_str = "unavailable"
+            options_pc_ratio_val = None
+            options_unusual = False
 
         enriched.append({
             "ticker": ticker,
@@ -710,6 +797,7 @@ def build_enriched_candidates(
             "market": market,
             "price": price,
             "fundamental_score": fundamental_score,
+            "insider_trades": insider_trades,
             "change_pct": _safe_float(c.get("change_pct")),
             "volume": _safe_float(c.get("volume")),
             "market_cap": _safe_float(c.get("market_cap")),
@@ -749,6 +837,9 @@ def build_enriched_candidates(
             "earnings_days_away": earnings_info.get("days_away"),
             "earnings_date_str": earnings_info.get("date_str"),
             "earnings_imminent": earnings_info.get("imminent", False),
+            "options_signal": options_signal_str,
+            "options_pc_ratio": options_pc_ratio_val,
+            "options_unusual_activity": options_unusual,
         })
 
     logger.info(f"Layer 2 enrichment: {len(enriched)} candidates with technical data")

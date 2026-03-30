@@ -38,7 +38,7 @@ def evaluate_pending_records() -> dict[str, Any]:
         if not pending:
             return {"evaluated": 0, "still_pending": 0, "message": "No pending records"}
 
-        results = {"win": 0, "loss": 0, "timeout": 0, "still_pending": 0, "errors": 0}
+        results = {"win": 0, "loss": 0, "timeout": 0, "partial_win": 0, "still_pending": 0, "errors": 0}
         today = datetime.now()
 
         for rec in pending:
@@ -59,7 +59,9 @@ def evaluate_pending_records() -> dict[str, Any]:
                 logger.warning(f"Eval error {rec.get('ticker')}: {e}")
                 results["errors"] += 1
 
-        results["evaluated"] = results["win"] + results["loss"] + results["timeout"]
+        results["evaluated"] = (
+            results["win"] + results["loss"] + results["timeout"] + results["partial_win"]
+        )
         logger.info(
             f"Evaluation: {results['evaluated']} done "
             f"({results['win']}W/{results['loss']}L/{results['timeout']}T), "
@@ -71,7 +73,11 @@ def evaluate_pending_records() -> dict[str, Any]:
 
 
 def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
-    """Evaluate one pending record. Supports both long and short directions."""
+    """Evaluate one pending record. Supports both long and short directions.
+
+    Enhanced with trailing stop: if price reaches >50% of TP distance
+    then pulls back >50% of the gain, exits as partial_win.
+    """
     run_date = datetime.strptime(rec["run_date"], "%Y%m%d")
     entry = float(rec["entry_price"])
     tp1 = float(rec["take_profit"])
@@ -104,6 +110,13 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
             return None
 
+        if is_short:
+            tp_distance = entry - tp1
+            best_price = entry
+        else:
+            tp_distance = tp1 - entry
+            best_price = entry
+
         for _, row in hist.iterrows():
             high = float(row["High"])
             low = float(row["Low"])
@@ -120,6 +133,15 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 if hit_tp:
                     ret_pct = round((entry - tp1) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
+
+                best_price = min(best_price, low)
+                gain = entry - best_price
+                if tp_distance > 0 and gain > tp_distance * 0.5:
+                    pullback = high - best_price
+                    if pullback > gain * 0.5:
+                        exit_p = round((best_price + high) / 2, 2)
+                        ret_pct = round((entry - exit_p) / entry * 100, 2)
+                        return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
             else:
                 hit_sl = sl > 0 and low <= sl
                 hit_tp = high >= tp1
@@ -132,6 +154,15 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 if hit_tp:
                     ret_pct = round((tp1 - entry) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
+
+                best_price = max(best_price, high)
+                gain = best_price - entry
+                if tp_distance > 0 and gain > tp_distance * 0.5:
+                    pullback = best_price - low
+                    if pullback > gain * 0.5:
+                        exit_p = round((best_price + low) / 2, 2)
+                        ret_pct = round((exit_p - entry) / entry * 100, 2)
+                        return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
 
         if holding_expired:
             last_close = float(hist["Close"].iloc[-1])
