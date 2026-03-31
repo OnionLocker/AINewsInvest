@@ -250,26 +250,26 @@ def analyze(ticker: str, market: str) -> dict[str, Any] | None:
 
     flags: list[str] = []
     if debt_to_equity is not None and debt_to_equity > 200:
-        flags.append("High debt-to-equity")
+        flags.append("\u8d1f\u503a\u6743\u76ca\u6bd4\u8fc7\u9ad8")
     if indicator_debt_ratio is not None and indicator_debt_ratio > 60:
-        flags.append("High debt-to-assets")
+        flags.append("\u8d44\u4ea7\u8d1f\u503a\u7387\u8fc7\u9ad8")
     if debt_trend_up:
-        flags.append("Rising leverage trend")
+        flags.append("\u6760\u6746\u7387\u4e0a\u5347\u8d8b\u52bf")
     if current_ratio is not None and current_ratio < 1.0:
-        flags.append("Low current ratio")
+        flags.append("\u6d41\u52a8\u6bd4\u7387\u504f\u4f4e")
     if revenue_growth is not None and revenue_growth < 0:
-        flags.append("Negative revenue growth")
+        flags.append("\u8425\u6536\u8d1f\u589e\u957f")
     if earnings_growth is not None and earnings_growth < 0:
-        flags.append("Negative earnings growth")
+        flags.append("\u76c8\u5229\u8d1f\u589e\u957f")
     if net_margin is not None and net_margin < 0:
-        flags.append("Negative net margin")
+        flags.append("\u51c0\u5229\u6da6\u7387\u4e3a\u8d1f")
     if roe is not None and roe < 0:
-        flags.append("Negative ROE")
+        flags.append("ROE\u4e3a\u8d1f")
     if fcf is not None and ni is not None and ni > 0 and fcf < 0:
-        flags.append("Negative free cash flow")
+        flags.append("\u81ea\u7531\u73b0\u91d1\u6d41\u4e3a\u8d1f")
     if fcf is not None and ni is not None and ni > 0:
         if fcf / ni < 0.5:
-            flags.append("Free cash flow well below net income")
+            flags.append("\u81ea\u7531\u73b0\u91d1\u6d41\u8fdc\u4f4e\u4e8e\u51c0\u5229\u6da6")
 
     debt_ratio = indicator_debt_ratio
 

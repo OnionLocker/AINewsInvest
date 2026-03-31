@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronUp, AlertTriangle, Target, Lightbulb, Crosshair, TrendingDown } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, Target, Lightbulb, Crosshair, TrendingDown, BarChart3, Activity, Eye, Users, Calendar } from "lucide-react";
 
 function fmt(v, decimals = 2) {
   if (v == null || isNaN(Number(v))) return "--";
@@ -51,6 +51,11 @@ function ThemeTag({ text }) {
       {text}
     </span>
   );
+}
+
+function looksMojibake(text) {
+  if (!text) return false;
+  return /[�Ãæçéèêëîïôöûüÿ€™]|[閺缁闁锟婵炴]/.test(String(text));
 }
 
 function PriceBar({ sl, entry, tp, isShort }) {
@@ -331,6 +336,168 @@ function RiskSection({ riskFlags, riskNote }) {
   );
 }
 
+function ScoreDimensionBar({ label, value, icon: Icon, color }) {
+  const v = Math.max(0, Math.min(100, value || 0));
+  const barColor = v >= 65 ? "#089981" : v >= 45 ? "#2962ff" : v >= 30 ? "#fb8c00" : "#f23645";
+  return (
+    <div className="flex items-center gap-2">
+      <Icon size={14} style={{ color }} />
+      <span className="w-16 text-sm font-semibold text-[#787b86]">{label}</span>
+      <div className="flex-1 h-2 rounded-full bg-[#2a2e39] overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${v}%`, background: barColor }} />
+      </div>
+      <span className="w-8 text-right text-sm font-bold tabular-nums" style={{ color: barColor }}>{v}</span>
+    </div>
+  );
+}
+
+function ScoreDimensions({ item }) {
+  const ts = item.tech_score || 0;
+  const ns = item.news_score || 0;
+  const fs = item.fundamental_score || 0;
+  if (!ts && !ns && !fs) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-[#2a2e39] bg-[#131722] p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-bold text-[#d1d4dc]">
+        <BarChart3 size={16} className="text-[#2962ff]" />
+        {"\u591a\u7ef4\u8bc4\u5206"}
+      </div>
+      <div className="space-y-2.5">
+        <ScoreDimensionBar label={"\u6280\u672f\u9762"} value={ts} icon={Activity} color="#2962ff" />
+        <ScoreDimensionBar label={"\u57fa\u672c\u9762"} value={fs} icon={BarChart3} color="#fb8c00" />
+        <ScoreDimensionBar label={"\u65b0\u95fb\u9762"} value={ns} icon={Eye} color="#089981" />
+      </div>
+    </div>
+  );
+}
+
+const INSIDER_SIGNAL_CN = {
+  strong_buy: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u4e70\u5165", color: "#089981" },
+  moderate_buy: { text: "\u5185\u90e8\u4eba\u4e70\u5165", color: "#089981" },
+  strong_sell: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u5356\u51fa", color: "#f23645" },
+  moderate_sell: { text: "\u5185\u90e8\u4eba\u5356\u51fa", color: "#f23645" },
+  neutral: { text: "\u5185\u90e8\u4eba\u4e2d\u6027", color: "#787b86" },
+};
+
+const OPTIONS_SIGNAL_CN = {
+  strong_bullish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u591a", color: "#089981" },
+  bullish: { text: "\u671f\u6743\u770b\u591a", color: "#089981" },
+  strong_bearish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u7a7a", color: "#f23645" },
+  bearish: { text: "\u671f\u6743\u770b\u7a7a", color: "#f23645" },
+  neutral: { text: "\u671f\u6743\u4e2d\u6027", color: "#787b86" },
+};
+
+function TechIndicators({ item }) {
+  const rsi = item.rsi;
+  const macdHist = item.macd_histogram;
+  const bbPos = item.bollinger_position;
+  const obvTrend = item.obv_trend;
+  const hasAny = rsi != null || macdHist != null || bbPos != null || (obvTrend && obvTrend !== "");
+  if (!hasAny) return null;
+
+  const rsiColor = rsi > 70 ? "#f23645" : rsi < 30 ? "#089981" : "#d1d4dc";
+  const rsiLabel = rsi > 70 ? "\u8d85\u4e70" : rsi < 30 ? "\u8d85\u5356" : "\u4e2d\u6027";
+  const macdColor = macdHist > 0 ? "#089981" : macdHist < 0 ? "#f23645" : "#787b86";
+  const macdLabel = macdHist > 0 ? "\u591a\u5934" : macdHist < 0 ? "\u7a7a\u5934" : "\u4e2d\u6027";
+  const bbPct = bbPos != null ? Math.round(bbPos * 100) : null;
+  const bbColor = bbPct > 90 ? "#f23645" : bbPct < 10 ? "#089981" : "#d1d4dc";
+  const obvMap = { bullish: { text: "\u591a\u5934", color: "#089981" }, bearish: { text: "\u7a7a\u5934", color: "#f23645" }, neutral: { text: "\u4e2d\u6027", color: "#787b86" } };
+  const obvInfo = obvMap[obvTrend] || obvMap.neutral;
+
+  return (
+    <div className="mt-3 rounded-lg border border-[#2a2e39] bg-[#131722] p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-bold text-[#d1d4dc]">
+        <Activity size={16} className="text-[#2962ff]" />
+        {"\u6280\u672f\u6307\u6807"}
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {rsi != null && (
+          <div className="rounded border border-[#2a2e39] bg-[#1e222d] p-3 text-center">
+            <div className="text-xs font-semibold text-[#787b86]">RSI(14)</div>
+            <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: rsiColor }}>{fmt(rsi, 1)}</div>
+            <div className="mt-0.5 text-xs font-semibold" style={{ color: rsiColor }}>{rsiLabel}</div>
+          </div>
+        )}
+        {macdHist != null && (
+          <div className="rounded border border-[#2a2e39] bg-[#1e222d] p-3 text-center">
+            <div className="text-xs font-semibold text-[#787b86]">MACD</div>
+            <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: macdColor }}>{fmt(macdHist, 4)}</div>
+            <div className="mt-0.5 text-xs font-semibold" style={{ color: macdColor }}>{macdLabel}</div>
+          </div>
+        )}
+        {bbPct != null && (
+          <div className="rounded border border-[#2a2e39] bg-[#1e222d] p-3 text-center">
+            <div className="text-xs font-semibold text-[#787b86]">{"\u5e03\u6797\u5e26"}</div>
+            <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: bbColor }}>{bbPct}%</div>
+            <div className="mt-0.5 text-xs font-semibold text-[#787b86]">{bbPct > 80 ? "\u8fd1\u4e0a\u8f68" : bbPct < 20 ? "\u8fd1\u4e0b\u8f68" : "\u4e2d\u4f4d"}</div>
+          </div>
+        )}
+        {obvTrend && obvTrend !== "" && (
+          <div className="rounded border border-[#2a2e39] bg-[#1e222d] p-3 text-center">
+            <div className="text-xs font-semibold text-[#787b86]">OBV</div>
+            <div className="mt-1 text-xl font-bold" style={{ color: obvInfo.color }}>{obvInfo.text}</div>
+            <div className="mt-0.5 text-xs font-semibold text-[#787b86]">{"\u80fd\u91cf\u6f6e"}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SignalBadges({ item }) {
+  const badges = [];
+  const ins = item.insider_signal;
+  if (ins && ins !== "" && ins !== "neutral") {
+    const info = INSIDER_SIGNAL_CN[ins];
+    if (info) badges.push({ text: info.text, color: info.color, icon: Users });
+  }
+  const opt = item.options_signal;
+  if (opt && opt !== "" && opt !== "neutral" && opt !== "unavailable") {
+    const info = OPTIONS_SIGNAL_CN[opt];
+    if (info) badges.push({ text: info.text, color: info.color, icon: Eye });
+  }
+  if (item.options_unusual_activity) {
+    badges.push({ text: "\u671f\u6743\u5f02\u52a8", color: "#fb8c00", icon: Activity });
+  }
+  if (item.options_pc_ratio != null && item.options_pc_ratio > 0) {
+    const pcr = Number(item.options_pc_ratio);
+    const pcrColor = pcr > 1.2 ? "#f23645" : pcr < 0.7 ? "#089981" : "#787b86";
+    badges.push({ text: `P/C ${pcr.toFixed(2)}`, color: pcrColor, icon: BarChart3 });
+  }
+  const eda = item.earnings_days_away;
+  const eds = item.earnings_date_str;
+  if (eda != null && eda >= 0 && eda <= 10) {
+    const eColor = eda <= 3 ? "#f23645" : "#fb8c00";
+    badges.push({ text: `${eda}\u5929\u540e\u8d22\u62a5${eds ? ` (${eds})` : ""}`, color: eColor, icon: Calendar });
+  }
+  if (badges.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {badges.map((b, i) => (
+        <span key={i} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold"
+          style={{ color: b.color, background: b.color + "15", border: `1px solid ${b.color}30` }}>
+          <b.icon size={13} />
+          {b.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const SECTOR_CN = {
+  Technology: "\u79d1\u6280",
+  "Consumer Cyclical": "\u53ef\u9009\u6d88\u8d39",
+  "Consumer Defensive": "\u5fc5\u9700\u6d88\u8d39",
+  Healthcare: "\u533b\u7597\u4fdd\u5065",
+  "Financial Services": "\u91d1\u878d",
+  Industrials: "\u5de5\u4e1a",
+  Energy: "\u80fd\u6e90",
+  "Communication Services": "\u901a\u4fe1\u670d\u52a1",
+  "Real Estate": "\u623f\u5730\u4ea7",
+  Utilities: "\u516c\u7528\u4e8b\u4e1a",
+  "Basic Materials": "\u57fa\u7840\u6750\u6599",
+};
+
 export default function RecCard({ item, rank }) {
   const [expanded, setExpanded] = useState(false);
   const isUS = item.market === "us_stock";
@@ -339,6 +506,7 @@ export default function RecCard({ item, rank }) {
   const themes = Array.isArray(item.themes) ? item.themes : [];
   const showTrading = item.show_trading_params !== false && item.entry_price;
   const score = item.confidence || item.combined_score || 0;
+  const displayName = looksMojibake(item.name) ? item.ticker : item.name;
 
   const rrRisk = isShort
     ? (item.stop_loss && item.entry_price ? item.stop_loss - item.entry_price : 0)
@@ -369,7 +537,12 @@ export default function RecCard({ item, rank }) {
               SHORT
             </span>
           )}
-          <span className="text-xl font-extrabold text-[#d1d4dc]">{item.name}</span>
+          <span className="text-xl font-extrabold text-[#d1d4dc]">{displayName}</span>
+          {item.sector && item.sector !== "" && (
+            <span className="rounded-full bg-[#2962ff]/10 px-2.5 py-0.5 text-xs font-bold text-[#2962ff]">
+              {SECTOR_CN[item.sector] || item.sector}
+            </span>
+          )}
           {themes.slice(0, 3).map((t, i) => (
             <ThemeTag key={i} text={String(t)} />
           ))}
@@ -405,6 +578,11 @@ export default function RecCard({ item, rank }) {
               {"\u98ce\u9669\u56de\u62a5"} 1:{rrRatio}
             </span>
           )}
+          {item.position_pct > 0 && (
+            <span className="text-sm font-semibold text-[#787b86]">
+              {"\u4ed3\u4f4d"} {item.position_pct}%
+            </span>
+          )}
         </div>
       </div>
 
@@ -417,6 +595,9 @@ export default function RecCard({ item, rank }) {
               {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
             </div>
           )}
+          <ScoreDimensions item={item} />
+          <TechIndicators item={item} />
+          <SignalBadges item={item} />
           <AnalysisSection newsReason={item.news_reason} techReason={item.tech_reason} />
           <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
 

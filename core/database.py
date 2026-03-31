@@ -31,6 +31,7 @@ class Database:
         self._migrate_add_columns()
         self._migrate_market_isolation()
         self._migrate_win_rate_scores()
+        self._migrate_recommendation_extra_cols()
 
     def close(self):
         try:
@@ -179,6 +180,19 @@ class Database:
                 themes          TEXT    DEFAULT '[]',
                 price           REAL    DEFAULT 0,
                 change_pct      REAL    DEFAULT 0,
+                sector          TEXT    DEFAULT '',
+                position_pct    INTEGER DEFAULT 5,
+                earnings_days_away INTEGER,
+                earnings_date_str TEXT   DEFAULT '',
+                show_trading_params INTEGER DEFAULT 0,
+                rsi             REAL,
+                macd_histogram  REAL,
+                bollinger_position REAL,
+                obv_trend       TEXT    DEFAULT '',
+                options_signal  TEXT    DEFAULT '',
+                options_pc_ratio REAL,
+                options_unusual_activity INTEGER DEFAULT 0,
+                insider_signal  TEXT    DEFAULT '',
                 FOREIGN KEY (run_id) REFERENCES published_recommendation_runs(id)
             );
 
@@ -353,6 +367,38 @@ class Database:
             self._conn.commit()
         except Exception as e:
             logger.warning(f"win_rate_records migration: {e}")
+
+    def _migrate_recommendation_extra_cols(self):
+        """Add indicator/signal columns to recommendation items tables."""
+        new_cols = [
+            ("sector", "TEXT DEFAULT ''"),
+            ("position_pct", "INTEGER DEFAULT 5"),
+            ("earnings_days_away", "INTEGER"),
+            ("earnings_date_str", "TEXT DEFAULT ''"),
+            ("show_trading_params", "INTEGER DEFAULT 0"),
+            ("rsi", "REAL"),
+            ("macd_histogram", "REAL"),
+            ("bollinger_position", "REAL"),
+            ("obv_trend", "TEXT DEFAULT ''"),
+            ("options_signal", "TEXT DEFAULT ''"),
+            ("options_pc_ratio", "REAL"),
+            ("options_unusual_activity", "INTEGER DEFAULT 0"),
+            ("insider_signal", "TEXT DEFAULT ''"),
+        ]
+        for table in ("published_recommendation_items", "daily_recommendation_items"):
+            try:
+                existing = {
+                    row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for col_name, col_def in new_cols:
+                    if col_name not in existing:
+                        try:
+                            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        except Exception:
+                            pass
+                self._conn.commit()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Screening
@@ -743,8 +789,13 @@ class Database:
                      tech_reason, news_reason, fundamental_reason,
                      llm_reason, recommendation_reason, valuation_summary,
                      quality_score, safety_margin, risk_flags, risk_note,
-                     position_note, themes, price, change_pct)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     position_note, themes, price, change_pct,
+                     sector, position_pct, earnings_days_away, earnings_date_str,
+                     show_trading_params, rsi, macd_histogram, bollinger_position,
+                     obv_trend, options_signal, options_pc_ratio,
+                     options_unusual_activity, insider_signal)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                            ?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
                  item.get("direction", "buy"), item.get("action", "hold"),
@@ -763,7 +814,20 @@ class Database:
                  item.get("quality_score"), item.get("safety_margin"),
                  risk_flags, item.get("risk_note", ""),
                  item.get("position_note", ""), themes,
-                 item.get("price", 0), item.get("change_pct", 0)),
+                 item.get("price", 0), item.get("change_pct", 0),
+                 item.get("sector", ""),
+                 item.get("position_pct", 5),
+                 item.get("earnings_days_away"),
+                 item.get("earnings_date_str", ""),
+                 1 if item.get("show_trading_params") else 0,
+                 item.get("rsi"),
+                 item.get("macd_histogram"),
+                 item.get("bollinger_position"),
+                 item.get("obv_trend", ""),
+                 item.get("options_signal", ""),
+                 item.get("options_pc_ratio"),
+                 1 if item.get("options_unusual_activity") else 0,
+                 item.get("insider_signal", "")),
             )
 
     # ------------------------------------------------------------------

@@ -1,27 +1,44 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import api from "../api";
 import PriceChange from "../components/PriceChange";
 import RecCard from "../components/RecCard";
 import MarketSentimentPanel from "../components/MarketSentimentPanel";
-import { Calendar, Clock } from "lucide-react";
+import { Calendar, Clock, Trophy, TrendingUp, TrendingDown } from "lucide-react";
 
 const MARKET_CFG = {
   us: {
-    title: "美股推荐",
+    title: "\u7f8e\u80a1\u63a8\u8350",
     mkt: "us_stock",
     indexFilter: (idx) => idx.market === "us_stock",
   },
   hk: {
-    title: "港股推荐",
+    title: "\u6e2f\u80a1\u63a8\u8350",
     mkt: "hk_stock",
     indexFilter: (idx) => idx.market === "hk_stock",
   },
 };
 
+function looksMojibake(text) {
+  if (!text) return false;
+  const s = String(text);
+  return s.includes("\uFFFD") || s.includes("\u00C3") || s.includes("\u00E2") || /[\u95BA\u7F01\u95C1\u5A75\u7134\u6FDE\u923A]/.test(s);
+}
+
+function normalizeIndexName(idx) {
+  const raw = idx?.name || idx?.symbol || "";
+  if (!looksMojibake(raw)) return raw;
+  if (idx?.market === "hk_stock") return "\u6052\u751f\u6307\u6570";
+  const price = Number(idx?.price || 0);
+  if (price > 30000) return "\u9053\u743c\u65af";
+  if (price > 10000) return "\u7eb3\u65af\u8fbe\u514b";
+  return "\u6807\u666e500";
+}
+
 function IndexCard({ idx }) {
   return (
     <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-4">
-      <p className="text-xs text-[#787b86]">{idx.name || idx.symbol}</p>
+      <p className="text-xs text-[#787b86]">{normalizeIndexName(idx)}</p>
       <p className="mt-1.5 text-xl font-semibold tabular-nums text-[#d1d4dc]">
         {idx.price?.toLocaleString(undefined, {
           minimumFractionDigits: 2,
@@ -39,6 +56,51 @@ function Skeleton({ className }) {
   return <div className={`animate-pulse rounded bg-[#2a2e39] ${className}`} />;
 }
 
+function WinRateBanner({ market }) {
+  const [wr, setWr] = useState(null);
+  useEffect(() => {
+    api.winRateSummary().then(setWr).catch(() => {});
+  }, []);
+  if (!wr) return null;
+  const mkt = market === "hk" ? "hk_stock" : "us_stock";
+  const d = wr[mkt];
+  if (!d) return null;
+  const all = d.all || {};
+  if (!all.total_evaluated) return null;
+  const rate = all.win_rate || 0;
+  const rateColor = rate >= 60 ? "#089981" : rate >= 45 ? "#fb8c00" : "#f23645";
+  const avgRet = all.avg_return_pct || 0;
+  const retColor = avgRet >= 0 ? "#089981" : "#f23645";
+  return (
+    <Link to="/win-rate"
+      className="flex items-center gap-4 rounded-lg border border-[#2a2e39] bg-[#1e222d] px-5 py-3 hover:border-[#363a45] transition-colors">
+      <div className="flex items-center gap-2">
+        <Trophy size={16} className="text-[#fb8c00]" />
+        <span className="text-sm font-bold text-[#d1d4dc]">{"\u7cfb\u7edf\u80dc\u7387"}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-lg font-extrabold tabular-nums" style={{ color: rateColor }}>{rate.toFixed(1)}%</span>
+        <span className="text-xs text-[#787b86]">({all.wins || 0}W / {all.total_evaluated}T)</span>
+      </div>
+      <div className="h-4 w-px bg-[#2a2e39]" />
+      <div className="flex items-center gap-1.5">
+        {avgRet >= 0 ? <TrendingUp size={14} style={{ color: retColor }} /> : <TrendingDown size={14} style={{ color: retColor }} />}
+        <span className="text-sm font-bold tabular-nums" style={{ color: retColor }}>
+          {avgRet >= 0 ? "+" : ""}{avgRet.toFixed(2)}%
+        </span>
+        <span className="text-xs text-[#787b86]">{"\u5e73\u5747\u6536\u76ca"}</span>
+      </div>
+      {all.pending > 0 && (
+        <>
+          <div className="h-4 w-px bg-[#2a2e39]" />
+          <span className="text-xs text-[#787b86]">{all.pending} {"\u5f85\u8bc4\u4f30"}</span>
+        </>
+      )}
+      <span className="ml-auto text-xs text-[#787b86] hover:text-brand-500">{"\u67e5\u770b\u8be6\u60c5 \u2192"}</span>
+    </Link>
+  );
+}
+
 export default function RecommendationsPage({ market = "us" }) {
   const cfg = MARKET_CFG[market] || MARKET_CFG.us;
 
@@ -49,6 +111,21 @@ export default function RecommendationsPage({ market = "us" }) {
   const [history, setHistory] = useState([]);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [updatedAtBj, setUpdatedAtBj] = useState("");
+
+  function markUpdatedNow() {
+    const ts = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(new Date());
+    setUpdatedAtBj(ts);
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -68,6 +145,7 @@ export default function RecommendationsPage({ market = "us" }) {
       else setToday(null);
       if (hRes.status === "fulfilled") setHistory(hRes.value || []);
       else setHistory([]);
+      markUpdatedNow();
       setLoading(false);
     });
 
@@ -82,17 +160,25 @@ export default function RecommendationsPage({ market = "us" }) {
     try {
       const d = await api.marketRecByDate(market, date);
       setDetail(d);
+      markUpdatedNow();
     } catch {
       setDetail(null);
     }
   }
 
   const items = detail?.items || today?.items || [];
-  const viewingDate = detail ? detail.run?.ref_date : "今日";
+  const viewingDate = detail ? detail.run?.ref_date : "\u4eca\u65e5";
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <h1 className="text-lg font-semibold text-[#d1d4dc]">{cfg.title}</h1>
+      <div className="flex items-end justify-between gap-3">
+        <h1 className="text-lg font-semibold text-[#d1d4dc]">{cfg.title}</h1>
+        {updatedAtBj && (
+          <p className="text-xs text-[#787b86]">
+            {"\u66f4\u65b0\u4e8e\u5317\u4eac\u65f6\u95f4 "} {updatedAtBj}
+          </p>
+        )}
+      </div>
 
       {/* Market indices */}
       <section>
@@ -129,6 +215,9 @@ export default function RecommendationsPage({ market = "us" }) {
         sentiment && <MarketSentimentPanel data={sentiment} market={market} />
       )}
 
+      {/* Win rate banner */}
+      <WinRateBanner market={market} />
+
       {/* Display message */}
       {today?.display_message && !detail && (
         <div className="flex items-center gap-2 rounded-lg border border-[#363a45] bg-[#1e222d] px-4 py-3 text-xs text-[#787b86]">
@@ -140,7 +229,7 @@ export default function RecommendationsPage({ market = "us" }) {
       {/* History bar + Rec header */}
       <div className="flex items-center gap-3">
         <Calendar size={13} className="text-[#787b86]" />
-        <p className="text-xs font-medium text-[#787b86]">历史记录</p>
+        <p className="text-xs font-medium text-[#787b86]">{"\u5386\u53f2\u8bb0\u5f55"}</p>
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
           <button
             onClick={() => setDetail(null)}
@@ -150,7 +239,7 @@ export default function RecommendationsPage({ market = "us" }) {
                 : "text-[#787b86] hover:text-[#d1d4dc]"
             }`}
           >
-            今日推荐
+            {"\u4eca\u65e5\u63a8\u8350"}
           </button>
           {history.map((h) => (
             <button
@@ -172,9 +261,9 @@ export default function RecommendationsPage({ market = "us" }) {
       {/* Recommendations - full width */}
       <div>
         <div className="mb-3 flex items-center gap-2">
-          <p className="text-sm font-semibold text-[#d1d4dc]">推荐列表</p>
+          <p className="text-sm font-semibold text-[#d1d4dc]">{"\u63a8\u8350\u5217\u8868"}</p>
           <span className="text-xs text-[#787b86]">
-            {viewingDate} · {items.length} 只
+            {items.length} {"\u53ea"}
           </span>
         </div>
 

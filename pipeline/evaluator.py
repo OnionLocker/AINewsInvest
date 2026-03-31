@@ -75,8 +75,11 @@ def evaluate_pending_records() -> dict[str, Any]:
 def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
     """Evaluate one pending record. Supports both long and short directions.
 
-    Enhanced with trailing stop: if price reaches >50% of TP distance
-    then pulls back >50% of the gain, exits as partial_win.
+    Phase 1 – Entry fill: iterate daily bars to see if the limit-order
+    entry_price was actually reached (low <= entry for long, high >= entry
+    for short).  Only bars *after* the fill date are eligible for TP/SL.
+
+    Phase 2 – TP / SL / trailing-stop / timeout evaluation on post-fill bars.
     """
     run_date = datetime.strptime(rec["run_date"], "%Y%m%d")
     entry = float(rec["entry_price"])
@@ -110,6 +113,30 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
             return None
 
+        # --- Phase 1: check if the limit-order entry was filled ---
+        entry_filled = False
+        post_fill_rows = []
+
+        for idx, (_, row) in enumerate(hist.iterrows()):
+            high = float(row["High"])
+            low = float(row["Low"])
+
+            if not entry_filled:
+                if is_short:
+                    if high >= entry:
+                        entry_filled = True
+                        post_fill_rows = list(hist.iloc[idx:].iterrows())
+                else:
+                    if low <= entry:
+                        entry_filled = True
+                        post_fill_rows = list(hist.iloc[idx:].iterrows())
+
+        if not entry_filled:
+            if holding_expired:
+                return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
+            return None
+
+        # --- Phase 2: evaluate TP / SL / trailing on post-fill bars ---
         if is_short:
             tp_distance = entry - tp1
             best_price = entry
@@ -117,7 +144,7 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
             tp_distance = tp1 - entry
             best_price = entry
 
-        for _, row in hist.iterrows():
+        for _, row in post_fill_rows:
             high = float(row["High"])
             low = float(row["Low"])
 

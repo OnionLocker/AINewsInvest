@@ -113,7 +113,7 @@ PHASE 5: PER-STOCK SCORING
   - "short": ONLY with official negative catalyst + news_score <= 25
   - NEVER "short" for HK stocks
 - analysis: 1-3 sentences in Chinese, focus on WHAT THE MARKET IS MISSING
-- risk_flags: specific risk identifiers
+- risk_flags: specific risk identifiers, MUST be in Chinese (e.g. "消息来源混杂", "周期性行业风险", "需求不确定", "信号不足", "已被定价")
 - risk_note: 1-2 sentences in Chinese
 - sector_bonus: from Phase 2
 - themes: sector/theme tags

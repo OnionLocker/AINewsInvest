@@ -1,6 +1,9 @@
 """Recommendation routes -- today, history, screen, with market-scoped endpoints."""
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,6 +31,39 @@ def _ref_date_for_market(market: str) -> str:
     return datetime.now(ZoneInfo(_tz_for_market(market))).strftime("%Y%m%d")
 
 
+@lru_cache(maxsize=1)
+def _stock_pool_name_map() -> dict[tuple[str, str], str]:
+    path = Path(__file__).resolve().parents[2] / "data" / "stock_pool.json"
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    out: dict[tuple[str, str], str] = {}
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        ticker = str(row.get("ticker", "")).strip()
+        market = str(row.get("market", "")).strip()
+        name = str(row.get("name", "")).strip()
+        if ticker and market and name:
+            out[(ticker, market)] = name
+    return out
+
+
+def _normalize_item_names(items: list[dict]) -> list[dict]:
+    name_map = _stock_pool_name_map()
+    for item in items:
+        ticker = str(item.get("ticker", "")).strip()
+        market = str(item.get("market", "")).strip()
+        clean_name = name_map.get((ticker, market))
+        if clean_name:
+            item["name"] = clean_name
+    return items
+
+
 # ---- Legacy (backward compat) ----
 
 @router.get("/recommendations/today")
@@ -40,11 +76,13 @@ async def today_recommendations(user: User = Depends(get_current_user)):
             if not run_info:
                 last_run, last_items = db.get_latest_published()
                 if last_run:
+                    _normalize_item_names(last_items)
                     return {
                         "run": last_run, "items": last_items,
-                        "display_message": f"显示最近一次推荐 ({last_run.get('ref_date', '?')})",
+                        "display_message": f"\u663e\u793a\u6700\u8fd1\u4e00\u6b21\u63a8\u8350 ({last_run.get('ref_date', '?')})",
                     }
-                return {"run": None, "items": [], "display_message": "暂无推荐数据"}
+                return {"run": None, "items": [], "display_message": "\u6682\u65e0\u63a8\u8350\u6570\u636e"}
+            _normalize_item_names(items)
             return {"run": run_info, "items": items}
         finally:
             db.close()
@@ -85,7 +123,8 @@ async def recommendations_by_date(
     try:
         run_info, items = db.get_published_recommendations(ref_date)
         if not run_info:
-            raise HTTPException(404, f"该日期 ({ref_date}) 暂无推荐")
+            raise HTTPException(404, f"\u8be5\u65e5\u671f ({ref_date}) \u6682\u65e0\u63a8\u8350")
+        _normalize_item_names(items)
         return {"run": run_info, "items": items}
     finally:
         db.close()
@@ -98,7 +137,7 @@ async def market_today_recommendations(
     market: str, user: User = Depends(get_current_user),
 ):
     if market not in ("us", "hk"):
-        raise HTTPException(400, "market 参数必须为 us 或 hk")
+        raise HTTPException(400, "market \u53c2\u6570\u5fc5\u987b\u4e3a us \u6216 hk")
     mkt = f"{market}_stock"
 
     def _work():
@@ -109,11 +148,14 @@ async def market_today_recommendations(
             if not run_info:
                 last_run, last_items = db.get_latest_published(market=mkt)
                 if last_run:
+                    _normalize_item_names(last_items)
                     return {
                         "run": last_run, "items": last_items,
-                        "display_message": f"显示最近一次推荐 ({last_run.get('ref_date', '?')})",
+                        "display_message": f"\u663e\u793a\u6700\u8fd1\u4e00\u6b21\u63a8\u8350 ({last_run.get('ref_date', '?')})",
                     }
-                return {"run": None, "items": [], "display_message": "暂无推荐数据"}
+                return {"run": None, "items": [], "display_message": "\u6682\u65e0\u63a8\u8350\u6570\u636e"}
+
+            _normalize_item_names(items)
 
             user_db = _get_user_db(user)
             try:
@@ -137,7 +179,7 @@ async def market_recommendation_history(
     market: str, limit: int = 20, user: User = Depends(get_current_user),
 ):
     if market not in ("us", "hk"):
-        raise HTTPException(400, "market 参数必须为 us 或 hk")
+        raise HTTPException(400, "market \u53c2\u6570\u5fc5\u987b\u4e3a us \u6216 hk")
     mkt = f"{market}_stock"
 
     db = Database(SYSTEM_DB_PATH)
@@ -167,14 +209,15 @@ async def market_recommendations_by_date(
     market: str, ref_date: str, user: User = Depends(get_current_user),
 ):
     if market not in ("us", "hk"):
-        raise HTTPException(400, "market 参数必须为 us 或 hk")
+        raise HTTPException(400, "market \u53c2\u6570\u5fc5\u987b\u4e3a us \u6216 hk")
     mkt = f"{market}_stock"
 
     db = Database(SYSTEM_DB_PATH)
     try:
         run_info, items = db.get_published_recommendations(ref_date, market=mkt)
         if not run_info:
-            raise HTTPException(404, f"该日期 ({ref_date}) 暂无{mkt}推荐")
+            raise HTTPException(404, f"\u8be5\u65e5\u671f ({ref_date}) \u6682\u65e0{mkt}\u63a8\u8350")
+        _normalize_item_names(items)
         return {"run": run_info, "items": items}
     finally:
         db.close()

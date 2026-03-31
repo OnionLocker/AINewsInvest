@@ -62,20 +62,20 @@ Check if price has deviated too far from moving averages:
 - If overbought_bias is True (Close > MA20 by >15%):
   -> Cap technical_score at MAX 65
   -> Force action to "hold" (NOT "buy")
-  -> Add "overbought_extended" to risk_flags
+  -> Add "\u8d85\u4e70\u5ef6\u4f38" to risk_flags
 - If ma20_bias_pct is 10-15:
   -> Deduct 5 points from score
-  -> Add "overbought_mild" to risk_flags
+  -> Add "\u8f7b\u5fae\u8d85\u4e70" to risk_flags
 
 PHASE 2: VOLUME-PRICE DIVERGENCE DETECTION
 
 Examine the pre-computed signals:
 - If volume_price_divergence is True (price at 20d high, shrinking volume):
-  -> Cap score at 60, add "volume_price_divergence" to risk_flags
+  -> Cap score at 60, add "\u91cf\u4ef7\u80cc\u79bb" to risk_flags
 - If volume_expansion is True and broke_20d_high is True:
   -> Healthy breakout, allow full score range
 - High volume_ratio (>2.0) without significant price move:
-  -> Possible distribution, add "distribution_risk" to risk_flags
+  -> Possible distribution, add "\u6d3e\u53d1\u98ce\u9669" to risk_flags
 
 PHASE 3: SUPPORT/RESISTANCE VALIDATION
 
@@ -83,7 +83,7 @@ Use the enriched support/resistance data:
 - near_support=True + support_hold_strength in (strong, moderate):
   -> Favorable entry, bonus +5
 - near_resistance=True + no volume_expansion:
-  -> Wait for breakout, penalty -5, add "near_resistance"
+  -> Wait for breakout, penalty -5, add "\u63a5\u8fd1\u963b\u529b\u4f4d"
 - broke_20d_high=True + volume_expansion=True:
   -> Bullish breakout confirmed, bonus +8
 - support_hold_strength="untested":
@@ -112,7 +112,7 @@ PER-STOCK OUTPUT:
     volume expansion on decline, weekly_trend = "bearish".
     NEVER use "short" for HK stocks.
 - analysis: 1-3 sentence technical assessment in Chinese
-- risk_flags: list of risk keywords
+- risk_flags: list of risk keywords, MUST be in Chinese (e.g. "闁烩剝甯掗幊宥夊箯閸楃儐鍤堥柡鍫ユ涧閸わ拷", "闂備焦褰冪换瀣偝椤栫偞鍤勭€光偓閳ь剟鈥栭敓锟�", "闂佽浜介崕瀵告崲鎼淬劍鈷撻悹鍥ㄥ絻椤柨霉閿濆繑瀚�", "闂佽　鍋撴い鏍ㄧ⊕鐎氱厧霉閿濆懐校婵犫偓椤撶噥娈界€光偓閸愵亝顫�", "濠电偛寮堕崕瀹犮亹閸屾侗妲归幖娣妽閻濓拷")
 - risk_note: brief risk description in Chinese
 - position_note: position sizing suggestion in Chinese
 

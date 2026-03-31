@@ -395,7 +395,11 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
         elif weekly_trend == "bullish":
             score += 3
 
-        # Enhanced indicators from K-line data
+        rsi_val = None
+        macd_hist_val = None
+        bb_pos_val = None
+        obv_trend_val = None
+
         klines_1 = c.get("kline_recent_part1") or []
         klines_2 = c.get("kline_recent_part2") or []
         all_klines = klines_1 + klines_2
@@ -405,6 +409,7 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
 
             if len(kl_closes) >= 14:
                 rsi = _compute_rsi(kl_closes)
+                rsi_val = rsi
                 if rsi > 75:
                     score -= 8
                 elif rsi > 70:
@@ -416,12 +421,14 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
 
             if len(kl_closes) >= 20:
                 bb_pos = _compute_bollinger_position(kl_closes)
+                bb_pos_val = bb_pos
                 if bb_pos > 0.95:
                     score -= 5
                 elif bb_pos < 0.05:
                     score += 4
 
                 macd_val, signal_val, macd_hist = _compute_macd(kl_closes)
+                macd_hist_val = macd_hist
                 if macd_hist > 0 and macd_val > signal_val:
                     score += 3
                 elif macd_hist < 0 and macd_val < signal_val:
@@ -429,6 +436,7 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
 
             if len(kl_closes) >= 14 and len(kl_volumes) >= 14:
                 obv_trend = _compute_obv_trend(kl_closes, kl_volumes)
+                obv_trend_val = obv_trend
                 if obv_trend == "bullish":
                     score += 3
                 elif obv_trend == "bearish":
@@ -440,18 +448,22 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
         risk_note = ""
         if signals.get("overbought_bias"):
             action = "hold"
-            risk_note = "MA20 bias over 15%, overbought risk"
+            risk_note = "MA20\u504f\u79bb\u8d85\u8fc715%\uff0c\u6709\u8d85\u4e70\u98ce\u9669"
         elif signals.get("volume_price_divergence"):
-            risk_note = "Volume-price divergence at 20d high"
+            risk_note = "20\u65e5\u9ad8\u70b9\u91cf\u4ef7\u80cc\u79bb"
 
         results.append({
             "ticker": ticker,
             "technical_score": score,
             "action": action,
-            "analysis": "Fallback rule-based technical scoring",
+            "analysis": "\u57fa\u4e8e\u89c4\u5219\u7684\u6280\u672f\u9762\u8bc4\u5206",
             "risk_flags": [],
             "risk_note": risk_note,
             "position_note": "",
+            "rsi": rsi_val,
+            "macd_histogram": macd_hist_val,
+            "bollinger_position": bb_pos_val,
+            "obv_trend": obv_trend_val,
         })
 
     return results
@@ -550,29 +562,37 @@ def _compute_trade_params(
 
     action_bucket = _classify_action(action)
 
+    # Max deviation from current price depends on strategy horizon
+    if strategy_type == "swing":
+        max_discount = 0.04
+        secondary_discount = 0.06
+    else:
+        max_discount = 0.02
+        secondary_discount = 0.035
+
     if action_bucket == "strong_buy":
         entry_price = round(price * 0.997, 2)
     elif action_bucket == "buy":
         if support_hold_strength in ("strong", "moderate") and support_1 < price:
             entry_price = round(support_1 * 1.01, 2)
-            if entry_price < price * 0.95:
-                entry_price = round(price * 0.97, 2)
+            if entry_price < price * (1 - max_discount):
+                entry_price = round(price * (1 - max_discount * 0.7), 2)
         elif ma20 > 0 and ma20 < price:
             entry_price = round(ma20 * 1.005, 2)
-            if entry_price < price * 0.95:
-                entry_price = round(price * 0.97, 2)
+            if entry_price < price * (1 - max_discount):
+                entry_price = round(price * (1 - max_discount * 0.7), 2)
         else:
-            entry_price = round(price * 0.98, 2)
+            entry_price = round(price * (1 - max_discount * 0.5), 2)
     elif action_bucket == "avoid":
-        entry_price = round(price * 0.97, 2)
+        entry_price = round(price * (1 - max_discount * 0.7), 2)
     else:
-        entry_price = round(price * 0.95, 2)
+        entry_price = round(price * (1 - max_discount), 2)
 
     entry_price = min(entry_price, price)
-    entry_price = max(entry_price, round(price * 0.92, 2))
+    entry_price = max(entry_price, round(price * (1 - max_discount), 2))
 
     entry_2 = round(entry_price * 0.985, 2)
-    entry_2 = max(entry_2, round(price * 0.90, 2))
+    entry_2 = max(entry_2, round(price * (1 - secondary_discount), 2))
 
     if volatility_class == "high":
         stop_buffer_pct = 0.025
@@ -881,12 +901,19 @@ def synthesize_agent_results(
         earnings_imminent = c.get("earnings_imminent", False)
         earnings_days = c.get("earnings_days_away")
         if earnings_imminent and earnings_days is not None and earnings_days >= 0:
-            all_risk_flags.append("earnings_imminent")
+            all_risk_flags.append("\u4e34\u8fd1\u8d22\u62a5")
             if earnings_days < holding_days_final:
                 holding_days_final = max(1, earnings_days - 1)
 
         news_analysis = str(news.get("analysis", ""))
         tech_analysis = str(tech.get("analysis", ""))
+
+        fin = c.get("financial") or {}
+        sector = fin.get("sector", "") or ""
+        insider_trades_data = c.get("insider_trades")
+        insider_signal = ""
+        if insider_trades_data and isinstance(insider_trades_data, dict):
+            insider_signal = insider_trades_data.get("signal_strength", "")
 
         all_scored.append({
             "ticker": ticker,
@@ -926,6 +953,15 @@ def synthesize_agent_results(
             "themes": news.get("themes", []) if isinstance(news.get("themes"), list) else [],
             "price": price,
             "change_pct": _safe_float(c.get("change_pct")),
+            "sector": sector,
+            "rsi": tech.get("rsi"),
+            "macd_histogram": tech.get("macd_histogram"),
+            "bollinger_position": tech.get("bollinger_position"),
+            "obv_trend": tech.get("obv_trend"),
+            "options_signal": c.get("options_signal", ""),
+            "options_pc_ratio": c.get("options_pc_ratio"),
+            "options_unusual_activity": bool(c.get("options_unusual_activity")),
+            "insider_signal": insider_signal,
         })
 
     all_scored.sort(key=lambda x: x["combined_score"], reverse=True)

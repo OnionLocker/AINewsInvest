@@ -15,6 +15,7 @@ async function request(method, path, body = null, opts = {}) {
     headers,
     body: body ? JSON.stringify(body) : undefined,
     signal: opts.signal,
+    cache: method === "GET" ? "no-store" : "default",
   });
   if (res.status === 401) {
     localStorage.removeItem("token");
@@ -79,9 +80,10 @@ const api = {
   removeWatchlist: (id) => del(`/api/watchlist/${id}`),
   watchlistQuotes: () => get("/api/watchlist/quotes"),
 
-  // performance
+  // performance / win-rate
   performanceSummary: (market = "all") =>
     get(`/api/performance/summary?market=${market}`),
+  winRateSummary: () => get("/api/win-rate/summary"),
 
   // admin
   adminUsers: () => get("/api/admin/users"),

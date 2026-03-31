@@ -61,319 +61,347 @@ def get_quotes_batch(items: list[dict]) -> list[dict]:
 
 # -- K-lines --
 
-def get_klines(ticker: str, market: str, days: int = 60) -> pd.DataFrame:
+def get_klines(ticker: str, market: str, days: int = 120) -> pd.DataFrame:
+    """Fetch daily OHLCV bars from yfinance.
+
+    Returns a DataFrame with columns: date, open, high, low, close, volume.
+    """
     symbol = to_yf_ticker(ticker, market)
     try:
         t = yf.Ticker(symbol)
         end = datetime.now()
-        start = end - timedelta(days=days + 15)
-        df = t.history(start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"))
-        if df.empty:
+        start = end - timedelta(days=days + 10)
+        hist = t.history(start=start.strftime("%Y-%m-%d"),
+                         end=(end + timedelta(days=1)).strftime("%Y-%m-%d"))
+        if hist.empty:
             return pd.DataFrame()
-        df = df.reset_index().rename(columns={
-            "Date": "date", "Open": "open", "High": "high",
-            "Low": "low", "Close": "close", "Volume": "volume",
-        })
-        if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
-        return df[["date", "open", "high", "low", "close", "volume"]].tail(days)
+
+        df = pd.DataFrame({
+            "date": hist.index.tz_localize(None) if hist.index.tz else hist.index,
+            "open": hist["Open"].values,
+            "high": hist["High"].values,
+            "low": hist["Low"].values,
+            "close": hist["Close"].values,
+            "volume": hist["Volume"].values,
+        }).reset_index(drop=True)
+        return df.tail(days)
     except Exception as e:
-        logger.warning(f"Kline failed {symbol}: {e}")
+        logger.warning(f"K-line fetch failed {symbol}: {e}")
         return pd.DataFrame()
 
 
 # -- Financials --
 
 def get_financial_data(ticker: str, market: str) -> dict[str, Any] | None:
+    """Fetch fundamental financial data from yfinance."""
     symbol = to_yf_ticker(ticker, market)
     try:
         t = yf.Ticker(symbol)
         info = t.info or {}
-        if not info.get("symbol"):
+        if not info:
             return None
-        indicators = _extract_multi_year(t.balance_sheet, t.financials, t.cashflow)
-        return {
-            "ticker": ticker, "market": market,
-            "name": info.get("shortName", ""),
-            "sector": info.get("sector", ""),
-            "industry": info.get("industry", ""),
-            "pe_ttm": info.get("trailingPE"),
-            "pb": info.get("priceToBook"),
-            "market_cap": info.get("marketCap", 0),
-            "dividend_yield": info.get("dividendYield"),
-            "roe": info.get("returnOnEquity"),
-            "current_ratio": info.get("currentRatio"),
-            "debt_to_equity": info.get("debtToEquity"),
-            "revenue_growth": info.get("revenueGrowth"),
-            "earnings_growth": info.get("earningsGrowth"),
-            "gross_margins": info.get("grossMargins"),
-            "operating_margins": info.get("operatingMargins"),
-            "profit_margins": info.get("profitMargins"),
-            "total_revenue": info.get("totalRevenue"),
-            "total_debt": info.get("totalDebt"),
-            "total_cash": info.get("totalCash"),
-            "free_cashflow": info.get("freeCashflow"),
-            "book_value": info.get("bookValue"),
-            "shares_outstanding": info.get("sharesOutstanding"),
-            "short_ratio": info.get("shortRatio"),
-            "short_pct_of_float": info.get("shortPercentOfFloat"),
-            "held_pct_insiders": info.get("heldPercentInsiders"),
-            "held_pct_institutions": info.get("heldPercentInstitutions"),
-            "net_income_common": info.get("netIncomeToCommon"),
-            "indicators": indicators,
+
+        def _get(key, default=None):
+            v = info.get(key, default)
+            return v
+
+        result = {
+            "roe": _get("returnOnEquity"),
+            "gross_margins": _get("grossMargins"),
+            "profit_margins": _get("profitMargins"),
+            "operating_margins": _get("operatingMargins"),
+            "debt_to_equity": _get("debtToEquity"),
+            "current_ratio": _get("currentRatio"),
+            "revenue_growth": _get("revenueGrowth"),
+            "earnings_growth": _get("earningsGrowth"),
+            "free_cashflow": _get("freeCashflow"),
+            "total_revenue": _get("totalRevenue"),
+            "net_income": _get("netIncomeToCommon"),
+            "ebitda": _get("ebitda"),
+            "total_debt": _get("totalDebt"),
+            "total_cash": _get("totalCash"),
+            "pe_trailing": _get("trailingPE"),
+            "pe_forward": _get("forwardPE"),
+            "peg_ratio": _get("pegRatio"),
+            "price_to_book": _get("priceToBook"),
+            "short_pct_of_float": _get("shortPercentOfFloat"),
+            "held_pct_insiders": _get("heldPercentInsiders"),
+            "held_pct_institutions": _get("heldPercentInstitutions"),
+            "sector": _get("sector", ""),
+            "industry": _get("industry", ""),
         }
+
+        indicators = _build_financial_indicators(t, info)
+        if indicators:
+            result["indicators"] = indicators
+
+        return result
     except Exception as e:
         logger.warning(f"Financial data failed {symbol}: {e}")
         return None
 
 
-def _extract_multi_year(bs, fin, cf) -> list[dict]:
-    indicators: list[dict] = []
-    if fin is None or fin.empty:
+def _build_financial_indicators(t: Any, info: dict) -> list[dict] | None:
+    """Build quarterly financial indicators for trend analysis."""
+    try:
+        bs = t.quarterly_balance_sheet
+        if bs is None or bs.empty:
+            return None
+
+        indicators = []
+        for col in bs.columns[:4]:
+            total_assets = bs.at["Total Assets", col] if "Total Assets" in bs.index else None
+            total_debt = bs.at["Total Debt", col] if "Total Debt" in bs.index else None
+
+            debt_ratio = None
+            if total_assets and total_debt and total_assets > 0:
+                debt_ratio = round(float(total_debt / total_assets * 100), 2)
+
+            indicators.append({
+                "period": str(col.date()) if hasattr(col, "date") else str(col),
+                "total_assets": float(total_assets) if total_assets else None,
+                "total_debt": float(total_debt) if total_debt else None,
+                "debt_ratio": debt_ratio,
+            })
         return indicators
-    for col in fin.columns:
-        year = col.year if hasattr(col, "year") else str(col)[:4]
-        entry: dict[str, Any] = {"year": int(year)}
-        revenue = _safe_val(fin, "Total Revenue", col)
-        net_income = _safe_val(fin, "Net Income", col)
-        gross_profit = _safe_val(fin, "Gross Profit", col)
-        if revenue and revenue > 0:
-            if gross_profit:
-                entry["gross_margin"] = round(gross_profit / revenue * 100, 2)
-            if net_income:
-                entry["net_margin"] = round(net_income / revenue * 100, 2)
-        if bs is not None and col in bs.columns:
-            equity = _safe_val(bs, "Stockholders Equity", col)
-            total_assets = _safe_val(bs, "Total Assets", col)
-            debt = _safe_val(bs, "Total Debt", col) or _safe_val(bs, "Long Term Debt", col)
-            ca = _safe_val(bs, "Current Assets", col)
-            cl = _safe_val(bs, "Current Liabilities", col)
-            if equity and equity > 0 and net_income:
-                entry["roe"] = round(net_income / equity * 100, 2)
-            if total_assets and total_assets > 0 and debt:
-                entry["debt_ratio"] = round(debt / total_assets * 100, 2)
-            if cl and cl > 0 and ca:
-                entry["current_ratio"] = round(ca / cl, 2)
-        indicators.append(entry)
-    indicators.sort(key=lambda x: x.get("year", 0))
-    return indicators
-
-
-def _safe_val(df, label: str, col) -> float | None:
-    if df is None or df.empty:
+    except Exception:
         return None
-    for idx in df.index:
-        if label.lower() in str(idx).lower():
-            try:
-                val = df.loc[idx, col]
-                if pd.notna(val):
-                    return float(val)
-            except (KeyError, TypeError, ValueError):
-                pass
-    return None
 
 
-# -- News --
+# -- Insider trades --
 
-def get_news(ticker: str, market: str, limit: int = 10) -> list[dict]:
+def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
+    """Fetch recent insider trading activity from yfinance."""
+    if market != "us_stock":
+        return None
     symbol = to_yf_ticker(ticker, market)
     try:
         t = yf.Ticker(symbol)
-        raw = t.news or []
-        return [{"title": n.get("title", ""), "publisher": n.get("publisher", ""),
-                 "link": n.get("link", ""), "published": n.get("providerPublishTime", "")}
-                for n in raw[:limit]]
+        insiders = t.insider_transactions
+        if insiders is None or insiders.empty:
+            return None
+
+        recent = insiders.head(20)
+        buys = 0
+        sells = 0
+        buy_value = 0.0
+        sell_value = 0.0
+
+        for _, row in recent.iterrows():
+            text = str(row.get("Text", "")).lower()
+            shares = abs(float(row.get("Shares", 0) or 0))
+            value = abs(float(row.get("Value", 0) or 0))
+
+            if "purchase" in text or "buy" in text:
+                buys += 1
+                buy_value += value
+            elif "sale" in text or "sell" in text:
+                sells += 1
+                sell_value += value
+
+        total = buys + sells
+        if total == 0:
+            return {"signal_strength": "neutral", "buys": 0, "sells": 0,
+                    "buy_value": 0, "sell_value": 0, "transactions": total}
+
+        buy_ratio = buys / total
+        if buy_ratio >= 0.7 and buy_value > 100_000:
+            signal = "strong_buy"
+        elif buy_ratio >= 0.5:
+            signal = "moderate_buy"
+        elif buy_ratio <= 0.2 and sell_value > 500_000:
+            signal = "strong_sell"
+        elif buy_ratio <= 0.35:
+            signal = "moderate_sell"
+        else:
+            signal = "neutral"
+
+        return {
+            "signal_strength": signal,
+            "buys": buys, "sells": sells,
+            "buy_value": round(buy_value, 2),
+            "sell_value": round(sell_value, 2),
+            "transactions": total,
+        }
     except Exception as e:
-        logger.warning(f"News failed {symbol}: {e}")
-        return []
+        logger.warning(f"Insider trades failed {symbol}: {e}")
+        return None
+
+
+# -- Options signal --
+
+def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
+    """Derive a bullish/bearish signal from options data."""
+    if market != "us_stock":
+        return None
+    symbol = to_yf_ticker(ticker, market)
+    try:
+        t = yf.Ticker(symbol)
+        expirations = t.options
+        if not expirations:
+            return None
+
+        nearest = expirations[0]
+        chain = t.option_chain(nearest)
+        calls = chain.calls
+        puts = chain.puts
+
+        if calls.empty and puts.empty:
+            return None
+
+        call_oi = int(calls["openInterest"].sum()) if "openInterest" in calls.columns else 0
+        put_oi = int(puts["openInterest"].sum()) if "openInterest" in puts.columns else 0
+        call_vol = int(calls["volume"].fillna(0).sum()) if "volume" in calls.columns else 0
+        put_vol = int(puts["volume"].fillna(0).sum()) if "volume" in puts.columns else 0
+
+        total_oi = call_oi + put_oi
+        pc_ratio = round(put_oi / max(call_oi, 1), 2)
+        vol_pc_ratio = round(put_vol / max(call_vol, 1), 2)
+
+        if pc_ratio < 0.5:
+            signal = "bullish"
+        elif pc_ratio > 1.5:
+            signal = "bearish"
+        else:
+            signal = "neutral"
+
+        return {
+            "signal": signal,
+            "put_call_ratio": pc_ratio,
+            "vol_put_call_ratio": vol_pc_ratio,
+            "call_oi": call_oi,
+            "put_oi": put_oi,
+            "total_oi": total_oi,
+            "expiration": nearest,
+        }
+    except Exception as e:
+        logger.warning(f"Options signal failed {symbol}: {e}")
+        return None
 
 
 # -- Index components --
 
 def get_index_components(index_symbol: str) -> list[dict]:
-    try:
-        if index_symbol in ("^GSPC", "^SPX"):
-            return _sp500_components()
-        if index_symbol in ("^NDX", "^IXIC"):
-            return _nasdaq100_components()
-        if index_symbol == "^HSI":
-            return _hsi_components()
-        if index_symbol == "^HSTECH":
-            return _hstech_components()
-        return []
-    except Exception as e:
-        logger.error(f"Index components failed {index_symbol}: {e}")
-        return []
+    """Return list of component stocks for a given index.
 
-
-def _wiki_read_html(url: str) -> list:
-    """Read HTML tables from Wikipedia with proper User-Agent to avoid 403."""
-    import io
-    import httpx
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; AlphaVault/3.0; +https://github.com)",
-        "Accept": "text/html",
-    }
-    with httpx.Client(timeout=15, follow_redirects=True) as client:
-        r = client.get(url, headers=headers)
-        r.raise_for_status()
-    return pd.read_html(io.StringIO(r.text))
-
-
-def _sp500_components() -> list[dict]:
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    df = _wiki_read_html(url)[0]
-    return [{"ticker": str(r.get("Symbol", "")).strip().replace(".", "-"),
-             "name": str(r.get("Security", "")).strip(), "market": "us_stock"}
-            for _, r in df.iterrows() if str(r.get("Symbol", "")).strip()]
-
-
-def _nasdaq100_components() -> list[dict]:
-    url = "https://en.wikipedia.org/wiki/Nasdaq-100"
-    for tbl in _wiki_read_html(url):
-        col = "Ticker" if "Ticker" in tbl.columns else ("Symbol" if "Symbol" in tbl.columns else None)
-        if col:
-            nc = "Company" if "Company" in tbl.columns else "Security"
-            return [{"ticker": str(r.get(col, "")).strip(),
-                     "name": str(r.get(nc, "")).strip(), "market": "us_stock"}
-                    for _, r in tbl.iterrows() if str(r.get(col, "")).strip()]
-    return []
-
-
-def _hsi_components() -> list[dict]:
-    url = "https://en.wikipedia.org/wiki/Hang_Seng_Index"
-    import re as _re
-    for tbl in _wiki_read_html(url):
-        cols_lower = [str(c).lower() for c in tbl.columns]
-        if any("ticker" in c or "stock code" in c for c in cols_lower):
-            results = []
-            for _, row in tbl.iterrows():
-                for c in tbl.columns:
-                    if "ticker" in str(c).lower() or "stock code" in str(c).lower():
-                        raw = str(row[c]).strip().replace(".0", "")
-                        raw = _re.sub(r"^(?:SEHK|HKG)\s*:\s*", "", raw, flags=_re.IGNORECASE).strip()
-                        t = raw.zfill(4) if raw.isdigit() else raw
-                        nc = [x for x in tbl.columns if "company" in str(x).lower() or "name" in str(x).lower()]
-                        n = str(row[nc[0]]).strip() if nc else t
-                        if t and t != "nan":
-                            results.append({"ticker": t, "name": n, "market": "hk_stock"})
-                        break
-            if results:
-                return results
-    return []
-
-
-def _hstech_components() -> list[dict]:
-    return [{"ticker": t, "name": n, "market": "hk_stock"} for t, n in [
-        ("9988", "Alibaba"), ("0700", "Tencent"), ("3690", "Meituan"),
-        ("9999", "NetEase"), ("1810", "Xiaomi"), ("9618", "JD.com"),
-        ("0981", "SMIC"), ("9888", "Baidu"), ("0285", "BYD Electronic"),
-        ("6060", "ZhongAn"), ("1347", "Hua Hong Semi"), ("2382", "Sunny Optical"),
-        ("0268", "Kingdee"), ("0241", "Ali Health"), ("0772", "China Literature"),
-        ("1024", "Kuaishou"), ("2015", "Li Auto"),
-        ("9866", "NIO"), ("9868", "XPeng"), ("6618", "JD Health"),
-        ("9626", "Bilibili"),
-    ]]
-
-
-def _get_market_breadth(market: str) -> dict:
-    """Get advance/decline breadth from FULL index components.
-
-    US: all S&P 500 components (~500 stocks)
-    HK: all HSI + HSTECH components (~80 stocks)
-    Uses yf.download batch API for efficiency.
+    Each item has keys: ticker, market, name.
     """
     try:
-        if market == "us_stock":
-            components = _sp500_components()
-            symbols = [c["ticker"] for c in components]
+        if index_symbol == "^GSPC":
+            return _get_sp500_components()
+        elif index_symbol == "^HSI":
+            return _get_hsi_components()
+        elif index_symbol == "^HSTECH":
+            return _get_hstech_components()
         else:
-            hsi = _hsi_components()
-            hstech = _hstech_components()
-            seen = set()
-            symbols = []
-            for c in hsi + hstech:
-                sym = to_yf_ticker(c["ticker"], "hk_stock")
-                if sym not in seen:
-                    symbols.append(sym)
-                    seen.add(sym)
-
-        if not symbols:
-            return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
-
-        logger.info(f"Market breadth: downloading {len(symbols)} components for {market}")
-        df = yf.download(symbols, period="2d", group_by="ticker", progress=False, threads=True)
-
-        advance = 0
-        decline = 0
-        unchanged = 0
-
-        if len(symbols) == 1:
-            if "Close" in df.columns and len(df) >= 2:
-                prev_close = float(df["Close"].iloc[-2])
-                last_close = float(df["Close"].iloc[-1])
-                if prev_close > 0:
-                    pct = (last_close - prev_close) / prev_close * 100
-                    if pct > 0.05:
-                        advance = 1
-                    elif pct < -0.05:
-                        decline = 1
-                    else:
-                        unchanged = 1
-        else:
-            for sym in symbols:
-                try:
-                    if sym not in df.columns.get_level_values(0):
-                        continue
-                    sym_df = df[sym]
-                    if "Close" not in sym_df.columns or len(sym_df.dropna(subset=["Close"])) < 2:
-                        continue
-                    closes = sym_df["Close"].dropna()
-                    if len(closes) < 2:
-                        continue
-                    prev_close = float(closes.iloc[-2])
-                    last_close = float(closes.iloc[-1])
-                    if prev_close <= 0:
-                        continue
-                    pct = (last_close - prev_close) / prev_close * 100
-                    if pct > 0.05:
-                        advance += 1
-                    elif pct < -0.05:
-                        decline += 1
-                    else:
-                        unchanged += 1
-                except Exception:
-                    continue
-
-        total = advance + decline + unchanged
-        if total == 0:
-            return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
-
-        logger.info(f"Market breadth {market}: {advance} up / {decline} down / {unchanged} flat (total {total})")
-        return {
-            "advance": advance,
-            "decline": decline,
-            "unchanged": unchanged,
-            "total": total,
-            "advance_pct": round(advance / total * 100, 1),
-        }
+            logger.warning(f"Unknown index: {index_symbol}")
+            return []
     except Exception as e:
-        logger.warning(f"Market breadth failed: {e}")
-        return {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0}
+        logger.warning(f"Index components failed {index_symbol}: {e}")
+        return []
 
+
+def _get_sp500_components() -> list[dict]:
+    """Fetch S&P 500 components from Wikipedia."""
+    try:
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        tables = pd.read_html(url)
+        df = tables[0]
+        results = []
+        for _, row in df.iterrows():
+            ticker = str(row.get("Symbol", "")).strip()
+            name = str(row.get("Security", "")).strip()
+            if ticker:
+                results.append({"ticker": ticker, "market": "us_stock", "name": name})
+        return results
+    except Exception as e:
+        logger.warning(f"S&P 500 fetch failed: {e}")
+        return []
+
+
+def _get_hsi_components() -> list[dict]:
+    """Fetch Hang Seng Index components."""
+    try:
+        url = "https://en.wikipedia.org/wiki/Hang_Seng_Index"
+        tables = pd.read_html(url)
+        results = []
+        for table in tables:
+            cols = [str(c).lower() for c in table.columns]
+            ticker_col = None
+            name_col = None
+            for c in table.columns:
+                cl = str(c).lower()
+                if "ticker" in cl or "stock" in cl or "code" in cl:
+                    ticker_col = c
+                if "name" in cl or "company" in cl:
+                    name_col = c
+            if ticker_col is None:
+                continue
+            for _, row in table.iterrows():
+                raw = str(row[ticker_col]).strip()
+                digits = "".join(c for c in raw if c.isdigit())
+                if not digits or len(digits) < 4:
+                    continue
+                ticker = digits.zfill(4)
+                name = str(row[name_col]).strip() if name_col else ticker
+                results.append({"ticker": ticker, "market": "hk_stock", "name": name})
+            if results:
+                break
+        return results
+    except Exception as e:
+        logger.warning(f"HSI fetch failed: {e}")
+        return []
+
+
+def _get_hstech_components() -> list[dict]:
+    """Fetch Hang Seng TECH Index components."""
+    try:
+        url = "https://en.wikipedia.org/wiki/Hang_Seng_TECH_Index"
+        tables = pd.read_html(url)
+        results = []
+        for table in tables:
+            ticker_col = None
+            name_col = None
+            for c in table.columns:
+                cl = str(c).lower()
+                if "ticker" in cl or "stock" in cl or "code" in cl:
+                    ticker_col = c
+                if "name" in cl or "company" in cl:
+                    name_col = c
+            if ticker_col is None:
+                continue
+            for _, row in table.iterrows():
+                raw = str(row[ticker_col]).strip()
+                digits = "".join(c for c in raw if c.isdigit())
+                if not digits or len(digits) < 4:
+                    continue
+                ticker = digits.zfill(4)
+                name = str(row[name_col]).strip() if name_col else ticker
+                results.append({"ticker": ticker, "market": "hk_stock", "name": name})
+            if results:
+                break
+        return results
+    except Exception as e:
+        logger.warning(f"HSTECH fetch failed: {e}")
+        return []
+
+
+# -- Market indices --
 
 def get_market_indices() -> list[dict]:
     indices = [
-        ("^GSPC", "閺嶅洦娅�500", "us_stock"), ("^IXIC", "缁捐櫕鏌夋潏鎯у帬", "us_stock"),
-        ("^DJI", "闁挾鎯ｉ弬锟�", "us_stock"),
-        ("^HSI", "閹帞鏁撻幐鍥ㄦ殶", "hk_stock"), ("^HSTECH", "閹帞鏁撶粔鎴炲Η", "hk_stock"),
+        ("^GSPC", "\u6807\u666e500", "us_stock"),
+        ("^IXIC", "\u7eb3\u65af\u8fbe\u514b", "us_stock"),
+        ("^DJI", "\u9053\u743c\u65af", "us_stock"),
+        ("^HSI", "\u6052\u751f\u6307\u6570", "hk_stock"),
+        ("^HSTECH", "\u6052\u751f\u79d1\u6280", "hk_stock"),
     ]
     results = []
     for symbol, label, market in indices:
         try:
             t = yf.Ticker(symbol)
             info = t.fast_info
-            price = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
+            price = getattr(info, "last_price", None)
             prev = getattr(info, "previous_close", None)
             if price and prev and prev > 0:
                 results.append({"name": label, "market": market,
@@ -384,118 +412,50 @@ def get_market_indices() -> list[dict]:
     return results
 
 
-def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
-    """Extract insider trading signals from yfinance.
+# -- Market breadth --
 
-    Returns net insider buying/selling activity.
+def _get_market_breadth(market: str) -> dict[str, Any]:
+    """Compute advance/decline breadth for the given market.
+
+    Returns dict with advance, decline, unchanged counts and advance_pct.
     """
-    if market != "us_stock":
-        return None
-    symbol = to_yf_ticker(ticker, market)
     try:
-        t = yf.Ticker(symbol)
-        insiders = t.insider_transactions
-        if insiders is None or (hasattr(insiders, "empty") and insiders.empty):
-            return None
+        if market == "us_stock":
+            components = _get_sp500_components()
+        else:
+            components = _get_hsi_components() + _get_hstech_components()
 
-        buys = 0
-        sells = 0
-        buy_value = 0.0
-        sell_value = 0.0
-        recent_count = 0
+        if not components:
+            return {"advance": 0, "decline": 0, "unchanged": 0,
+                    "total": 0, "advance_pct": 50.0}
 
-        for _, row in insiders.iterrows():
-            text = str(row.get("Text", "") or row.get("Transaction", "")).lower()
-            shares = abs(float(row.get("Shares", 0) or 0))
-            value = abs(float(row.get("Value", 0) or 0))
+        advance = 0
+        decline = 0
+        unchanged = 0
 
-            if any(kw in text for kw in ("purchase", "buy", "acquisition")):
-                buys += 1
-                buy_value += value
-                recent_count += 1
-            elif any(kw in text for kw in ("sale", "sell", "disposition")):
-                sells += 1
-                sell_value += value
-                recent_count += 1
+        batch = get_quotes_batch(components)
+        for q in batch:
+            chg = q.get("change_pct")
+            if chg is None:
+                continue
+            if chg > 0:
+                advance += 1
+            elif chg < 0:
+                decline += 1
+            else:
+                unchanged += 1
 
-        if recent_count == 0:
-            return None
-
-        net_direction = "buying" if buys > sells else ("selling" if sells > buys else "neutral")
-        buy_sell_ratio = round(buys / max(sells, 1), 2)
+        total = advance + decline + unchanged
+        advance_pct = round(advance / max(total, 1) * 100, 1)
 
         return {
-            "total_buys": buys,
-            "total_sells": sells,
-            "buy_value": round(buy_value, 2),
-            "sell_value": round(sell_value, 2),
-            "net_direction": net_direction,
-            "buy_sell_ratio": buy_sell_ratio,
-            "signal_strength": (
-                "strong_buy" if buys >= 3 and sells == 0 else
-                "moderate_buy" if buys > sells else
-                "strong_sell" if sells >= 3 and buys == 0 else
-                "moderate_sell" if sells > buys else
-                "neutral"
-            ),
+            "advance": advance,
+            "decline": decline,
+            "unchanged": unchanged,
+            "total": total,
+            "advance_pct": advance_pct,
         }
     except Exception as e:
-        logger.debug(f"Insider trades failed {symbol}: {e}")
-        return None
-
-
-def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
-    """Extract options-based signals from yfinance.
-
-    Returns put/call ratio and unusual volume indicators.
-    Only works for US stocks (HK options data not available via yfinance).
-    """
-    if market != "us_stock":
-        return None
-    symbol = to_yf_ticker(ticker, market)
-    try:
-        t = yf.Ticker(symbol)
-        exp_dates = t.options
-        if not exp_dates:
-            return None
-
-        nearest_exp = exp_dates[0]
-        opt = t.option_chain(nearest_exp)
-        calls = opt.calls
-        puts = opt.puts
-
-        if calls.empty and puts.empty:
-            return None
-
-        total_call_vol = int(calls["volume"].sum()) if "volume" in calls.columns else 0
-        total_put_vol = int(puts["volume"].sum()) if "volume" in puts.columns else 0
-        total_call_oi = int(calls["openInterest"].sum()) if "openInterest" in calls.columns else 0
-        total_put_oi = int(puts["openInterest"].sum()) if "openInterest" in puts.columns else 0
-
-        pc_ratio_vol = round(total_put_vol / max(total_call_vol, 1), 2)
-        pc_ratio_oi = round(total_put_oi / max(total_call_oi, 1), 2)
-
-        unusual_call = total_call_vol > total_call_oi * 2 if total_call_oi > 0 else False
-        unusual_put = total_put_vol > total_put_oi * 2 if total_put_oi > 0 else False
-
-        return {
-            "expiry": nearest_exp,
-            "call_volume": total_call_vol,
-            "put_volume": total_put_vol,
-            "call_oi": total_call_oi,
-            "put_oi": total_put_oi,
-            "pc_ratio_volume": pc_ratio_vol,
-            "pc_ratio_oi": pc_ratio_oi,
-            "unusual_call_activity": unusual_call,
-            "unusual_put_activity": unusual_put,
-            "signal": (
-                "strong_bullish" if unusual_call and pc_ratio_vol < 0.5 else
-                "bullish" if pc_ratio_vol < 0.7 else
-                "strong_bearish" if unusual_put and pc_ratio_vol > 1.5 else
-                "bearish" if pc_ratio_vol > 1.3 else
-                "neutral"
-            ),
-        }
-    except Exception as e:
-        logger.debug(f"Options signal failed {symbol}: {e}")
-        return None
+        logger.warning(f"Market breadth failed: {e}")
+        return {"advance": 0, "decline": 0, "unchanged": 0,
+                "total": 0, "advance_pct": 50.0}

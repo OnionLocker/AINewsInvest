@@ -138,7 +138,7 @@ function DetailsTable({ items }) {
         </thead>
         <tbody>
           {items.map((it, i) => {
-            const outcomeMap = { win: { text: "\u80DC", color: "#089981", bg: "#089981" }, loss: { text: "\u8D25", color: "#f23645", bg: "#f23645" }, timeout: { text: "\u8D85\u65F6", color: "#787b86", bg: "#787b86" } };
+            const outcomeMap = { win: { text: "\u80DC", color: "#089981", bg: "#089981" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#2962ff", bg: "#2962ff" }, loss: { text: "\u8D25", color: "#f23645", bg: "#f23645" }, timeout: { text: "\u8D85\u65F6", color: "#787b86", bg: "#787b86" } };
             const o = outcomeMap[it.outcome] || outcomeMap.timeout;
             const mktLabel = it.market === "us_stock" ? "\u7F8E\u80A1" : "\u6E2F\u80A1";
             const isShort = it.direction === "short";
