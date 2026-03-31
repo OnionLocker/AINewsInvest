@@ -1,16 +1,17 @@
 const variants = {
-  green:  "bg-[#089981]/10 text-[#089981]",
-  red:    "bg-[#f23645]/10 text-[#f23645]",
-  blue:   "bg-[#2962ff]/10 text-[#2962ff]",
-  yellow: "bg-[#fb8c00]/10 text-[#fb8c00]",
-  gray:   "bg-[#787b86]/10 text-[#787b86]",
-  brand:  "bg-[#2962ff]/10 text-[#2962ff]",
+  green:  "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+  red:    "bg-rose-500/10 text-rose-400 border border-rose-500/20",
+  blue:   "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
+  yellow: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+  gray:   "bg-slate-800 text-slate-400 border border-slate-700",
+  brand:  "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
+  purple: "bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20",
 };
 
 export default function Badge({ children, variant = "gray", className = "" }) {
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ${variants[variant] || variants.gray} ${className}`}
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${variants[variant] || variants.gray} ${className}`}
     >
       {children}
     </span>
@@ -19,11 +20,14 @@ export default function Badge({ children, variant = "gray", className = "" }) {
 
 export function MarketBadge({ market }) {
   const m = market === "us_stock" ? "美股" : market === "hk_stock" ? "港股" : market;
-  const v = market === "us_stock" ? "blue" : "red";
+  const v = market === "us_stock" ? "blue" : "yellow";
   return <Badge variant={v}>{m}</Badge>;
 }
 
 export function DirectionBadge({ direction }) {
+  if (direction === "short") {
+    return <Badge variant="purple">做空</Badge>;
+  }
   return (
     <Badge variant={direction === "buy" ? "green" : "red"}>
       {direction === "buy" ? "买入" : "卖出"}

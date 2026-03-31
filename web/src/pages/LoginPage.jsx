@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import Spinner from "../components/Spinner";
+import { Activity } from "lucide-react";
 
 export default function LoginPage() {
   const { login, register, bootstrapAdmin } = useAuth();
@@ -49,46 +50,50 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#131722] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 selection:bg-indigo-500/30">
       <div className="w-full max-w-xs">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/25">
             AV
           </div>
-          <h1 className="text-xl font-semibold text-[#d1d4dc]">Alpha Vault</h1>
-          <p className="mt-1 text-xs text-[#787b86]">港美股 AI 投研系统</p>
+          <h1 className="text-xl font-light text-white">
+            Alpha<span className="font-semibold text-indigo-400">Vault</span>
+          </h1>
+          <p className="mt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+            <Activity size={10} /> 港美肄1�7 AI 投研系统
+          </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5"
+          className="rounded-2xl border border-slate-800/80 bg-slate-900/40 backdrop-blur-md p-6 shadow-2xl"
         >
-          <h2 className="mb-4 text-sm font-semibold text-[#d1d4dc]">{titles[mode]}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-200">{titles[mode]}</h2>
 
           {mode === "bootstrap" && (
-            <p className="mb-3 rounded bg-[#fb8c00]/10 p-2.5 text-[11px] text-[#fb8c00]">
-              尚未创建管理员账户，请创建第一个管理员。
+            <p className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-[11px] text-amber-400">
+              尚未创建管理员账户，请创建第丢�个管理员〄1�7
             </p>
           )}
 
-          <label className="mb-1 block text-[11px] text-[#787b86]">用户名</label>
+          <label className="mb-1 block text-[11px] text-slate-500">用户各1�7</label>
           <input
-            className="mb-3 w-full rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-sm text-[#d1d4dc] outline-none transition-colors focus:border-brand-500"
+            className="mb-3 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none transition-colors focus:border-indigo-500 placeholder:text-slate-600"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoFocus
           />
 
-          <label className="mb-1 block text-[11px] text-[#787b86]">密码</label>
+          <label className="mb-1 block text-[11px] text-slate-500">密码</label>
           <input
             type="password"
-            className="mb-4 w-full rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-sm text-[#d1d4dc] outline-none transition-colors focus:border-brand-500"
+            className="mb-4 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none transition-colors focus:border-indigo-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
 
           {error && (
-            <p className="mb-3 rounded bg-[#f23645]/10 p-2 text-[11px] text-[#f23645]">
+            <p className="mb-3 rounded-lg bg-rose-500/10 border border-rose-500/20 p-2 text-[11px] text-rose-400">
               {error}
             </p>
           )}
@@ -96,27 +101,27 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy || !username || !password}
-            className="flex w-full items-center justify-center gap-2 rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-600 disabled:opacity-40 shadow-lg shadow-indigo-500/20"
           >
             {busy && <Spinner size="sm" />}
             {titles[mode]}
           </button>
 
           {needBootstrap === false && (
-            <div className="mt-3 text-center text-[11px] text-[#787b86]">
+            <div className="mt-3 text-center text-[11px] text-slate-500">
               {mode === "login" ? (
                 <button
                   type="button"
                   onClick={() => setMode("register")}
-                  className="text-brand-500 hover:underline"
+                  className="text-indigo-400 hover:underline"
                 >
-                  没有账号？注册
+                  没有账号？注冄1�7
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => setMode("login")}
-                  className="text-brand-500 hover:underline"
+                  className="text-indigo-400 hover:underline"
                 >
                   已有账号？去登录
                 </button>

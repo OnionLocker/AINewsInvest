@@ -64,6 +64,8 @@ def _normalize_item_names(items: list[dict]) -> list[dict]:
     return items
 
 
+
+
 # ---- Legacy (backward compat) ----
 
 @router.get("/recommendations/today")

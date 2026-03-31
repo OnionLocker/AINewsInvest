@@ -9,6 +9,7 @@ import AnalysisPage from "./pages/AnalysisPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AdminPage from "./pages/AdminPage";
 import WinRatePage from "./pages/WinRatePage";
+import DashboardPage from "./pages/DashboardPage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -26,7 +27,8 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route element={<PrivateRoute />}>
         <Route element={<Layout />}>
-          <Route index element={<Navigate to="/recommendations/us" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="recommendations/us" element={<RecommendationsPage market="us" />} />
           <Route path="recommendations/hk" element={<RecommendationsPage market="hk" />} />
           <Route path="screening" element={<ScreeningPage />} />

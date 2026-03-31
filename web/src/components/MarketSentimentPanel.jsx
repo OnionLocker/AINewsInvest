@@ -1,27 +1,27 @@
-import { Activity, TrendingUp, TrendingDown, Minus, Lightbulb } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 
 function SentimentLabel({ label }) {
   const map = {
-    bullish:  { text: "\u504f\u591a", color: "#089981" },
-    bearish:  { text: "\u504f\u7a7a", color: "#f23645" },
-    neutral:  { text: "\u4e2d\u6027", color: "#787b86" },
+    bullish:  { text: "\u504f\u591a", color: "#34d399" },
+    bearish:  { text: "\u504f\u7a7a", color: "#fb7185" },
+    neutral:  { text: "\u4e2d\u6027", color: "#94a3b8" },
   };
   const info = map[label] || map.neutral;
   return (
-    <span className="text-sm font-bold px-2.5 py-0.5 rounded" style={{ color: info.color, background: info.color + "18" }}>
+    <span className="rounded border border-slate-800/60 px-2.5 py-0.5 text-sm font-bold" style={{ color: info.color, background: info.color + "18" }}>
       {info.text}
     </span>
   );
 }
 
-function Dot({ color = "#089981" }) {
+function Dot({ color = "#34d399" }) {
   return <span className="mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />;
 }
 
 function StatItem({ label, value, color }) {
   return (
-    <span className="text-base font-medium text-[#787b86]">
-      {label}{"\uFF1A"}<span className="font-bold" style={{ color: color || "#d1d4dc" }}>{value}</span>
+    <span className="text-base font-medium text-slate-400">
+      {label}{"\uFF1A"}<span className="font-bold" style={{ color: color || "#e2e8f0" }}>{value}</span>
     </span>
   );
 }
@@ -32,7 +32,7 @@ export default function MarketSentimentPanel({ data, market }) {
   const { sentiment, breadth, breadth_scope, fear_greed: fg, headlines, analysis } = data;
   const fgValue = fg?.value != null ? Math.round(fg.value) : null;
   const fgLabel = fg?.label || (fgValue >= 75 ? "\u6781\u5ea6\u8d2a\u5a6a" : fgValue >= 60 ? "\u8d2a\u5a6a" : fgValue >= 40 ? "\u4e2d\u6027" : fgValue >= 25 ? "\u6050\u60e7" : "\u6781\u5ea6\u6050\u60e7");
-  const fgColor = fgValue >= 60 ? "#089981" : fgValue >= 40 ? "#787b86" : "#f23645";
+  const fgColor = fgValue >= 60 ? "#34d399" : fgValue >= 40 ? "#94a3b8" : "#fb7185";
 
   const advN = breadth?.advance ?? 0;
   const decN = breadth?.decline ?? 0;
@@ -58,36 +58,36 @@ export default function MarketSentimentPanel({ data, market }) {
 
   const riskLevel = fgValue >= 70 ? "\u4e2d" : fgValue >= 40 ? "\u4f4e" : "\u9ad8";
   const strategyLevel = fgValue >= 60 ? "\u6fc0\u8fdb" : fgValue >= 40 ? "\u7a33\u5065" : "\u4fdd\u5b88";
-  const riskColor = riskLevel === "\u9ad8" ? "#f23645" : riskLevel === "\u4e2d" ? "#fb8c00" : "#089981";
-  const strategyColor = strategyLevel === "\u6fc0\u8fdb" ? "#089981" : strategyLevel === "\u4fdd\u5b88" ? "#f23645" : "#2962ff";
+  const riskColor = riskLevel === "\u9ad8" ? "#fb7185" : riskLevel === "\u4e2d" ? "#f59e0b" : "#34d399";
+  const strategyColor = strategyLevel === "\u6fc0\u8fdb" ? "#34d399" : strategyLevel === "\u4fdd\u5b88" ? "#fb7185" : "#818cf8";
 
   return (
     <div className="space-y-3">
       {/* Market Sentiment Block */}
-      <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 shadow-xl backdrop-blur-md">
         <div className="flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-base font-bold text-[#d1d4dc]">{"\u5e02\u573a\u60c5\u7eea"}</span>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-base font-bold text-slate-200">{"\u5e02\u573a\u60c5\u7eea"}</span>
               <SentimentLabel label={sentiment?.label} />
             </div>
             {fgValue != null && (
               <p className="text-3xl font-extrabold" style={{ color: fgColor }}>{fgLabel}</p>
             )}
-            <p className="mt-1 text-base font-medium text-[#787b86]">
+            <p className="mt-1 text-base font-medium text-slate-400">
               {scopeLabel}{"("}{totalN}{"\u53EA)\uFF1A"}{"\u4e0a\u6da8"} {advN} {"\u5bb6\u3001\u4e0b\u8dcc"} {decN} {"\u5bb6"}
               {unchN > 0 ? `\u3001\u5e73\u76d8 ${unchN} \u5bb6` : ""}
               {advN > decN ? "\uff0c\u591a\u5934\u5360\u4f18" : decN > advN ? "\uff0c\u7a7a\u5934\u5360\u4f18" : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-right">
-            <StatItem label={"\u4e0a\u6da8\u5bb6\u6570"} value={advN} color="#089981" />
-            <StatItem label={"\u4e0b\u8dcc\u5bb6\u6570"} value={decN} color="#f23645" />
+            <StatItem label={"\u4e0a\u6da8\u5bb6\u6570"} value={advN} color="#34d399" />
+            <StatItem label={"\u4e0b\u8dcc\u5bb6\u6570"} value={decN} color="#fb7185" />
             {unchN > 0 && <StatItem label={"\u5e73\u76d8\u5bb6\u6570"} value={unchN} />}
           </div>
         </div>
         {fgValue != null && (
-          <p className="mt-2 text-base font-medium text-[#787b86]">
+          <p className="mt-2 text-base font-medium text-slate-400">
             {"\u5e02\u573a\u60c5\u7eea\u8bc4\u5206"}{fgValue}{"\u5206\uff08"}{fgLabel}{"\uff09\uff0c"}
             {fgValue >= 60 ? "\u591a\u5934\u6c14\u6c1b\u6d53\u539a\uff0c\u8d44\u91d1\u505a\u591a\u610f\u613f\u8f83\u5f3a" :
              fgValue >= 40 ? "\u5e02\u573a\u60c5\u7eea\u5e73\u7a33\uff0c\u89c2\u671b\u6c14\u6c1b\u504f\u91cd" :
@@ -97,15 +97,15 @@ export default function MarketSentimentPanel({ data, market }) {
       </div>
 
       {/* Market Analysis Block */}
-      <div className="rounded-lg border border-[#2a2e39] bg-[#1e222d] p-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-base font-bold text-[#d1d4dc]">{"\u5e02\u573a\u5206\u6790"}</span>
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 shadow-xl backdrop-blur-md">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-base font-bold text-slate-200">{"\u5e02\u573a\u5206\u6790"}</span>
           <div className="flex gap-2">
-            <span className="rounded px-2.5 py-1 text-sm font-bold"
+            <span className="rounded border border-slate-800/60 px-2.5 py-1 text-sm font-bold"
               style={{ color: strategyColor, background: strategyColor + "18" }}>
               {"\u7b56\u7565\uff1a"}{strategyLevel}
             </span>
-            <span className="rounded px-2.5 py-1 text-sm font-bold"
+            <span className="rounded border border-slate-800/60 px-2.5 py-1 text-sm font-bold"
               style={{ color: riskColor, background: riskColor + "18" }}>
               {"\u98ce\u9669\uff1a"}{riskLevel}
             </span>
@@ -114,14 +114,14 @@ export default function MarketSentimentPanel({ data, market }) {
 
         <div className="grid gap-2 md:grid-cols-2">
           {bullPoints.map((p, i) => (
-            <div key={"b"+i} className="flex items-start gap-2 text-base font-medium text-[#d1d4dc]">
-              <Dot color="#089981" />
+            <div key={"b"+i} className="flex items-start gap-2 text-base font-medium text-slate-200">
+              <Dot color="#34d399" />
               <span>{p}</span>
             </div>
           ))}
           {bearPoints.map((p, i) => (
-            <div key={"r"+i} className="flex items-start gap-2 text-base font-medium text-[#d1d4dc]">
-              <Dot color="#f23645" />
+            <div key={"r"+i} className="flex items-start gap-2 text-base font-medium text-slate-200">
+              <Dot color="#fb7185" />
               <span>{p}</span>
             </div>
           ))}
@@ -132,8 +132,8 @@ export default function MarketSentimentPanel({ data, market }) {
           <div className="mt-3 space-y-1.5">
             {headlines.slice(0, 3).map((h, i) => (
               <a key={i} href={h.link} target="_blank" rel="noopener noreferrer"
-                className="flex items-start gap-2 text-sm font-medium text-[#787b86] hover:text-brand-500 transition-colors">
-                <Dot color="#363a45" />
+                className="flex items-start gap-2 text-sm font-medium text-slate-400 transition-colors hover:text-indigo-400">
+                <Dot color="#64748b" />
                 <span className="line-clamp-1">{h.title}</span>
               </a>
             ))}
@@ -141,12 +141,12 @@ export default function MarketSentimentPanel({ data, market }) {
         )}
 
         {/* Operation Suggestion */}
-        <div className="mt-4 rounded-lg border border-[#fb8c00]/25 bg-[#fb8c00]/5 p-4">
-          <div className="mb-1 flex items-center gap-1.5 text-base font-bold text-[#fb8c00]">
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
+          <div className="mb-1 flex items-center gap-1.5 text-base font-bold text-amber-400">
             <Lightbulb size={16} />
             {"\u64cd\u4f5c\u5efa\u8bae"}
           </div>
-          <p className="text-base font-medium leading-relaxed text-[#fb8c00]/80">
+          <p className="text-base font-medium leading-relaxed text-amber-400/80">
             {fgValue >= 60
               ? "\u5e02\u573a\u60c5\u7eea\u504f\u70ed\uff0c\u53ef\u9002\u5f53\u53c2\u4e0e\u5f3a\u52bf\u6807\u7684\uff0c\u4f46\u6ce8\u610f\u63a7\u5236\u4ed3\u4f4d\uff0c\u9632\u8303\u8ffd\u9ad8\u98ce\u9669\u3002"
               : fgValue >= 40
