@@ -642,15 +642,18 @@ class Database:
         ).fetchall()
 
         total = sum(r["cnt"] for r in rows)
-        wins = sum(r["cnt"] for r in rows if r["outcome"] in ("win", "partial", "partial_win"))
+        wins = sum(r["cnt"] for r in rows if r["outcome"] == "win")
+        partial_wins = sum(r["cnt"] for r in rows if r["outcome"] in ("partial", "partial_win"))
         losses = sum(r["cnt"] for r in rows if r["outcome"] == "loss")
         timeouts = sum(r["cnt"] for r in rows if r["outcome"] == "timeout")
+        timeout_at_profit = sum(r["cnt"] for r in rows if r["outcome"] == "timeout_at_profit")
+        timeout_at_loss = sum(r["cnt"] for r in rows if r["outcome"] == "timeout_at_loss")
         avg_return = 0.0
         avg_win_return = 0.0
         avg_loss_return = 0.0
         if rows:
             avg_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in rows) / max(total, 1)
-        win_rows = [r for r in rows if r["outcome"] in ("win", "partial", "partial_win")]
+        win_rows = [r for r in rows if r["outcome"] == "win"]
         loss_rows = [r for r in rows if r["outcome"] == "loss"]
         if win_rows:
             avg_win_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in win_rows) / max(wins, 1)
@@ -663,16 +666,38 @@ class Database:
             ([market] if market else []),
         ).fetchone()[0]
 
+        # Profit factor: sum(win returns) / abs(sum(loss returns))
+        profit_factor = 0.0
+        all_rows = self._conn.execute(
+            f"SELECT outcome, return_pct FROM win_rate_records {where}",
+            params[:-1] if days else params,  # reuse same where without LIMIT
+        ).fetchall()
+        sum_wins = sum(r["return_pct"] for r in all_rows
+                       if r["outcome"] in ("win",) and r["return_pct"] and r["return_pct"] > 0)
+        sum_losses = abs(sum(r["return_pct"] for r in all_rows
+                             if r["outcome"] == "loss" and r["return_pct"] and r["return_pct"] < 0))
+        if sum_losses > 0:
+            profit_factor = round(sum_wins / sum_losses, 2)
+
+        best_trade = max((r["return_pct"] for r in all_rows if r["return_pct"] is not None), default=0)
+        worst_trade = min((r["return_pct"] for r in all_rows if r["return_pct"] is not None), default=0)
+
         return {
             "total_evaluated": total,
             "pending": pending_cnt,
             "wins": wins,
+            "partial_wins": partial_wins,
             "losses": losses,
             "timeouts": timeouts,
+            "timeout_at_profit": timeout_at_profit,
+            "timeout_at_loss": timeout_at_loss,
             "win_rate": round(wins / max(total, 1) * 100, 1),
             "avg_return_pct": round(avg_return, 2),
             "avg_win_return_pct": round(avg_win_return, 2),
             "avg_loss_return_pct": round(avg_loss_return, 2),
+            "profit_factor": profit_factor,
+            "best_trade": round(best_trade, 2),
+            "worst_trade": round(worst_trade, 2),
         }
 
     def get_win_rate_details(self, market: str | None = None,
@@ -701,11 +726,82 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT run_date,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome IN ('win','partial','partial_win') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}
                 GROUP BY run_date ORDER BY run_date DESC LIMIT 30""",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_win_rate_by_dimension(self, dimension: str,
+                                   market: str | None = None) -> list[dict]:
+        """Aggregate win rate grouped by strategy or direction."""
+        if dimension not in ("strategy", "direction"):
+            return []
+        where_parts = ["outcome != 'pending'"]
+        params: list = []
+        if market:
+            where_parts.append("market = ?")
+            params.append(market)
+        where = "WHERE " + " AND ".join(where_parts)
+        rows = self._conn.execute(
+            f"""SELECT {dimension} as dim,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
+                       AVG(return_pct) as avg_return
+                FROM win_rate_records {where}
+                GROUP BY {dimension}""",
+            params,
+        ).fetchall()
+        result = []
+        for r in rows:
+            t = r["total"]
+            w = r["wins"]
+            result.append({
+                "key": r["dim"],
+                "total": t,
+                "wins": w,
+                "losses": r["losses"],
+                "win_rate": round(w / max(t, 1) * 100, 1),
+                "avg_return": round(r["avg_return"] or 0, 2),
+            })
+        return result
+
+    def get_win_rate_details_filtered(self, market: str | None = None,
+                                       strategy: str | None = None,
+                                       direction: str | None = None,
+                                       outcome: str | None = None,
+                                       start_date: str | None = None,
+                                       end_date: str | None = None,
+                                       limit: int = 50) -> list[dict]:
+        """Get win rate details with optional filters."""
+        where_parts = ["outcome != 'pending'"]
+        params: list = []
+        if market:
+            where_parts.append("market = ?")
+            params.append(market)
+        if strategy:
+            where_parts.append("strategy = ?")
+            params.append(strategy)
+        if direction:
+            where_parts.append("direction = ?")
+            params.append(direction)
+        if outcome:
+            where_parts.append("outcome = ?")
+            params.append(outcome)
+        if start_date:
+            where_parts.append("run_date >= ?")
+            params.append(start_date)
+        if end_date:
+            where_parts.append("run_date <= ?")
+            params.append(end_date)
+        where = "WHERE " + " AND ".join(where_parts)
+        params.append(limit)
+        rows = self._conn.execute(
+            f"SELECT * FROM win_rate_records {where} ORDER BY evaluated_at DESC LIMIT ?",
             params,
         ).fetchall()
         return [dict(r) for r in rows]

@@ -38,7 +38,7 @@ def evaluate_pending_records() -> dict[str, Any]:
         if not pending:
             return {"evaluated": 0, "still_pending": 0, "message": "No pending records"}
 
-        results = {"win": 0, "loss": 0, "timeout": 0, "partial_win": 0, "still_pending": 0, "errors": 0}
+        results = {"win": 0, "loss": 0, "timeout": 0, "timeout_at_profit": 0, "timeout_at_loss": 0, "partial_win": 0, "still_pending": 0, "errors": 0}
         today = datetime.now()
 
         for rec in pending:
@@ -60,7 +60,9 @@ def evaluate_pending_records() -> dict[str, Any]:
                 results["errors"] += 1
 
         results["evaluated"] = (
-            results["win"] + results["loss"] + results["timeout"] + results["partial_win"]
+            results["win"] + results["loss"] + results["timeout"]
+            + results["timeout_at_profit"] + results["timeout_at_loss"]
+            + results["partial_win"]
         )
         logger.info(
             f"Evaluation: {results['evaluated']} done "
@@ -152,8 +154,16 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 hit_sl = sl > 0 and high >= sl
                 hit_tp = low <= tp1
                 if hit_sl and hit_tp:
-                    ret_pct = round((entry - sl) / entry * 100, 2)
-                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                    # Both hit same bar: judge by which level is closer
+                    # (closer = more likely hit first)
+                    tp_dist = abs(low - tp1)
+                    sl_dist = abs(high - sl)
+                    if tp_dist <= sl_dist:
+                        ret_pct = round((entry - tp1) / entry * 100, 2)
+                        return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
+                    else:
+                        ret_pct = round((entry - sl) / entry * 100, 2)
+                        return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
                 if hit_sl:
                     ret_pct = round((entry - sl) / entry * 100, 2)
                     return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
@@ -166,15 +176,23 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 if tp_distance > 0 and gain > tp_distance * 0.5:
                     pullback = high - best_price
                     if pullback > gain * 0.5:
-                        exit_p = round((best_price + high) / 2, 2)
+                        # Conservative simulated exit: 40% of gain from entry
+                        exit_p = round(entry - gain * 0.4, 2)
                         ret_pct = round((entry - exit_p) / entry * 100, 2)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
             else:
                 hit_sl = sl > 0 and low <= sl
                 hit_tp = high >= tp1
                 if hit_sl and hit_tp:
-                    ret_pct = round((sl - entry) / entry * 100, 2)
-                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                    # Both hit same bar: judge by which level is closer
+                    tp_dist = abs(high - tp1)
+                    sl_dist = abs(low - sl)
+                    if tp_dist <= sl_dist:
+                        ret_pct = round((tp1 - entry) / entry * 100, 2)
+                        return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
+                    else:
+                        ret_pct = round((sl - entry) / entry * 100, 2)
+                        return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
                 if hit_sl:
                     ret_pct = round((sl - entry) / entry * 100, 2)
                     return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
@@ -187,7 +205,8 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                 if tp_distance > 0 and gain > tp_distance * 0.5:
                     pullback = best_price - low
                     if pullback > gain * 0.5:
-                        exit_p = round((best_price + low) / 2, 2)
+                        # Conservative simulated exit: 40% of gain from entry
+                        exit_p = round(entry + gain * 0.4, 2)
                         ret_pct = round((exit_p - entry) / entry * 100, 2)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
 
@@ -200,16 +219,16 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
 
             if is_short:
                 if last_close <= tp1:
-                    return {"outcome": "win", "exit_price": last_close, "return_pct": ret_pct}
+                    return {"outcome": "timeout_at_profit", "exit_price": last_close, "return_pct": ret_pct}
                 elif sl > 0 and last_close >= sl:
-                    return {"outcome": "loss", "exit_price": last_close, "return_pct": ret_pct}
+                    return {"outcome": "timeout_at_loss", "exit_price": last_close, "return_pct": ret_pct}
                 else:
                     return {"outcome": "timeout", "exit_price": last_close, "return_pct": ret_pct}
             else:
                 if last_close >= tp1:
-                    return {"outcome": "win", "exit_price": last_close, "return_pct": ret_pct}
+                    return {"outcome": "timeout_at_profit", "exit_price": last_close, "return_pct": ret_pct}
                 elif sl > 0 and last_close <= sl:
-                    return {"outcome": "loss", "exit_price": last_close, "return_pct": ret_pct}
+                    return {"outcome": "timeout_at_loss", "exit_price": last_close, "return_pct": ret_pct}
                 else:
                     return {"outcome": "timeout", "exit_price": last_close, "return_pct": ret_pct}
 

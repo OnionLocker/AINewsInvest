@@ -164,10 +164,25 @@ async def win_rate_summary(user: User = Depends(get_current_user)):
             hk_7d = db.get_win_rate_summary(market="hk_stock", days=7)
             hk_30d = db.get_win_rate_summary(market="hk_stock", days=30)
             overall = db.get_win_rate_summary()
+
+            # Dimension breakdowns
+            us_by_strategy = db.get_win_rate_by_dimension("strategy", market="us_stock")
+            us_by_direction = db.get_win_rate_by_dimension("direction", market="us_stock")
+            hk_by_strategy = db.get_win_rate_by_dimension("strategy", market="hk_stock")
+            hk_by_direction = db.get_win_rate_by_dimension("direction", market="hk_stock")
+
             return {
                 "overall": overall,
-                "us_stock": {"all": us_all, "7d": us_7d, "30d": us_30d},
-                "hk_stock": {"all": hk_all, "7d": hk_7d, "30d": hk_30d},
+                "us_stock": {
+                    "all": us_all, "7d": us_7d, "30d": us_30d,
+                    "by_strategy": us_by_strategy,
+                    "by_direction": us_by_direction,
+                },
+                "hk_stock": {
+                    "all": hk_all, "7d": hk_7d, "30d": hk_30d,
+                    "by_strategy": hk_by_strategy,
+                    "by_direction": hk_by_direction,
+                },
             }
         finally:
             db.close()
@@ -176,14 +191,28 @@ async def win_rate_summary(user: User = Depends(get_current_user)):
 
 @router.get("/win-rate/details")
 async def win_rate_details(
-    market: str = "all", limit: int = 50,
+    market: str = "all",
+    strategy: str = "",
+    direction: str = "",
+    outcome: str = "",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 50,
     user: User = Depends(get_current_user),
 ):
     def _work():
         db = Database(SYSTEM_DB_PATH)
         try:
             mkt = market if market != "all" else None
-            items = db.get_win_rate_details(market=mkt, limit=limit)
+            items = db.get_win_rate_details_filtered(
+                market=mkt,
+                strategy=strategy or None,
+                direction=direction or None,
+                outcome=outcome or None,
+                start_date=start_date or None,
+                end_date=end_date or None,
+                limit=limit,
+            )
             return items
         finally:
             db.close()
@@ -200,6 +229,28 @@ async def win_rate_by_date(
         try:
             mkt = market if market != "all" else None
             data = db.get_win_rate_by_date(market=mkt)
+            return data
+        finally:
+            db.close()
+    return await run_in_threadpool(_work)
+
+
+@router.get("/win-rate/trend")
+async def win_rate_trend(
+    market: str = "all",
+    user: User = Depends(get_current_user),
+):
+    """Return daily aggregated win rate data for trend chart."""
+    def _work():
+        db = Database(SYSTEM_DB_PATH)
+        try:
+            mkt = market if market != "all" else None
+            data = db.get_win_rate_by_date(market=mkt)
+            # Add cumulative return
+            cumulative = 0.0
+            for row in reversed(data):
+                cumulative += row.get("avg_return", 0) * row.get("total", 0)
+                row["cumulative_return"] = round(cumulative, 2)
             return data
         finally:
             db.close()

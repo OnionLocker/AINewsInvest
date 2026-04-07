@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Trophy, TrendingUp, TrendingDown, Clock, RefreshCw, Target, ShieldAlert } from "lucide-react";
 
 const API = "/api";
@@ -61,7 +61,10 @@ function MarketCard({ title, data, color }) {
         <WinRateRing rate={rate} />
         <div className="grid grid-cols-2 gap-3 flex-1">
           <StatBox icon={Trophy} label={"\u603B\u8BC4\u4F30"} value={d.total_evaluated || 0} />
-          <StatBox icon={TrendingUp} label={"\u80DC\u51FA"} value={d.wins || 0} color="#34d399" />
+          <StatBox icon={TrendingUp} label={"\u5B8C\u5168\u80DC"} value={d.wins || 0} color="#34d399" />
+          {(d.partial_wins || 0) > 0 && (
+            <StatBox icon={Target} label={"\u90E8\u5206\u6B62\u76C8"} value={d.partial_wins} color="#818cf8" />
+          )}
           <StatBox icon={TrendingDown} label={"\u6B62\u635F"} value={d.losses || 0} color="#fb7185" />
           <StatBox icon={Clock} label={"\u8D85\u65F6"} value={d.timeouts || 0} color="#94a3b8" />
         </div>
@@ -84,6 +87,27 @@ function MarketCard({ title, data, color }) {
           <p className="text-[11px] text-neutral-400 mb-1">{"\u5E73\u5747\u4E8F\u635F"}</p>
           <p className="text-sm font-bold text-[#fb7185]">
             {(d.avg_loss_return_pct || 0).toFixed(2)}%
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">Profit Factor</p>
+          <p className="text-sm font-bold" style={{ color: (d.profit_factor || 0) >= 1.5 ? "#34d399" : (d.profit_factor || 0) >= 1.0 ? "#f59e0b" : "#fb7185" }}>
+            {(d.profit_factor || 0).toFixed(2)}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u6700\u4F73\u4EA4\u6613"}</p>
+          <p className="text-sm font-bold text-[#34d399]">
+            +{(d.best_trade || 0).toFixed(2)}%
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u6700\u5DEE\u4EA4\u6613"}</p>
+          <p className="text-sm font-bold text-[#fb7185]">
+            {(d.worst_trade || 0).toFixed(2)}%
           </p>
         </div>
       </div>
@@ -112,6 +136,75 @@ function MarketCard({ title, data, color }) {
         </p>
       )}
     </div>
+  );
+}
+
+function DimensionPanel({ title, items }) {
+  if (!items || items.length === 0) return null;
+  const labelMap = { short_term: "\u77ED\u7EBF", swing: "\u6CE2\u6BB5", buy: "\u505A\u591A", short: "\u505A\u7A7A" };
+  return (
+    <div>
+      <h4 className="mb-2 text-xs font-semibold text-neutral-500">{title}</h4>
+      <div className="flex flex-wrap gap-3">
+        {items.map((it) => {
+          const wr = it.win_rate || 0;
+          const wrColor = wr >= 60 ? "#34d399" : wr >= 45 ? "#f59e0b" : "#fb7185";
+          return (
+            <div key={it.key} className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 min-w-[180px] flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-neutral-300">
+                  {labelMap[it.key] || it.key}
+                </span>
+                <span className="ml-auto text-sm font-bold" style={{ color: wrColor }}>{wr.toFixed(1)}%</span>
+              </div>
+              <p className="text-[11px] text-neutral-400">
+                {it.wins || 0}W / {it.losses || 0}L
+                <span className="ml-2" style={{ color: (it.avg_return || 0) >= 0 ? "#34d399" : "#fb7185" }}>
+                  avg {(it.avg_return || 0) >= 0 ? "+" : ""}{(it.avg_return || 0).toFixed(1)}%
+                </span>
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TrendChart({ data }) {
+  if (!data || data.length === 0) return null;
+  const maxTotal = Math.max(...data.map(d => d.total), 1);
+  return (
+    <div className="rounded-3xl border border-white/[0.06] bg-white/[0.03] p-6">
+      <h3 className="mb-4 text-sm font-semibold text-neutral-500">{"\u80DC\u7387\u8D8B\u52BF (\u8FD130\u5929)"}</h3>
+      <div className="flex items-end gap-1" style={{ height: 120 }}>
+        {data.slice().reverse().map((d, i) => {
+          const h = Math.max(4, (d.total / maxTotal) * 100);
+          const wr = d.total > 0 ? d.wins / d.total : 0;
+          const color = wr >= 0.6 ? '#34d399' : wr >= 0.4 ? '#f59e0b' : '#fb7185';
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${d.run_date}: ${d.wins}W/${d.total}T`}>
+              <div className="w-full rounded-t" style={{ height: `${h}%`, background: color, minHeight: 4 }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex justify-between text-[10px] text-neutral-600">
+        <span>{data.length > 0 ? data[data.length - 1]?.run_date : ''}</span>
+        <span>{data.length > 0 ? data[0]?.run_date : ''}</span>
+      </div>
+    </div>
+  );
+}
+
+function FilterButton({ label, active, onClick }) {
+  return (
+    <button onClick={onClick}
+      className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+        active ? "bg-white/[0.08] text-white font-medium" : "text-neutral-500 hover:text-white hover:bg-white/[0.04]"
+      }`}>
+      {label}
+    </button>
   );
 }
 
@@ -350,20 +443,47 @@ export default function WinRatePage() {
   const api = useApi();
   const [summary, setSummary] = useState(null);
   const [details, setDetails] = useState([]);
+  const [trend, setTrend] = useState([]);
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
+  const [filter, setFilter] = useState({ strategy: '', direction: '', outcome: '' });
+
+  const fetchDetails = useCallback(async (f) => {
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      if (f.strategy) params.set('strategy', f.strategy);
+      if (f.direction) params.set('direction', f.direction);
+      if (f.outcome) params.set('outcome', f.outcome);
+      const d = await api(`/win-rate/details?${params}`);
+      setDetails(d);
+    } catch (e) { console.error(e); }
+  }, [api]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [s, d] = await Promise.all([api("/win-rate/summary"), api("/win-rate/details?limit=50")]);
+      const [s, d, t] = await Promise.all([
+        api("/win-rate/summary"),
+        api("/win-rate/details?limit=50"),
+        api("/win-rate/trend"),
+      ]);
       setSummary(s);
       setDetails(d);
+      setTrend(Array.isArray(t) ? t : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!loading) fetchDetails(filter);
+  }, [filter]);
+
+  const toggleFilter = (key, value) => {
+    setFilter(prev => ({ ...prev, [key]: prev[key] === value ? '' : value }));
+  };
 
   const handleEvaluate = async () => {
     setEvaluating(true);
@@ -408,8 +528,75 @@ export default function WinRatePage() {
         <MarketCard title={"\u6E2F\u80A1\u80DC\u7387"} data={summary?.hk_stock} color="#f59e0b" />
       </div>
 
+      {/* Dimension breakdowns */}
+      {summary && (summary.us_stock?.by_strategy || summary.hk_stock?.by_strategy) && (
+        <div className="rounded-3xl border border-white/[0.06] bg-white/[0.03] p-6 space-y-5">
+          <h3 className="text-sm font-semibold text-white">{"\u7EF4\u5EA6\u5206\u6790"}</h3>
+          <DimensionPanel
+            title={"\u6309\u7B56\u7565"}
+            items={[
+              ...(summary.us_stock?.by_strategy || []),
+              ...(summary.hk_stock?.by_strategy || []),
+            ].reduce((acc, it) => {
+              const existing = acc.find(a => a.key === it.key);
+              if (existing) {
+                existing.wins += it.wins || 0;
+                existing.losses += it.losses || 0;
+                existing.total += it.total || 0;
+                existing.win_rate = existing.total > 0 ? (existing.wins / existing.total) * 100 : 0;
+                existing.avg_return = existing.total > 0
+                  ? ((existing.avg_return * (existing.total - (it.total || 0))) + ((it.avg_return || 0) * (it.total || 0))) / existing.total
+                  : 0;
+              } else {
+                acc.push({ ...it });
+              }
+              return acc;
+            }, [])}
+          />
+          <DimensionPanel
+            title={"\u6309\u65B9\u5411"}
+            items={[
+              ...(summary.us_stock?.by_direction || []),
+              ...(summary.hk_stock?.by_direction || []),
+            ].reduce((acc, it) => {
+              const existing = acc.find(a => a.key === it.key);
+              if (existing) {
+                existing.wins += it.wins || 0;
+                existing.losses += it.losses || 0;
+                existing.total += it.total || 0;
+                existing.win_rate = existing.total > 0 ? (existing.wins / existing.total) * 100 : 0;
+                existing.avg_return = existing.total > 0
+                  ? ((existing.avg_return * (existing.total - (it.total || 0))) + ((it.avg_return || 0) * (it.total || 0))) / existing.total
+                  : 0;
+              } else {
+                acc.push({ ...it });
+              }
+              return acc;
+            }, [])}
+          />
+        </div>
+      )}
+
+      {/* Trend chart */}
+      <TrendChart data={trend} />
+
+      {/* Details table with filters */}
       <div className="rounded-3xl border border-white/[0.06] bg-white/[0.03] p-5 shadow-xl backdrop-blur-md">
         <h2 className="mb-4 text-sm font-semibold text-white">{"\u8BC4\u4F30\u8BB0\u5F55\u660E\u7EC6"}</h2>
+
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <FilterButton label={"\u5168\u90E8"} active={!filter.strategy && !filter.direction && !filter.outcome} onClick={() => setFilter({ strategy: '', direction: '', outcome: '' })} />
+          <FilterButton label={"\u77ED\u7EBF"} active={filter.strategy === 'short_term'} onClick={() => toggleFilter('strategy', 'short_term')} />
+          <FilterButton label={"\u6CE2\u6BB5"} active={filter.strategy === 'swing'} onClick={() => toggleFilter('strategy', 'swing')} />
+          <span className="w-px h-4 bg-white/[0.06]" />
+          <FilterButton label={"\u505A\u591A"} active={filter.direction === 'buy'} onClick={() => toggleFilter('direction', 'buy')} />
+          <FilterButton label={"\u505A\u7A7A"} active={filter.direction === 'short'} onClick={() => toggleFilter('direction', 'short')} />
+          <span className="w-px h-4 bg-white/[0.06]" />
+          <FilterButton label={"\u80DC"} active={filter.outcome === 'win'} onClick={() => toggleFilter('outcome', 'win')} />
+          <FilterButton label={"\u8D1F"} active={filter.outcome === 'loss'} onClick={() => toggleFilter('outcome', 'loss')} />
+          <FilterButton label={"\u8D85\u65F6"} active={filter.outcome === 'timeout'} onClick={() => toggleFilter('outcome', 'timeout')} />
+        </div>
+
         <DetailsTable items={details} />
       </div>
     </div>
