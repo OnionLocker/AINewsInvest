@@ -25,7 +25,7 @@ function RecSkeleton() {
   return (
     <div className="space-y-2">
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
+        <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
           <div className="flex items-center gap-3">
             <Skeleton className="h-5 w-16" />
             <Skeleton className="h-4 w-24" />
@@ -58,8 +58,8 @@ export default function DashboardPage() {
   const items = recs?.items || [];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold">仪表盘</h1>
+    <div className="space-y-8">
+      <h1 className="text-3xl font-light tracking-tight">仪表盘</h1>
 
       <section>
         <CardTitle>市场概览</CardTitle>
@@ -75,13 +75,13 @@ export default function DashboardPage() {
               return (
                 <div
                   key={i}
-                  className={`rounded-xl ${bg} p-6 shadow-lg ring-1 ring-white/5`}
+                  className={`rounded-xl ${bg} p-8 shadow-lg ring-1 ring-white/5`}
                 >
                   <div className="space-y-3">
-                    <p className="text-base font-semibold text-gray-300 tracking-wide">
+                    <p className="text-base font-medium text-neutral-400 tracking-wide">
                       {idx.name || idx.symbol}
                     </p>
-                    <p className="text-3xl font-bold tabular-nums tracking-tight text-white">
+                    <p className="text-4xl font-bold tabular-nums tracking-tight text-white">
                       {idx.price?.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
@@ -145,12 +145,12 @@ export default function DashboardPage() {
                 <Link
                   key={i}
                   to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
-                  className="flex items-center gap-3 rounded-xl border border-slate-800/80 bg-slate-900/40 px-4 py-3 shadow-lg backdrop-blur-md transition-all hover:border-slate-700/50 hover:bg-slate-800/40"
+                  className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-5 py-4 shadow-lg backdrop-blur-md transition-all hover:border-white/[0.08] hover:bg-white/[0.04]"
                 >
                   {/* Left: ticker + badges */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-sm font-bold text-slate-200">{item.ticker}</span>
-                    <span className="hidden truncate text-xs text-slate-500 sm:inline">{item.name}</span>
+                    <span className="font-mono text-sm font-bold text-white">{item.ticker}</span>
+                    <span className="hidden truncate text-xs text-neutral-500 sm:inline">{item.name}</span>
                     <MarketBadge market={item.market} />
                     <DirectionBadge direction={item.direction} />
                     <StrategyBadge strategy={item.strategy} />
@@ -159,7 +159,7 @@ export default function DashboardPage() {
                   {/* Center: price + confidence */}
                   <div className="ml-auto flex items-center gap-4">
                     <div className="hidden items-center gap-2 sm:flex">
-                      <span className="text-sm font-semibold tabular-nums text-slate-200">
+                      <span className="text-sm font-semibold tabular-nums text-white">
                         {curr}{item.price?.toFixed(2) ?? "--"}
                       </span>
                       <PriceChange value={item.change_pct} />
@@ -181,7 +181,7 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    <Eye size={14} className="text-slate-600" />
+                    <Eye size={14} className="text-neutral-600" />
                   </div>
                 </Link>
               );

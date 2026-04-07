@@ -2,16 +2,16 @@ export default function Spinner({ size = "md", className = "" }) {
   const s = size === "sm" ? "h-4 w-4" : size === "lg" ? "h-8 w-8" : "h-6 w-6";
   return (
     <div
-      className={`animate-spin rounded-full border-2 border-indigo-500 border-t-transparent ${s} ${className}`}
+      className={`animate-spin rounded-full border-2 border-white/20 border-t-white ${s} ${className}`}
     />
   );
 }
 
 export function PageLoader({ text }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+    <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
       <Spinner size="lg" />
-      {text && <p className="mt-3 text-xs">{text}</p>}
+      {text && <p className="mt-4 text-sm">{text}</p>}
     </div>
   );
 }

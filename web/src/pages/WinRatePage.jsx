@@ -24,7 +24,7 @@ function WinRateRing({ rate, size = 120 }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold" style={{ color }}>{rate.toFixed(1)}%</span>
-        <span className="text-[10px] text-slate-400">{"\u80DC\u7387"}</span>
+        <span className="text-[10px] text-neutral-400">{"\u80DC\u7387"}</span>
       </div>
     </div>
   );
@@ -32,13 +32,13 @@ function WinRateRing({ rate, size = 120 }) {
 
 function StatBox({ icon: Icon, label, value, sub, color = "#e2e8f0" }) {
   return (
-    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-center">
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4 text-center">
       <div className="mb-2 flex items-center justify-center">
-        <Icon size={16} className="text-slate-400" />
+        <Icon size={16} className="text-neutral-400" />
       </div>
-      <p className="text-xl font-bold" style={{ color }}>{value}</p>
-      <p className="mt-0.5 text-xs text-slate-400">{label}</p>
-      {sub && <p className="mt-1 text-[11px] text-slate-400">{sub}</p>}
+      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+      <p className="mt-0.5 text-xs text-neutral-400">{label}</p>
+      {sub && <p className="mt-1 text-[11px] text-neutral-400">{sub}</p>}
     </div>
   );
 }
@@ -51,10 +51,10 @@ function MarketCard({ title, data, color }) {
   const rate = d.total_evaluated > 0 ? d.win_rate : 0;
 
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md">
+    <div className="rounded-3xl border border-white/[0.06] bg-white/[0.03] p-6 shadow-xl backdrop-blur-md">
       <div className="flex items-center gap-2 mb-4">
         <div className="h-3 w-3 rounded-full" style={{ background: color }} />
-        <span className="text-base font-bold text-slate-200">{title}</span>
+        <span className="text-base font-bold text-white">{title}</span>
       </div>
 
       <div className="flex items-center gap-8 mb-6">
@@ -68,20 +68,20 @@ function MarketCard({ title, data, color }) {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3 text-center">
-          <p className="text-[11px] text-slate-400 mb-1">{"\u5E73\u5747\u6536\u76CA"}</p>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u5E73\u5747\u6536\u76CA"}</p>
           <p className="text-sm font-bold" style={{ color: (d.avg_return_pct || 0) >= 0 ? "#34d399" : "#fb7185" }}>
             {(d.avg_return_pct || 0) >= 0 ? "+" : ""}{(d.avg_return_pct || 0).toFixed(2)}%
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3 text-center">
-          <p className="text-[11px] text-slate-400 mb-1">{"\u5E73\u5747\u76C8\u5229"}</p>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u5E73\u5747\u76C8\u5229"}</p>
           <p className="text-sm font-bold text-[#34d399]">
             +{(d.avg_win_return_pct || 0).toFixed(2)}%
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3 text-center">
-          <p className="text-[11px] text-slate-400 mb-1">{"\u5E73\u5747\u4E8F\u635F"}</p>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u5E73\u5747\u4E8F\u635F"}</p>
           <p className="text-sm font-bold text-[#fb7185]">
             {(d.avg_loss_return_pct || 0).toFixed(2)}%
           </p>
@@ -89,24 +89,24 @@ function MarketCard({ title, data, color }) {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3">
-          <p className="text-[11px] text-slate-400 mb-1">{"\u8FD17\u5929\u80DC\u7387"}</p>
-          <p className="text-lg font-bold text-slate-200">
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u8FD17\u5929\u80DC\u7387"}</p>
+          <p className="text-lg font-bold text-white">
             {d7.total_evaluated > 0 ? `${d7.win_rate}%` : "--"}
-            <span className="ml-1 text-[11px] text-slate-400">({d7.wins || 0}W / {d7.total_evaluated || 0}T)</span>
+            <span className="ml-1 text-[11px] text-neutral-400">({d7.wins || 0}W / {d7.total_evaluated || 0}T)</span>
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3">
-          <p className="text-[11px] text-slate-400 mb-1">{"\u8FD130\u5929\u80DC\u7387"}</p>
-          <p className="text-lg font-bold text-slate-200">
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3">
+          <p className="text-[11px] text-neutral-400 mb-1">{"\u8FD130\u5929\u80DC\u7387"}</p>
+          <p className="text-lg font-bold text-white">
             {d30.total_evaluated > 0 ? `${d30.win_rate}%` : "--"}
-            <span className="ml-1 text-[11px] text-slate-400">({d30.wins || 0}W / {d30.total_evaluated || 0}T)</span>
+            <span className="ml-1 text-[11px] text-neutral-400">({d30.wins || 0}W / {d30.total_evaluated || 0}T)</span>
           </p>
         </div>
       </div>
 
       {(d.pending || 0) > 0 && (
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-neutral-400">
           <Clock size={12} className="inline mr-1" />
           {d.pending} {"\u6761\u63A8\u8350\u5F85\u8BC4\u4F30"}
         </p>
@@ -390,8 +390,8 @@ export default function WinRatePage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-medium text-white">{"\u7CFB\u7EDF\u80DC\u7387\u7EDF\u8BA1"}</h1>
-          <p className="text-xs text-slate-400">{"\u8FBE\u5230TP1\u5373\u4E3A\u80DC\u51FA\uff0c\u89E6\u53CA\u6B62\u635F\u5373\u4E3A\u5931\u8D25\uff0c\u8D85\u8FC7\u6301\u4ED3\u5929\u6570\u4E3A\u8D85\u65F6"}</p>
+          <h1 className="text-3xl font-light text-white">{"\u7CFB\u7EDF\u80DC\u7387\u7EDF\u8BA1"}</h1>
+          <p className="text-sm text-neutral-500">{"\u8FBE\u5230TP1\u5373\u4E3A\u80DC\u51FA\uff0c\u89E6\u53CA\u6B62\u635F\u5373\u4E3A\u5931\u8D25\uff0c\u8D85\u8FC7\u6301\u4ED3\u5929\u6570\u4E3A\u8D85\u65F6"}</p>
         </div>
         <button
           onClick={handleEvaluate}
@@ -408,8 +408,8 @@ export default function WinRatePage() {
         <MarketCard title={"\u6E2F\u80A1\u80DC\u7387"} data={summary?.hk_stock} color="#f59e0b" />
       </div>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 shadow-xl backdrop-blur-md">
-        <h2 className="mb-4 text-sm font-semibold text-slate-200">{"\u8BC4\u4F30\u8BB0\u5F55\u660E\u7EC6"}</h2>
+      <div className="rounded-3xl border border-white/[0.06] bg-white/[0.03] p-5 shadow-xl backdrop-blur-md">
+        <h2 className="mb-4 text-sm font-semibold text-white">{"\u8BC4\u4F30\u8BB0\u5F55\u660E\u7EC6"}</h2>
         <DetailsTable items={details} />
       </div>
     </div>

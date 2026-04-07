@@ -32,10 +32,10 @@ function SideLink({ to, icon: Icon, label, onClick }) {
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+        `flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium transition-all duration-150 ${
           isActive
-            ? "bg-indigo-500/10 text-indigo-400 shadow-sm"
-            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+            ? "bg-white/[0.08] text-white"
+            : "text-neutral-500 hover:text-white hover:bg-white/[0.04]"
         }`
       }
     >
@@ -56,7 +56,7 @@ export default function Layout() {
           AV
         </div>
         <div>
-          <span className="text-sm font-semibold text-slate-200">
+          <span className="text-base font-semibold text-white">
             Alpha<span className="text-indigo-400">Vault</span>
           </span>
           <p className="flex items-center gap-1 text-[10px] text-slate-500">
@@ -79,21 +79,21 @@ export default function Layout() {
         )}
       </div>
 
-      <div className="border-t border-slate-800/60 px-3 py-3">
-        <div className="mb-2 flex items-center gap-2 px-1">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-800 text-[10px] font-bold text-slate-400">
+      <div className="border-t border-white/[0.06] px-3 py-4">
+        <div className="mb-2 flex items-center gap-2.5 px-1">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.08] text-xs font-bold text-neutral-400">
             {user?.username?.charAt(0).toUpperCase()}
           </div>
           <div>
-            <p className="text-xs text-slate-300">{user?.username}</p>
+            <p className="text-sm text-white">{user?.username}</p>
             {user?.is_admin && (
-              <span className="text-[10px] text-indigo-400">管理员</span>
+              <span className="text-xs text-indigo-400">管理员</span>
             )}
           </div>
         </div>
         <button
           onClick={logout}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-500 transition-colors hover:text-rose-400 hover:bg-rose-400/5"
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-neutral-500 transition-colors hover:text-rose-400 hover:bg-rose-400/5"
         >
           <LogOut size={14} />
           退出登录
@@ -104,7 +104,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-surface-0">
-      <aside className="hidden w-52 shrink-0 border-r border-slate-800/60 bg-surface-1 lg:block">
+      <aside className="hidden w-56 shrink-0 border-r border-white/[0.06] bg-black lg:block">
         {sidebar}
       </aside>
 
@@ -115,7 +115,7 @@ export default function Layout() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-52 border-r border-slate-800/60 bg-surface-1 transition-transform lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-white/[0.06] bg-black transition-transform lg:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -123,15 +123,15 @@ export default function Layout() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-12 items-center gap-3 border-b border-slate-800/60 bg-surface-1 px-4 lg:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="text-slate-400">
+        <header className="flex h-14 items-center gap-3 border-b border-white/[0.06] bg-black px-4 lg:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="text-neutral-400">
             {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
-          <span className="text-sm font-semibold text-slate-200">
+          <span className="text-base font-semibold text-white">
             Alpha<span className="text-indigo-400">Vault</span>
           </span>
         </header>
-        <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        <main className="flex-1 overflow-y-auto p-8 scrollbar-thin">
           <Outlet />
         </main>
       </div>

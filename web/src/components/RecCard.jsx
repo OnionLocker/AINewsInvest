@@ -18,7 +18,7 @@ function ConfidenceBar({ value }) {
   const color = v >= 70 ? "#34d399" : v >= 50 ? "#818cf8" : v >= 35 ? "#f59e0b" : "#fb7185";
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="text-base font-semibold text-slate-400">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
+      <span className="text-base font-semibold text-neutral-400">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
       <span className="inline-block h-2.5 w-28 overflow-hidden rounded-full bg-slate-800">
         <span className="block h-full rounded-full" style={{ width: `${v}%`, background: color }} />
       </span>
@@ -46,7 +46,7 @@ function ActionArrow({ action, direction }) {
 
 function ThemeTag({ text }) {
   return (
-    <span className="inline-flex items-center gap-1 text-sm font-medium text-slate-400">
+    <span className="inline-flex items-center gap-1 text-sm font-medium text-neutral-400">
       <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
       {text}
     </span>
@@ -128,11 +128,11 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
   const addLabel = isShort ? "\u52a0\u4ed3\u4ef7\u4f4d(\u4e0a\u65b9)" : "\u52a0\u4ed3\u4ef7\u4f4d";
 
   return (
-    <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-5">
+    <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-5">
       <div className="mb-4 flex items-center gap-2">
         {isShort ? <TrendingDown size={16} style={{ color: "#d946ef" }} /> : <Target size={16} className="text-indigo-500" />}
-        <span className="text-base font-bold text-slate-200" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
-        <span className="rounded border border-slate-800/80 bg-slate-900/40 px-2.5 py-0.5 text-sm font-semibold text-slate-400 backdrop-blur-md">
+        <span className="text-base font-medium text-white" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
+        <span className="rounded border border-white/[0.06] bg-white/[0.04] px-2.5 py-0.5 text-sm font-semibold text-neutral-400 backdrop-blur-md">
           {"\u5efa\u8bae\u6301\u4ed3"} {item.holding_days || 3} {"\u5929"}
         </span>
         {isShort && (
@@ -140,18 +140,18 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
         )}
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <div className={`rounded-xl border p-4 text-center ${isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-slate-800/60 bg-slate-900/40 backdrop-blur-md"}`}>
+        <div className={`rounded-xl border p-4 text-center ${isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-white/[0.06] bg-white/[0.04] backdrop-blur-md"}`}>
           <div className={`text-base font-bold ${isShort ? "text-fuchsia-400" : "text-indigo-400"}`}>{entryLabel}</div>
-          <div className="mt-2 text-3xl font-extrabold text-slate-200 tabular-nums">{fmt(entry)}</div>
-          <div className="mt-1 text-sm font-medium text-slate-400">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
+          <div className="mt-2 text-4xl font-semibold text-slate-200 tabular-nums">{fmt(entry)}</div>
+          <div className="mt-1 text-sm font-medium text-neutral-400">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
         </div>
         <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-center">
           <div className="text-base font-bold text-rose-400">{slLabel}</div>
-          <div className="mt-2 text-3xl font-extrabold text-rose-400 tabular-nums">{fmt(item.stop_loss)}</div>
+          <div className="mt-2 text-4xl font-semibold text-rose-400 tabular-nums">{fmt(item.stop_loss)}</div>
         </div>
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-center">
           <div className="text-base font-bold text-amber-400">{addLabel}</div>
-          <div className="mt-2 text-3xl font-extrabold text-amber-400 tabular-nums">{fmt(item.entry_2)}</div>
+          <div className="mt-2 text-4xl font-semibold text-amber-400 tabular-nums">{fmt(item.entry_2)}</div>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-3">
@@ -162,13 +162,13 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
         ].map((tp) => (
           <div key={tp.label} className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
             <div className="text-base font-bold text-emerald-400">{tp.label}</div>
-            <div className="mt-2 text-3xl font-extrabold text-slate-200 tabular-nums">{fmt(tp.val)}</div>
+            <div className="mt-2 text-4xl font-semibold text-slate-200 tabular-nums">{fmt(tp.val)}</div>
             {tp.pct && <div className="mt-1 text-base font-bold text-emerald-400">{isShort ? "" : "+"}{tp.pct}%</div>}
           </div>
         ))}
       </div>
       <PriceBar sl={item.stop_loss} entry={entry} tp={item.take_profit} isShort={isShort} />
-      <p className="mt-2 flex items-center gap-1 text-sm font-medium text-slate-400">
+      <p className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-400">
         <Lightbulb size={13} className="text-amber-400" />
         {isShort
           ? "\u505a\u7a7a\u64cd\u4f5c\uff1a\u5728\u5165\u573a\u4ef7\u4f4d\u5356\u51fa\uff0c\u80a1\u4ef7\u4e0b\u8dcc\u81f3TP\u65f6\u4e70\u5165\u5e73\u4ed3\u83b7\u5229\uff0c\u4e0a\u6da8\u81f3SL\u65f6\u4e70\u5165\u6b62\u635f\u3002"
@@ -181,19 +181,19 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
 function AnalysisSection({ newsReason, techReason }) {
   return (
     <div className="mt-3 grid gap-3 md:grid-cols-2">
-      <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-200">
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-white">
           <span className="h-2.5 w-2.5 rounded-full border-2 border-slate-400" />
           {"\u65b0\u95fb\u9762"}
         </div>
-        <p className="text-base font-medium leading-relaxed text-slate-400">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-neutral-400">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
       </div>
-      <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-200">
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-white">
           <span className="h-2.5 w-2.5 rounded-full border-2 border-slate-400" />
           {"\u6280\u672f\u9762"}
         </div>
-        <p className="text-base font-medium leading-relaxed text-slate-400">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-neutral-400">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
       </div>
     </div>
   );
@@ -342,7 +342,7 @@ function ScoreDimensionBar({ label, value, icon: Icon, color }) {
   return (
     <div className="flex items-center gap-2">
       <Icon size={14} style={{ color }} />
-      <span className="w-16 text-sm font-semibold text-slate-400">{label}</span>
+      <span className="w-16 text-sm font-semibold text-neutral-400">{label}</span>
       <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${v}%`, background: barColor }} />
       </div>
@@ -357,8 +357,8 @@ function ScoreDimensions({ item }) {
   const fs = item.fundamental_score || 0;
   if (!ts && !ns && !fs) return null;
   return (
-    <div className="mt-3 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-      <div className="mb-3 flex items-center gap-2 text-base font-bold text-slate-200">
+    <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-medium text-white">
         <BarChart3 size={16} className="text-indigo-400" />
         {"\u591a\u7ef4\u8bc4\u5206"}
       </div>
@@ -405,38 +405,38 @@ function TechIndicators({ item }) {
   const obvInfo = obvMap[obvTrend] || obvMap.neutral;
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-      <div className="mb-3 flex items-center gap-2 text-base font-bold text-slate-200">
+    <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-medium text-white">
         <Activity size={16} className="text-indigo-400" />
         {"\u6280\u672f\u6307\u6807"}
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {rsi != null && (
-          <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-slate-400">RSI(14)</div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
+            <div className="text-xs font-semibold text-neutral-400">RSI(14)</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: rsiColor }}>{fmt(rsi, 1)}</div>
             <div className="mt-0.5 text-xs font-semibold" style={{ color: rsiColor }}>{rsiLabel}</div>
           </div>
         )}
         {macdHist != null && (
-          <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-slate-400">MACD</div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
+            <div className="text-xs font-semibold text-neutral-400">MACD</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: macdColor }}>{fmt(macdHist, 4)}</div>
             <div className="mt-0.5 text-xs font-semibold" style={{ color: macdColor }}>{macdLabel}</div>
           </div>
         )}
         {bbPct != null && (
-          <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-slate-400">{"\u5e03\u6797\u5e26"}</div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
+            <div className="text-xs font-semibold text-neutral-400">{"\u5e03\u6797\u5e26"}</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: bbColor }}>{bbPct}%</div>
-            <div className="mt-0.5 text-xs font-semibold text-slate-400">{bbPct > 80 ? "\u8fd1\u4e0a\u8f68" : bbPct < 20 ? "\u8fd1\u4e0b\u8f68" : "\u4e2d\u4f4d"}</div>
+            <div className="mt-0.5 text-xs font-semibold text-neutral-400">{bbPct > 80 ? "\u8fd1\u4e0a\u8f68" : bbPct < 20 ? "\u8fd1\u4e0b\u8f68" : "\u4e2d\u4f4d"}</div>
           </div>
         )}
         {obvTrend && obvTrend !== "" && (
-          <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-slate-400">OBV</div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
+            <div className="text-xs font-semibold text-neutral-400">OBV</div>
             <div className="mt-1 text-xl font-bold" style={{ color: obvInfo.color }}>{obvInfo.text}</div>
-            <div className="mt-0.5 text-xs font-semibold text-slate-400">{"\u80fd\u91cf\u6f6e"}</div>
+            <div className="mt-0.5 text-xs font-semibold text-neutral-400">{"\u80fd\u91cf\u6f6e"}</div>
           </div>
         )}
       </div>
@@ -517,15 +517,15 @@ export default function RecCard({ item, rank }) {
     : (item.take_profit && item.entry_price ? item.take_profit - item.entry_price : 0);
   const rrRatio = rrRisk > 0 ? (rrReward / rrRisk).toFixed(1) : "--";
 
-  const borderHighlight = isShort ? "border-fuchsia-500/30" : "border-slate-700/50";
-  const hoverBorder = isShort ? "hover:border-fuchsia-500/40" : "hover:border-slate-700/50";
+  const borderHighlight = isShort ? "border-fuchsia-500/30" : "border-white/[0.08]";
+  const hoverBorder = isShort ? "hover:border-fuchsia-500/40" : "hover:border-white/[0.08]";
 
   return (
-    <div className={`rounded-2xl border bg-slate-900/40 shadow-xl backdrop-blur-md transition-all ${
-      expanded ? borderHighlight : `border-slate-800/80 ${hoverBorder}`
+    <div className={`rounded-3xl border bg-white/[0.03] shadow-xl backdrop-blur-md transition-all ${
+      expanded ? borderHighlight : `border-white/[0.06] ${hoverBorder}`
     }`}>
       {/* Header */}
-      <div className="cursor-pointer px-5 py-4" onClick={() => setExpanded(!expanded)}>
+      <div className="cursor-pointer px-6 py-5" onClick={() => setExpanded(!expanded)}>
         {/* Row 1 */}
         <div className="flex items-center gap-3">
           <span className={`rounded px-3 py-1 text-base font-extrabold font-mono ${
@@ -538,7 +538,7 @@ export default function RecCard({ item, rank }) {
               SHORT
             </span>
           )}
-          <span className="text-xl font-extrabold text-slate-200">{displayName}</span>
+          <span className="text-xl font-light text-white">{displayName}</span>
           {item.sector && item.sector !== "" && (
             <span className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400">
               {SECTOR_CN[item.sector] || item.sector}
@@ -555,7 +555,7 @@ export default function RecCard({ item, rank }) {
             >
               {"\u67e5\u770b\u8be6\u60c5"}
             </Link>
-            <button className="text-slate-400 transition-colors hover:text-slate-200"
+            <button className="text-neutral-400 transition-colors hover:text-slate-200"
               onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
               {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -564,7 +564,7 @@ export default function RecCard({ item, rank }) {
 
         {/* Row 2 */}
         <div className="mt-2 flex flex-wrap items-center gap-4">
-          <span className="text-3xl font-extrabold tabular-nums text-slate-200">
+          <span className="text-4xl font-semibold tabular-nums text-slate-200">
             {currencySymbol}{fmt(item.price)}
           </span>
           <span className={`text-lg font-bold tabular-nums ${
@@ -575,12 +575,12 @@ export default function RecCard({ item, rank }) {
           <ActionArrow action={item.action || item.direction} direction={item.direction} />
           <ConfidenceBar value={score} />
           {showTrading && (
-            <span className="text-base font-semibold text-slate-400">
+            <span className="text-base font-semibold text-neutral-400">
               {"\u98ce\u9669\u56de\u62a5"} 1:{rrRatio}
             </span>
           )}
           {item.position_pct > 0 && (
-            <span className="text-sm font-semibold text-slate-400">
+            <span className="text-sm font-semibold text-neutral-400">
               {"\u4ed3\u4f4d"} {item.position_pct}%
             </span>
           )}
@@ -589,17 +589,17 @@ export default function RecCard({ item, rank }) {
 
       {/* Expanded Detail */}
       {expanded && (
-        <div className="border-t border-slate-800/80 px-5 pb-5">
+        <div className="border-t border-white/[0.06] px-5 pb-5">
           {/* Tab Bar */}
-          <div className="mt-3 flex border-b border-slate-800/60">
+          <div className="mt-3 flex border-b border-white/[0.06]">
             {["\u4ea4\u6613\u8ba1\u5212", "\u5206\u6790\u8be6\u60c5", "\u98ce\u9669\u8bc4\u4f30"].map((label, idx) => (
               <button
                 key={label}
                 onClick={(e) => { e.stopPropagation(); setActiveTab(idx); }}
-                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`px-4 py-2.5 text-base font-medium transition-colors ${
                   activeTab === idx
                     ? "border-b-2 border-indigo-400 text-indigo-400"
-                    : "text-slate-500 hover:text-slate-300"
+                    : "text-neutral-500 hover:text-slate-300"
                 }`}
               >
                 {label}
@@ -612,7 +612,7 @@ export default function RecCard({ item, rank }) {
             <div>
               {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
               {!showTrading && (
-                <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-base font-medium text-slate-400">
+                <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-base font-medium text-neutral-400">
                   {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
                 </div>
               )}
@@ -658,25 +658,25 @@ export default function RecCard({ item, rank }) {
                         <Lightbulb size={16} />
                         AI 综合研判
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-slate-400 whitespace-pre-wrap">{item.llm_reason}</p>
+                      <p className="text-base font-medium leading-relaxed text-neutral-400 whitespace-pre-wrap">{item.llm_reason}</p>
                     </div>
                   )}
                   {item.fundamental_reason && !looksMojibake(item.fundamental_reason) && (
-                    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-white">
                         <BarChart3 size={16} className="text-amber-400" />
                         基本面分析
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-slate-400">{item.fundamental_reason}</p>
+                      <p className="text-base font-medium leading-relaxed text-neutral-400">{item.fundamental_reason}</p>
                     </div>
                   )}
                   {item.valuation_summary && !looksMojibake(item.valuation_summary) && (
-                    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-white">
                         <Target size={16} className="text-emerald-400" />
                         估值摘要
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-slate-400">{item.valuation_summary}</p>
+                      <p className="text-base font-medium leading-relaxed text-neutral-400">{item.valuation_summary}</p>
                     </div>
                   )}
                 </div>
@@ -689,7 +689,7 @@ export default function RecCard({ item, rank }) {
             <div>
               <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
               {!item.risk_flags && !item.risk_note && (
-                <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-base font-medium text-slate-400">
+                <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-base font-medium text-neutral-400">
                   暂无风险提示信息
                 </div>
               )}

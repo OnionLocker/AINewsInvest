@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --color-brand-300: #a5b4fc;
   --color-brand-400: #818cf8;
   --color-brand-500: #6366f1;
   --color-brand-600: #4f46e5;
@@ -10,17 +11,21 @@
   --color-down: #fb7185;
   --color-flat: #94a3b8;
 
-  --color-surface-0: #020617;
-  --color-surface-1: #0f172a;
-  --color-surface-2: #1e293b;
-  --color-surface-3: #334155;
+  --color-surface-0: #000000;
+  --color-surface-1: #0a0a0a;
+  --color-surface-2: #141414;
+  --color-surface-3: #1f1f1f;
 }
 
 body {
-  font-family: -apple-system, system-ui, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  font-family: -apple-system, "SF Pro Display", system-ui, "Segoe UI", Roboto, Ubuntu, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--color-surface-0);
-  color: #e2e8f0;
+  color: #f5f5f7;
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
@@ -38,11 +43,11 @@ input, select, textarea, button {
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .tabular-nums {

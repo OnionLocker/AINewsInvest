@@ -38,9 +38,9 @@ function normalizeIndexName(idx) {
 
 function IndexCard({ idx }) {
   return (
-    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-      <p className="text-xs text-slate-400">{normalizeIndexName(idx)}</p>
-      <p className="mt-1.5 text-xl font-semibold tabular-nums text-slate-200">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+      <p className="text-xs text-neutral-400">{normalizeIndexName(idx)}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-white">
         {idx.price?.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
@@ -170,9 +170,9 @@ export default function RecommendationsPage({ market = "us" }) {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-end justify-between gap-3">
-        <h1 className="text-xl font-medium text-white">{cfg.title}</h1>
+        <h1 className="text-3xl font-light text-white">{cfg.title}</h1>
         {updatedAtBj && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-neutral-400">
             {"\u66f4\u65b0\u4e8e\u5317\u4eac\u65f6\u95f4 "} {updatedAtBj}
           </p>
         )}
@@ -183,7 +183,7 @@ export default function RecommendationsPage({ market = "us" }) {
         {loading ? (
           <div className="grid gap-3 sm:grid-cols-3">
             {[1,2,3].map(i => (
-              <div key={i} className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+              <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="mt-2 h-6 w-28" />
                 <Skeleton className="mt-2 h-3 w-14" />
@@ -218,7 +218,7 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* Display message */}
       {today?.display_message && !detail && (
-        <div className="flex items-center gap-2 rounded-xl border border-slate-800/60 bg-slate-950/50 px-4 py-3 text-xs text-slate-400">
+        <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-xs text-neutral-400">
           <Clock size={14} />
           {today.display_message}
         </div>
@@ -226,15 +226,15 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* History bar + Rec header */}
       <div className="flex items-center gap-3">
-        <Calendar size={13} className="text-slate-400" />
-        <p className="text-xs font-medium text-slate-400">{"\u5386\u53f2\u8bb0\u5f55"}</p>
+        <Calendar size={13} className="text-neutral-400" />
+        <p className="text-xs font-medium text-neutral-400">{"\u5386\u53f2\u8bb0\u5f55"}</p>
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
           <button
             onClick={() => setDetail(null)}
             className={`shrink-0 rounded-lg px-2.5 py-1 text-xs transition-colors ${
               !detail
-                ? "bg-indigo-500/10 font-semibold text-indigo-400"
-                : "text-slate-500 hover:text-slate-300"
+                ? "bg-white/[0.08] font-semibold text-indigo-400"
+                : "text-neutral-500 hover:text-slate-300"
             }`}
           >
             {"\u4eca\u65e5\u63a8\u8350"}
@@ -250,7 +250,7 @@ export default function RecommendationsPage({ market = "us" }) {
               }`}
             >
               {h.ref_date}
-              <span className="ml-1 text-slate-500">{h.published_count ?? h.result_count}</span>
+              <span className="ml-1 text-neutral-500">{h.published_count ?? h.result_count}</span>
             </button>
           ))}
         </div>
@@ -259,8 +259,8 @@ export default function RecommendationsPage({ market = "us" }) {
       {/* Recommendations - full width */}
       <div>
         <div className="mb-3 flex items-center gap-2">
-          <p className="text-sm font-semibold text-slate-200">{"\u63a8\u8350\u5217\u8868"}</p>
-          <span className="text-xs text-slate-400">
+          <p className="text-sm font-semibold text-white">{"\u63a8\u8350\u5217\u8868"}</p>
+          <span className="text-xs text-neutral-400">
             {items.length} {"\u53ea"}
           </span>
         </div>
@@ -268,7 +268,7 @@ export default function RecommendationsPage({ market = "us" }) {
         {loading ? (
           <div className="space-y-2">
             {[1,2,3].map(i => (
-              <div key={i} className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+              <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-5 w-14" />
                   <Skeleton className="h-4 w-28" />
@@ -281,9 +281,9 @@ export default function RecommendationsPage({ market = "us" }) {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/5 py-16 shadow-xl backdrop-blur-md">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03] py-16 shadow-xl backdrop-blur-md">
             <p className="text-lg font-bold text-indigo-400">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
-            <p className="mt-2 text-sm text-slate-400">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
+            <p className="mt-2 text-sm text-neutral-400">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
           </div>
         ) : (
           <div className="space-y-2">

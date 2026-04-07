@@ -35,20 +35,20 @@ function ToastItem({ item, onRemove }) {
 
   return (
     <div
-      className="pointer-events-auto flex items-start gap-2.5 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-md transition-all duration-200"
+      className="pointer-events-auto flex items-start gap-3 rounded-2xl border px-5 py-4 shadow-2xl backdrop-blur-xl transition-all duration-200"
       style={{
-        background: "rgba(15,23,42,0.92)",
+        background: "rgba(10,10,10,0.95)",
         borderColor: c.border,
         opacity: visible ? 1 : 0,
         transform: visible ? "translateX(0)" : "translateX(100%)",
         maxWidth: 360,
       }}
     >
-      <Icon size={16} style={{ color: c.text, marginTop: 2, flexShrink: 0 }} />
-      <p className="flex-1 text-sm text-slate-200">{item.message}</p>
+      <Icon size={18} style={{ color: c.text, marginTop: 2, flexShrink: 0 }} />
+      <p className="flex-1 text-[15px] text-white/90">{item.message}</p>
       <button
         onClick={() => { setVisible(false); setTimeout(() => onRemove(item.id), 200); }}
-        className="text-slate-500 hover:text-slate-300"
+        className="text-neutral-500 hover:text-white"
       >
         <X size={14} />
       </button>
