@@ -1,414 +1,133 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../api";
-import {
-  Activity,
-  TrendingUp,
-  TrendingDown,
-  Cpu,
-  ChevronRight,
-  BarChart2,
-  AlertCircle,
-  RefreshCw,
-  DollarSign,
-  Globe,
-} from "lucide-react";
-
-function SentimentLabel({ value }) {
-  if (value >= 75) return { text: "极度贪婪", color: "rose" };
-  if (value >= 60) return { text: "偏热", color: "rose" };
-  if (value >= 40) return { text: "中��1�7", color: "slate" };
-  if (value >= 25) return { text: "偏冷", color: "emerald" };
-  return { text: "极度恐惧", color: "emerald" };
-}
-
-function WinRateLabel(rate) {
-  if (rate >= 60) return "表现优秀";
-  if (rate >= 50) return "跑赢大盘";
-  if (rate >= 40) return "表现丢�舄1�7";
-  return "待改善1�7";
-}
-
-function ActionLabel(item) {
-  const score = item.combined_score ?? item.score ?? 0;
-  const dir = item.direction;
-  if (dir === "short") return "做空";
-  if (score >= 75) return "积极买入";
-  if (score >= 60) return "建议买入";
-  if (score >= 45) return "观望";
-  return "不建议介兄1�7";
-}
-
-function ActionBadgeColor(label) {
-  if (label === "积极买入" || label === "建议买入")
-    return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]";
-  if (label === "观望")
-    return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-  if (label === "做空")
-    return "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20";
-  return "bg-slate-800 text-slate-400 border-slate-700";
-}
-
-function SkeletonBlock({ className = "" }) {
-  return <div className={`bg-slate-800/50 animate-pulse rounded-lg ${className}`} />;
-}
+import Card, { CardTitle } from "../components/Card";
+import { PageLoader } from "../components/Spinner";
+import PriceChange from "../components/PriceChange";
+import { MarketBadge, DirectionBadge, StrategyBadge } from "../components/Badge";
+import { TrendingUp, Star, Eye } from "lucide-react";
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true);
-  const [market, setMarket] = useState("us");
-  const [sentiment, setSentiment] = useState(null);
-  const [winRate, setWinRate] = useState(null);
-  const [recs, setRecs] = useState(null);
   const [indices, setIndices] = useState([]);
+  const [recs, setRecs] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [sentRes, wrRes, recRes, idxRes] = await Promise.allSettled([
-        api.marketSentiment(market),
-        api.winRateSummary(),
-        api.marketTodayRecs(market),
-        api.marketOverview(),
-      ]);
-      if (sentRes.status === "fulfilled") setSentiment(sentRes.value);
-      if (wrRes.status === "fulfilled") setWinRate(wrRes.value);
-      if (recRes.status === "fulfilled") setRecs(recRes.value);
-      if (idxRes.status === "fulfilled") setIndices(idxRes.value || []);
-    } catch (e) {
-      console.error("Dashboard fetch error:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [market]);
+  useEffect(() => {
+    Promise.allSettled([api.marketOverview(), api.todayRecs()]).then(
+      ([idxRes, recRes]) => {
+        if (idxRes.status === "fulfilled") setIndices(idxRes.value || []);
+        if (recRes.status === "fulfilled") setRecs(recRes.value);
+        setLoading(false);
+      },
+    );
+  }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  if (loading) return <PageLoader />;
 
-  const mktKey = market === "us" ? "us_stock" : "hk_stock";
-  const fg = sentiment?.fear_greed ?? { value: 0, label: "未知" };
-  const sentInfo = SentimentLabel({ value: fg.value });
-
-  const wr = winRate?.[mktKey]?.["30d"] ?? winRate?.overall ?? {};
-  const wrValue = wr.win_rate ?? 0;
-  const wrLabel = WinRateLabel(wrValue);
-  const wrTotal = wr.total_evaluated ?? 0;
-  const wrPending = wr.pending ?? 0;
-
-  const items = recs?.items ?? [];
-  const displayMsg = recs?.display_message;
-  const todayDate = new Date().toISOString().split("T")[0];
-
-  const marketIndices = indices.filter(
-    (idx) => idx.market === mktKey,
-  );
+  const items = recs?.items || [];
 
   return (
-    <div className="min-h-screen text-slate-200 font-sans selection:bg-indigo-500/30">
-      {/* Header */}
-      <header className="mb-8 flex flex-col md:flex-row justify-between md:items-end border-b border-slate-800/60 pb-6">
-        <div>
-          <h1 className="text-3xl font-light tracking-tight text-white mb-1">
-            Alpha<span className="font-semibold text-indigo-400">Vault</span>
-          </h1>
-          <p className="text-slate-400 text-sm flex items-center gap-2">
-            <Activity className="w-4 h-4" /> AI 投研与情绪分析系组1�7
-          </p>
+    <div className="space-y-6">
+      <h1 className="text-xl font-bold">仪表盘</h1>
+
+      <section>
+        <CardTitle>市场概览</CardTitle>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {indices.map((idx, i) => {
+            const isHK = idx.market === "hk_stock";
+            const bg = isHK
+              ? "bg-gradient-to-br from-amber-950/80 via-amber-900/40 to-surface-1"
+              : "bg-gradient-to-br from-brand-950/80 via-brand-900/40 to-surface-1";
+            return (
+              <div
+                key={i}
+                className={`rounded-xl ${bg} p-6 shadow-lg ring-1 ring-white/5`}
+              >
+                <div className="space-y-3">
+                  <p className="text-base font-semibold text-gray-300 tracking-wide">
+                    {idx.name || idx.symbol}
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums tracking-tight text-white">
+                    {idx.price?.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }) ?? "--"}
+                  </p>
+                  <PriceChange value={idx.change_pct} size="xl" />
+                </div>
+              </div>
+            );
+          })}
+          {indices.length === 0 && (
+            <Card className="col-span-full text-center text-sm text-gray-500">
+              暂无市场数据
+            </Card>
+          )}
         </div>
-        <div className="mt-4 md:mt-0 flex items-center gap-4">
-          {/* Market Toggle */}
-          <div className="flex rounded-lg border border-slate-800 overflow-hidden">
-            <button
-              onClick={() => setMarket("us")}
-              className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                market === "us"
-                  ? "bg-indigo-500/15 text-indigo-400 border-r border-slate-800"
-                  : "text-slate-500 hover:text-slate-300 border-r border-slate-800"
-              }`}
-            >
-              <DollarSign className="w-3 h-3" /> 美股
-            </button>
-            <button
-              onClick={() => setMarket("hk")}
-              className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                market === "hk"
-                  ? "bg-amber-500/15 text-amber-400"
-                  : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Globe className="w-3 h-3" /> 港股
-            </button>
-          </div>
-          <button
-            onClick={fetchData}
-            className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-900 rounded-full transition-colors"
-            title="刷新数据"
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <CardTitle className="!mb-0">
+            <Star size={16} className="mr-1 inline" />
+            今日推荐
+          </CardTitle>
+          <Link
+            to="/recommendations/us"
+            className="text-xs text-brand-400 hover:underline"
           >
-            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <div>
-            <p className="text-slate-500 text-xs uppercase tracking-widest mb-1">当前交易旄1�7</p>
-            <p className="text-xl font-medium text-slate-200">
-              {loading ? <SkeletonBlock className="h-6 w-24" /> : todayDate}
-            </p>
-          </div>
+            查看全部
+          </Link>
         </div>
-      </header>
 
-      {/* Market Indices Bar */}
-      {marketIndices.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-          {marketIndices.map((idx, i) => (
-            <div key={i} className="bg-slate-900/40 border border-slate-800/60 rounded-xl px-4 py-3">
-              <p className="text-slate-400 text-xs mb-1">{idx.name}</p>
-              <div className="flex items-baseline justify-between">
-                <span className="text-white font-medium text-sm tabular-nums">
-                  {idx.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "--"}
-                </span>
-                <span className={`text-xs font-medium tabular-nums ${
-                  (idx.change_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}>
-                  {(idx.change_pct ?? 0) >= 0 ? "+" : ""}{idx.change_pct?.toFixed(2) ?? "0.00"}%
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        {recs?.display_message && (
+          <p className="mb-3 text-xs text-yellow-400">{recs.display_message}</p>
+        )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        {/* Card 1: Market Sentiment */}
-        <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden group hover:border-slate-700/80 transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Activity className="w-16 h-16 text-rose-400" />
-          </div>
-          <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">
-            {market === "us" ? "美股" : "港股"}市场情绪温度
-          </h3>
-          {loading ? (
-            <SkeletonBlock className="h-12 w-1/2 mb-4" />
-          ) : (
-            <>
-              <div className="flex items-baseline gap-3">
-                <span className={`text-5xl font-light ${
-                  sentInfo.color === "rose" ? "text-rose-400"
-                    : sentInfo.color === "emerald" ? "text-emerald-400"
-                    : "text-slate-300"
-                }`}>
-                  {Math.round(fg.value)}°
-                </span>
-                <span className={`text-xs px-2.5 py-1 rounded-md border font-medium ${
-                  sentInfo.color === "rose"
-                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                    : sentInfo.color === "emerald"
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-slate-800 text-slate-300 border-slate-700"
-                }`}>
-                  {fg.label}
-                </span>
-              </div>
-              {sentiment?.breadth && sentiment.breadth.total > 0 && (
-                <p className="text-slate-500 text-xs mt-4 flex items-center gap-1">
-                  {sentiment.breadth.advance_pct >= 50 ? (
-                    <><TrendingUp className="w-3 h-3 text-emerald-400" /> 上涨占比 {sentiment.breadth.advance_pct}%</>
-                  ) : (
-                    <><TrendingDown className="w-3 h-3 text-rose-400" /> 上涨占比 {sentiment.breadth.advance_pct}%</>
-                  )}
-                  <span className="text-slate-600 ml-1">({sentiment.breadth_scope})</span>
-                </p>
-              )}
-              {sentiment?.headlines?.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  {sentiment.headlines.slice(0, 2).map((h, i) => (
-                    <a key={i} href={h.link} target="_blank" rel="noreferrer"
-                       className="block text-xs text-slate-500 hover:text-slate-300 truncate transition-colors">
-                       1�7 {h.title}
-                    </a>
-                  ))}
+        {items.length === 0 ? (
+          <Card className="py-8 text-center text-sm text-gray-500">
+            今日暂无推荐发布
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {items.slice(0, 6).map((item, i) => (
+              <Card key={i} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-semibold">
+                      {item.ticker}
+                    </span>
+                    <MarketBadge market={item.market} />
+                  </div>
+                  <div className="flex gap-1">
+                    <DirectionBadge direction={item.direction} />
+                    <StrategyBadge strategy={item.strategy} />
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Card 2: Win Rate */}
-        <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden group hover:border-slate-700/80 transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <BarChart2 className="w-16 h-16 text-emerald-400" />
-          </div>
-          <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">迄1�730日推荐胜玄1�7</h3>
-          {loading ? (
-            <SkeletonBlock className="h-12 w-1/2 mb-4" />
-          ) : (
-            <>
-              <div className="flex items-baseline gap-3">
-                <span className={`text-5xl font-light ${
-                  wrValue >= 50 ? "text-emerald-400" : "text-amber-400"
-                }`}>
-                  {wrValue}%
-                </span>
-                <span className={`text-xs px-2.5 py-1 rounded-md border font-medium ${
-                  wrValue >= 50
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                }`}>
-                  {wrLabel}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <p className="text-emerald-400 text-sm font-medium">{wr.wins ?? 0}</p>
-                  <p className="text-slate-600 text-[10px]">盈利</p>
+                <p className="text-xs text-gray-400">{item.name}</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">
+                    评分: {item.score?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-gray-500">
+                    入场: ${item.entry_price?.toFixed(2) ?? "--"}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-rose-400 text-sm font-medium">{wr.losses ?? 0}</p>
-                  <p className="text-slate-600 text-[10px]">亏损</p>
-                </div>
-                <div>
-                  <p className="text-slate-400 text-sm font-medium">{wr.timeouts ?? 0}</p>
-                  <p className="text-slate-600 text-[10px]">超时</p>
-                </div>
-              </div>
-              <p className="text-slate-600 text-[10px] mt-2">
-                已评伄1�7 {wrTotal} 杄1�7 · 待评伄1�7 {wrPending} 杄1�7 · 平均收益 {wr.avg_return_pct?.toFixed(2) ?? "0"}%
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* Card 3: System Status */}
-        <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden group hover:border-slate-700/80 transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Cpu className="w-16 h-16 text-indigo-400" />
+                {item.recommendation_reason && (
+                  <p className="line-clamp-2 text-xs text-gray-500">
+                    {item.recommendation_reason}
+                  </p>
+                )}
+                <Link
+                  to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
+                  className="inline-flex items-center gap-1 text-xs text-brand-400 hover:underline"
+                >
+                  <Eye size={12} /> 详情
+                </Link>
+              </Card>
+            ))}
           </div>
-          <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-4">叄1�7 Agent 状��1�7</h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-              <span className="text-slate-300 text-sm">新闻情绪分析</span>
-              <span className="flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-400/10 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                运行丄1�7
-              </span>
-            </div>
-            <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-              <span className="text-slate-300 text-sm">抢�术形态量匄1�7</span>
-              <span className="flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-400/10 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                运行丄1�7
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-300 text-sm">定时调度噄1�7</span>
-              <span className="flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-400/10 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                运行丄1�7
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recommendations Table */}
-      <section className="bg-slate-900/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-1 shadow-2xl">
-        <div className="bg-slate-950/50 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-medium text-white flex items-center gap-2">
-              今日精��标的1�7
-              {displayMsg && (
-                <span className="text-xs text-amber-400 font-normal ml-2">{displayMsg}</span>
-              )}
-            </h2>
-            <Link
-              to={`/recommendations/${market}`}
-              className="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors bg-indigo-400/10 hover:bg-indigo-400/20 px-3 py-1.5 rounded-lg"
-            >
-              查看完整报告 <ChevronRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          {/* Table Header */}
-          <div className="grid grid-cols-6 gap-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-4 pb-3 border-b border-slate-800/60 hidden md:grid">
-            <div className="col-span-1">标的</div>
-            <div className="col-span-1 text-right">AI综合评分</div>
-            <div className="col-span-1 text-right">策略入场匄1�7</div>
-            <div className="col-span-1 text-right">结构止损</div>
-            <div className="col-span-1 text-right">目标止盈</div>
-            <div className="col-span-1 text-right">执行建议</div>
-          </div>
-
-          <div className="space-y-2">
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center bg-slate-900/30 rounded-xl p-4 border border-slate-800/30 animate-pulse">
-                  <SkeletonBlock className="h-10 w-24" />
-                  <SkeletonBlock className="h-8 w-12 justify-self-end" />
-                  <SkeletonBlock className="h-6 w-20 justify-self-end" />
-                  <SkeletonBlock className="h-6 w-16 justify-self-end" />
-                  <SkeletonBlock className="h-6 w-16 justify-self-end" />
-                  <SkeletonBlock className="h-8 w-20 justify-self-end" />
-                </div>
-              ))
-            ) : items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-                <AlertCircle className="w-12 h-12 text-slate-700 mb-3" />
-                <p>今日暂无符合系统风控标准的推荐标的1�7</p>
-                <p className="text-sm text-slate-600 mt-1">耐心等待市场机会</p>
-              </div>
-            ) : (
-              items.slice(0, 8).map((item, i) => {
-                const score = item.combined_score ?? item.score ?? 0;
-                const action = ActionLabel(item);
-                const entry = item.entry_price
-                  ? `${item.entry_price.toFixed(2)}${item.entry_2 ? " - " + item.entry_2.toFixed(2) : ""}`
-                  : "--";
-                const sl = item.stop_loss ? item.stop_loss.toFixed(2) : "--";
-                const tp = item.take_profit ? item.take_profit.toFixed(2) : "--";
-
-                return (
-                  <Link
-                    key={i}
-                    to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
-                    className="grid grid-cols-2 md:grid-cols-6 gap-4 items-center bg-slate-900/50 hover:bg-slate-800/80 transition-all duration-200 rounded-xl p-4 border border-transparent hover:border-slate-700/50 cursor-pointer"
-                  >
-                    <div className="col-span-2 md:col-span-1">
-                      <p className="text-slate-200 font-medium text-base mb-0.5">{item.name}</p>
-                      <p className="text-slate-500 font-mono text-xs">{item.ticker}</p>
-                    </div>
-
-                    <div className="col-span-1 text-left md:text-right flex items-center md:justify-end gap-2">
-                      <span className="md:hidden text-xs text-slate-500">评分:</span>
-                      <span className={`text-lg font-semibold ${
-                        score >= 75 ? "text-indigo-400" : score >= 60 ? "text-emerald-400" : score >= 45 ? "text-slate-300" : "text-slate-500"
-                      }`}>
-                        {Math.round(score)}
-                      </span>
-                    </div>
-
-                    <div className="col-span-1 text-right font-mono text-sm text-slate-300">
-                      <span className="md:hidden text-xs text-slate-500 block">入场:</span>
-                      {entry}
-                    </div>
-
-                    <div className="col-span-1 text-right font-mono text-sm text-rose-400/80">
-                      <span className="md:hidden text-xs text-slate-500 block">止损:</span>
-                      {sl}
-                    </div>
-
-                    <div className="col-span-1 text-right font-mono text-sm text-emerald-400/80">
-                      <span className="md:hidden text-xs text-slate-500 block">止盈:</span>
-                      {tp}
-                    </div>
-
-                    <div className="col-span-2 md:col-span-1 flex justify-end mt-2 md:mt-0">
-                      <span className={`text-xs px-3 py-1.5 rounded-md font-medium border ${ActionBadgeColor(action)}`}>
-                        {action}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })
-            )}
-          </div>
-        </div>
+        )}
       </section>
     </div>
   );
