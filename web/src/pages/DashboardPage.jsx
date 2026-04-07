@@ -90,7 +90,12 @@ export default function DashboardPage() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {items.slice(0, 6).map((item, i) => (
+            {items.slice(0, 6).map((item, i) => {
+              const isHK = item.market === "hk_stock";
+              const curr = isHK ? "HK$" : "$";
+              const confScore = item.confidence || item.combined_score || item.score || 0;
+              const confColor = confScore >= 70 ? "text-emerald-400" : confScore >= 50 ? "text-indigo-400" : "text-amber-400";
+              return (
               <Card key={i} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -104,15 +109,52 @@ export default function DashboardPage() {
                     <StrategyBadge strategy={item.strategy} />
                   </div>
                 </div>
-                <p className="text-xs text-gray-400">{item.name}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-400">{item.name}</p>
+                  {item.sector && (
+                    <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-400">
+                      {item.sector}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">
-                    评分: {item.score?.toFixed(1) ?? "--"}
+                  <span className={`font-semibold ${confColor}`}>
+                    置信度: {confScore?.toFixed(0)}%
                   </span>
                   <span className="text-gray-500">
-                    入场: ${item.entry_price?.toFixed(2) ?? "--"}
+                    入场: {curr}{item.entry_price?.toFixed(2) ?? "--"}
                   </span>
                 </div>
+                {item.stop_loss && item.take_profit && (
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-rose-400/80">
+                      止损: {curr}{item.stop_loss?.toFixed(2)}
+                    </span>
+                    <span className="text-emerald-400/80">
+                      止盈: {curr}{item.take_profit?.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {item.risk_flags && (() => {
+                  let flags = [];
+                  if (Array.isArray(item.risk_flags)) flags = item.risk_flags;
+                  else if (typeof item.risk_flags === "string") {
+                    try { flags = JSON.parse(item.risk_flags); } catch { flags = item.risk_flags.split(","); }
+                  }
+                  flags = flags.filter(f => f && f !== "[]" && f !== "null");
+                  return flags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {flags.slice(0, 2).map((f, fi) => (
+                        <span key={fi} className="rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-400">
+                          {String(f).replace(/_/g, " ")}
+                        </span>
+                      ))}
+                      {flags.length > 2 && (
+                        <span className="text-[10px] text-rose-400/60">+{flags.length - 2}</span>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
                 {item.recommendation_reason && (
                   <p className="line-clamp-2 text-xs text-gray-500">
                     {item.recommendation_reason}
@@ -125,7 +167,8 @@ export default function DashboardPage() {
                   <Eye size={12} /> 详情
                 </Link>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

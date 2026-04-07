@@ -236,7 +236,14 @@ export default function AnalysisPage() {
               <div className="space-y-2">
                 {(result.news.items || []).slice(0, 5).map((n, i) => (
                   <div key={i} className="text-xs text-gray-400">
-                    <p className="font-medium text-gray-300">{n.title}</p>
+                    {n.link ? (
+                      <a href={n.link} target="_blank" rel="noopener noreferrer"
+                        className="font-medium text-brand-400 hover:underline">
+                        {n.title}
+                      </a>
+                    ) : (
+                      <p className="font-medium text-gray-300">{n.title}</p>
+                    )}
                     <p className="text-gray-600">{n.published} | {n.source}</p>
                   </div>
                 ))}

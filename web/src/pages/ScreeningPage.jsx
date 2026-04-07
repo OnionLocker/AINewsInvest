@@ -47,7 +47,7 @@ export default function ScreeningPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-medium text-white">选股筛��1�7</h1>
+      <h1 className="text-xl font-medium text-white">选股筛��1�7</h1>
 
       <Card>
         <div className="flex flex-wrap items-end gap-4">
@@ -79,7 +79,7 @@ export default function ScreeningPage() {
             className="flex items-center gap-2 rounded-lg bg-indigo-500 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600 disabled:opacity-50"
           >
             {running ? <Spinner size="sm" /> : <Search size={16} />}
-            {running ? "筛��中..." : "弢�始筛逄1�7"}
+            {running ? "筛��中..." : "弢�始筛逄1�7"}
           </button>
         </div>
       </Card>
@@ -87,7 +87,7 @@ export default function ScreeningPage() {
       {results.length > 0 && (
         <section>
           <CardTitle>
-            筛��结构1�7 ({results.length}){" "}
+            筛��结构1�7 ({results.length}){" "}
             {latest?.ref_date && (
               <span className="font-normal text-slate-500">
                 {" "}- {latest.ref_date}
@@ -104,6 +104,10 @@ export default function ScreeningPage() {
                   <th className="px-3 py-2">市场</th>
                   <th className="px-3 py-2 text-right">价格</th>
                   <th className="px-3 py-2 text-right">涨跌</th>
+                  <th className="px-3 py-2 text-right">成交量</th>
+                  <th className="px-3 py-2 text-right">市值</th>
+                  <th className="px-3 py-2 text-right">PE(TTM)</th>
+                  <th className="px-3 py-2 text-right">PB</th>
                   <th className="px-3 py-2 text-right">评分</th>
                   <th className="px-3 py-2"></th>
                 </tr>
@@ -120,6 +124,18 @@ export default function ScreeningPage() {
                     <td className="px-3 py-2"><MarketBadge market={r.market} /></td>
                     <td className="px-3 py-2 text-right font-mono">{r.price?.toFixed(2) ?? "--"}</td>
                     <td className="px-3 py-2 text-right"><PriceChange value={r.change_pct} /></td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-500">
+                      {r.volume ? (r.volume >= 1e9 ? (r.volume / 1e9).toFixed(1) + "B" : (r.volume / 1e6).toFixed(1) + "M") : "--"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-500">
+                      {r.market_cap ? (r.market_cap >= 1e12 ? (r.market_cap / 1e12).toFixed(1) + "T" : r.market_cap >= 1e9 ? (r.market_cap / 1e9).toFixed(1) + "B" : (r.market_cap / 1e6).toFixed(0) + "M") : "--"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-400">
+                      {r.pe_ttm != null && r.pe_ttm > 0 ? r.pe_ttm.toFixed(1) : "--"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-400">
+                      {r.pb != null && r.pb > 0 ? r.pb.toFixed(2) : "--"}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold text-indigo-400">{r.score?.toFixed(1)}</td>
                     <td className="px-3 py-2">
                       <Link
@@ -140,7 +156,7 @@ export default function ScreeningPage() {
       {historyList.length > 0 && (
         <section>
           <CardTitle>
-            <History size={14} className="mr-1 inline" /> 朢�近筛逄1�7
+            <History size={14} className="mr-1 inline" /> 朢�近筛逄1�7
           </CardTitle>
           <div className="space-y-1">
             {historyList.map((h, i) => (
@@ -149,7 +165,7 @@ export default function ScreeningPage() {
                   {h.ref_date} - {h.market}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {h.result_count} 条结构1�7
+                  {h.result_count} 条结构1�7
                 </span>
               </Card>
             ))}

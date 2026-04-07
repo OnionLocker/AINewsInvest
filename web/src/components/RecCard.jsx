@@ -599,6 +599,40 @@ export default function RecCard({ item, rank }) {
           <TechIndicators item={item} />
           <SignalBadges item={item} />
           <AnalysisSection newsReason={item.news_reason} techReason={item.tech_reason} />
+
+          {/* LLM / Fundamental / Valuation reasoning */}
+          {(item.llm_reason || item.fundamental_reason || item.valuation_summary) && (
+            <div className="mt-3 space-y-3">
+              {item.llm_reason && !looksMojibake(item.llm_reason) && (
+                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-indigo-400">
+                    <Lightbulb size={16} />
+                    AI 综合研判
+                  </div>
+                  <p className="text-base font-medium leading-relaxed text-slate-400 whitespace-pre-wrap">{item.llm_reason}</p>
+                </div>
+              )}
+              {item.fundamental_reason && !looksMojibake(item.fundamental_reason) && (
+                <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                    <BarChart3 size={16} className="text-amber-400" />
+                    基本面分析
+                  </div>
+                  <p className="text-base font-medium leading-relaxed text-slate-400">{item.fundamental_reason}</p>
+                </div>
+              )}
+              {item.valuation_summary && !looksMojibake(item.valuation_summary) && (
+                <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                    <Target size={16} className="text-emerald-400" />
+                    估值摘要
+                  </div>
+                  <p className="text-base font-medium leading-relaxed text-slate-400">{item.valuation_summary}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
 
           {/* Position suggestion */}

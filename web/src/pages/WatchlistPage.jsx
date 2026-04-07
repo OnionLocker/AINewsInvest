@@ -86,7 +86,7 @@ export default function WatchlistPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium text-white">
           <Heart size={20} className="mr-2 inline text-rose-400" />
-          自��股
+          自��股
         </h1>
         <div className="flex gap-2">
           <button
@@ -150,7 +150,7 @@ export default function WatchlistPage() {
 
       {items.length === 0 ? (
         <Card className="py-10 text-center text-sm text-slate-500">
-          自��股列表为空，请添加股票〄1�7
+          自��股列表为空，请添加股票〄1�7
         </Card>
       ) : (
         <div className="overflow-x-auto">
@@ -162,7 +162,9 @@ export default function WatchlistPage() {
                 <th className="px-3 py-2">市场</th>
                 <th className="px-3 py-2 text-right">价格</th>
                 <th className="px-3 py-2 text-right">涨跌</th>
-                <th className="px-3 py-2 text-right">成交釄1�7</th>
+                <th className="px-3 py-2 text-right">成交量</th>
+                <th className="px-3 py-2">备注</th>
+                <th className="px-3 py-2 text-right">添加时间</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -181,6 +183,12 @@ export default function WatchlistPage() {
                     <td className="px-3 py-2 text-right"><PriceChange value={q?.change_pct} /></td>
                     <td className="px-3 py-2 text-right text-xs text-slate-500">
                       {q?.volume ? (q.volume / 1e6).toFixed(1) + "M" : "--"}
+                    </td>
+                    <td className="max-w-[150px] truncate px-3 py-2 text-xs text-slate-500" title={item.note || ""}>
+                      {item.note || "--"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[10px] text-slate-500 whitespace-nowrap">
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString("zh-CN") : "--"}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">

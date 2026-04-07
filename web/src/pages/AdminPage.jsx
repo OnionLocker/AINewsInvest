@@ -207,14 +207,40 @@ function BothTablesView() {
               {data[key]?.items?.length > 0 ? (
                 <div className="space-y-1">
                   {data[key].items.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between rounded bg-surface-2 px-2 py-1.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold">{item.ticker}</span>
-                        <MarketBadge market={item.market} />
-                        <DirectionBadge direction={item.direction} />
-                        <StrategyBadge strategy={item.strategy} />
+                    <div key={i} className="rounded bg-surface-2 px-2 py-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-semibold">{item.ticker}</span>
+                          <MarketBadge market={item.market} />
+                          <DirectionBadge direction={item.direction} />
+                          <StrategyBadge strategy={item.strategy} />
+                        </div>
+                        <span className="font-semibold text-indigo-400">{item.score?.toFixed(1)}</span>
                       </div>
-                      <span className="text-gray-500">{item.score?.toFixed(1)}</span>
+                      <div className="mt-1 flex items-center gap-3 text-[10px] text-gray-500">
+                        {item.entry_price != null && (
+                          <span>入场: {Number(item.entry_price).toFixed(2)}</span>
+                        )}
+                        {item.stop_loss != null && (
+                          <span className="text-rose-400/70">止损: {Number(item.stop_loss).toFixed(2)}</span>
+                        )}
+                        {item.take_profit != null && (
+                          <span className="text-emerald-400/70">止盈: {Number(item.take_profit).toFixed(2)}</span>
+                        )}
+                        {(item.confidence || item.combined_score) != null && (
+                          <span className="text-amber-400/70">置信: {Math.round(item.confidence || item.combined_score)}%</span>
+                        )}
+                        {item.risk_flags && (() => {
+                          let flags = Array.isArray(item.risk_flags) ? item.risk_flags : [];
+                          if (typeof item.risk_flags === "string") {
+                            try { flags = JSON.parse(item.risk_flags); } catch { flags = []; }
+                          }
+                          flags = flags.filter(f => f && f !== "[]" && f !== "null");
+                          return flags.length > 0 ? (
+                            <span className="text-rose-400/70">风险: {flags.length}项</span>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
                   ))}
                 </div>

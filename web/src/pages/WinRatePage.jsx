@@ -128,11 +128,16 @@ function DetailsTable({ items }) {
             <th className="py-2 text-left font-medium">{"\u80A1\u7968"}</th>
             <th className="py-2 text-left font-medium">{"\u5E02\u573A"}</th>
             <th className="py-2 text-center font-medium">{"\u65B9\u5411"}</th>
+            <th className="py-2 text-center font-medium">{"\u7B56\u7565"}</th>
             <th className="py-2 text-right font-medium">{"\u5165\u573A\u4EF7"}</th>
             <th className="py-2 text-right font-medium">TP1</th>
             <th className="py-2 text-right font-medium">{"\u6B62\u635F"}</th>
             <th className="py-2 text-right font-medium">{"\u51FA\u573A\u4EF7"}</th>
             <th className="py-2 text-right font-medium">{"\u6536\u76CA"}</th>
+            <th className="py-2 text-center font-medium">{"\u6280\u672F"}</th>
+            <th className="py-2 text-center font-medium">{"\u65B0\u95FB"}</th>
+            <th className="py-2 text-center font-medium">{"\u57FA\u672C"}</th>
+            <th className="py-2 text-center font-medium">{"\u7F6E\u4FE1"}</th>
             <th className="py-2 text-center font-medium">{"\u7ED3\u679C"}</th>
           </tr>
         </thead>
@@ -152,12 +157,47 @@ function DetailsTable({ items }) {
                     {isShort ? "SHORT" : "LONG"}
                   </span>
                 </td>
+                <td className="py-2 text-center">
+                  {it.strategy && (
+                    <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-300">
+                      {it.strategy === "swing" ? "\u6CE2\u6BB5" : it.strategy === "short_term" ? "\u77ED\u7EBF" : it.strategy}
+                    </span>
+                  )}
+                </td>
                 <td className="py-2 text-right text-slate-200">{it.entry_price?.toFixed(2)}</td>
                 <td className="py-2 text-right text-[#34d399]">{it.take_profit?.toFixed(2)}</td>
                 <td className="py-2 text-right text-[#fb7185]">{it.stop_loss?.toFixed(2)}</td>
                 <td className="py-2 text-right text-slate-200">{it.exit_price?.toFixed(2) || "--"}</td>
                 <td className="py-2 text-right font-medium" style={{ color: (it.return_pct || 0) >= 0 ? "#34d399" : "#fb7185" }}>
                   {it.return_pct != null ? `${it.return_pct >= 0 ? "+" : ""}${it.return_pct.toFixed(2)}%` : "--"}
+                </td>
+                <td className="py-2 text-center">
+                  {it.tech_score != null ? (
+                    <span className="text-[11px] tabular-nums" style={{ color: it.tech_score >= 60 ? "#34d399" : it.tech_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                      {Math.round(it.tech_score)}
+                    </span>
+                  ) : <span className="text-slate-600">--</span>}
+                </td>
+                <td className="py-2 text-center">
+                  {it.news_score != null ? (
+                    <span className="text-[11px] tabular-nums" style={{ color: it.news_score >= 60 ? "#34d399" : it.news_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                      {Math.round(it.news_score)}
+                    </span>
+                  ) : <span className="text-slate-600">--</span>}
+                </td>
+                <td className="py-2 text-center">
+                  {it.fundamental_score != null ? (
+                    <span className="text-[11px] tabular-nums" style={{ color: it.fundamental_score >= 60 ? "#34d399" : it.fundamental_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                      {Math.round(it.fundamental_score)}
+                    </span>
+                  ) : <span className="text-slate-600">--</span>}
+                </td>
+                <td className="py-2 text-center">
+                  {(it.confidence || it.combined_score) != null ? (
+                    <span className="text-[11px] font-semibold tabular-nums" style={{ color: (it.confidence || it.combined_score) >= 65 ? "#34d399" : (it.confidence || it.combined_score) >= 45 ? "#f59e0b" : "#fb7185" }}>
+                      {Math.round(it.confidence || it.combined_score)}
+                    </span>
+                  ) : <span className="text-slate-600">--</span>}
                 </td>
                 <td className="py-2 text-center">
                   <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
