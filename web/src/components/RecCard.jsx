@@ -500,6 +500,7 @@ const SECTOR_CN = {
 
 export default function RecCard({ item, rank }) {
   const [expanded, setExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const isUS = item.market === "us_stock";
   const isShort = item.direction === "short";
   const currencySymbol = isUS ? "$ " : "HK$ ";
@@ -589,76 +590,111 @@ export default function RecCard({ item, rank }) {
       {/* Expanded Detail */}
       {expanded && (
         <div className="border-t border-slate-800/80 px-5 pb-5">
-          {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
-          {!showTrading && (
-            <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-base font-medium text-slate-400">
-              {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
-            </div>
-          )}
-          <ScoreDimensions item={item} />
-          <TechIndicators item={item} />
-          <SignalBadges item={item} />
-          <AnalysisSection newsReason={item.news_reason} techReason={item.tech_reason} />
-
-          {/* LLM / Fundamental / Valuation reasoning */}
-          {(item.llm_reason || item.fundamental_reason || item.valuation_summary) && (
-            <div className="mt-3 space-y-3">
-              {item.llm_reason && !looksMojibake(item.llm_reason) && (
-                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-indigo-400">
-                    <Lightbulb size={16} />
-                    AI 综合研判
-                  </div>
-                  <p className="text-base font-medium leading-relaxed text-slate-400 whitespace-pre-wrap">{item.llm_reason}</p>
-                </div>
-              )}
-              {item.fundamental_reason && !looksMojibake(item.fundamental_reason) && (
-                <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
-                    <BarChart3 size={16} className="text-amber-400" />
-                    基本面分析
-                  </div>
-                  <p className="text-base font-medium leading-relaxed text-slate-400">{item.fundamental_reason}</p>
-                </div>
-              )}
-              {item.valuation_summary && !looksMojibake(item.valuation_summary) && (
-                <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
-                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
-                    <Target size={16} className="text-emerald-400" />
-                    估值摘要
-                  </div>
-                  <p className="text-base font-medium leading-relaxed text-slate-400">{item.valuation_summary}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
-
-          {/* Position suggestion */}
-          <div className={`mt-3 rounded-xl border p-4 ${
-            isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-amber-500/20 bg-amber-500/10"
-          }`}>
-            <div className={`mb-1 flex items-center gap-2 text-base font-bold ${
-              isShort ? "text-fuchsia-400" : "text-amber-400"
-            }`}>
-              <Crosshair size={16} />
-              {isShort ? "\u505a\u7a7a\u4ed3\u4f4d\u5efa\u8bae" : "\u4ed3\u4f4d\u5efa\u8bae"}
-            </div>
-            <p className={`text-base font-medium ${isShort ? "text-fuchsia-400/70" : "text-amber-400/70"}`}>
-              {isShort
-                ? (score >= 70
-                  ? "\u505a\u7a7a\u4fe1\u53f7\u8f83\u5f3a\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u7a7a\u5934\u4ed3\u4f4d\uff0c\u4f46\u6ce8\u610f\u8bbe\u7f6e\u4e25\u683c\u6b62\u635f\u3002"
-                  : score >= 50
-                    ? "\u505a\u7a7a\u4fe1\u53f7\u4e2d\u7b49\uff0c\u5efa\u8bae\u8f7b\u4ed3\u8bd5\u63a2\uff0c\u4e25\u683c\u6b62\u635f\u3002"
-                    : "\u505a\u7a7a\u4fe1\u53f7\u504f\u5f31\uff0c\u5efa\u8bae\u89c2\u671b\u4e3a\u4e3b\u3002")
-                : (score >= 70
-                  ? "\u8bc4\u5206\u8f83\u9ad8\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u4ed3\u4f4d\uff0c\u5efa\u8bae\u4e94\u6210\u4ed3\u4ee5\u4e0a\u53c2\u4e0e\u3002"
-                  : score >= 50
-                    ? "\u8bc4\u5206\u4e2d\u7b49\uff0c\u5efa\u8bae\u4e09\u6210\u4ed3\u8bd5\u63a2\u6027\u53c2\u4e0e\uff0c\u8bbe\u597d\u6b62\u635f\u3002"
-                    : "\u8bc4\u5206\u504f\u4f4e\uff0c\u5efa\u8bae\u8f7b\u4ed3\u6216\u89c2\u671b\uff0c\u7b49\u5f85\u66f4\u597d\u65f6\u673a\u3002")}
-            </p>
+          {/* Tab Bar */}
+          <div className="mt-3 flex border-b border-slate-800/60">
+            {["\u4ea4\u6613\u8ba1\u5212", "\u5206\u6790\u8be6\u60c5", "\u98ce\u9669\u8bc4\u4f30"].map((label, idx) => (
+              <button
+                key={label}
+                onClick={(e) => { e.stopPropagation(); setActiveTab(idx); }}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === idx
+                    ? "border-b-2 border-indigo-400 text-indigo-400"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          {/* Tab 0: Trading Plan */}
+          {activeTab === 0 && (
+            <div>
+              {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
+              {!showTrading && (
+                <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-base font-medium text-slate-400">
+                  {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
+                </div>
+              )}
+              {/* Position suggestion */}
+              <div className={`mt-3 rounded-xl border p-4 ${
+                isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-amber-500/20 bg-amber-500/10"
+              }`}>
+                <div className={`mb-1 flex items-center gap-2 text-base font-bold ${
+                  isShort ? "text-fuchsia-400" : "text-amber-400"
+                }`}>
+                  <Crosshair size={16} />
+                  {isShort ? "\u505a\u7a7a\u4ed3\u4f4d\u5efa\u8bae" : "\u4ed3\u4f4d\u5efa\u8bae"}
+                </div>
+                <p className={`text-base font-medium ${isShort ? "text-fuchsia-400/70" : "text-amber-400/70"}`}>
+                  {isShort
+                    ? (score >= 70
+                      ? "\u505a\u7a7a\u4fe1\u53f7\u8f83\u5f3a\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u7a7a\u5934\u4ed3\u4f4d\uff0c\u4f46\u6ce8\u610f\u8bbe\u7f6e\u4e25\u683c\u6b62\u635f\u3002"
+                      : score >= 50
+                        ? "\u505a\u7a7a\u4fe1\u53f7\u4e2d\u7b49\uff0c\u5efa\u8bae\u8f7b\u4ed3\u8bd5\u63a2\uff0c\u4e25\u683c\u6b62\u635f\u3002"
+                        : "\u505a\u7a7a\u4fe1\u53f7\u504f\u5f31\uff0c\u5efa\u8bae\u89c2\u671b\u4e3a\u4e3b\u3002")
+                    : (score >= 70
+                      ? "\u8bc4\u5206\u8f83\u9ad8\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u4ed3\u4f4d\uff0c\u5efa\u8bae\u4e94\u6210\u4ed3\u4ee5\u4e0a\u53c2\u4e0e\u3002"
+                      : score >= 50
+                        ? "\u8bc4\u5206\u4e2d\u7b49\uff0c\u5efa\u8bae\u4e09\u6210\u4ed3\u8bd5\u63a2\u6027\u53c2\u4e0e\uff0c\u8bbe\u597d\u6b62\u635f\u3002"
+                        : "\u8bc4\u5206\u504f\u4f4e\uff0c\u5efa\u8bae\u8f7b\u4ed3\u6216\u89c2\u671b\uff0c\u7b49\u5f85\u66f4\u597d\u65f6\u673a\u3002")}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Tab 1: Analysis Details */}
+          {activeTab === 1 && (
+            <div>
+              <ScoreDimensions item={item} />
+              <TechIndicators item={item} />
+              <SignalBadges item={item} />
+              <AnalysisSection newsReason={item.news_reason} techReason={item.tech_reason} />
+              {(item.llm_reason || item.fundamental_reason || item.valuation_summary) && (
+                <div className="mt-3 space-y-3">
+                  {item.llm_reason && !looksMojibake(item.llm_reason) && (
+                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-indigo-400">
+                        <Lightbulb size={16} />
+                        AI 综合研判
+                      </div>
+                      <p className="text-base font-medium leading-relaxed text-slate-400 whitespace-pre-wrap">{item.llm_reason}</p>
+                    </div>
+                  )}
+                  {item.fundamental_reason && !looksMojibake(item.fundamental_reason) && (
+                    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                        <BarChart3 size={16} className="text-amber-400" />
+                        基本面分析
+                      </div>
+                      <p className="text-base font-medium leading-relaxed text-slate-400">{item.fundamental_reason}</p>
+                    </div>
+                  )}
+                  {item.valuation_summary && !looksMojibake(item.valuation_summary) && (
+                    <div className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-slate-200">
+                        <Target size={16} className="text-emerald-400" />
+                        估值摘要
+                      </div>
+                      <p className="text-base font-medium leading-relaxed text-slate-400">{item.valuation_summary}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Risk Assessment */}
+          {activeTab === 2 && (
+            <div>
+              <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
+              {!item.risk_flags && !item.risk_note && (
+                <div className="mt-4 rounded-xl border border-slate-800/60 bg-slate-950/50 p-4 text-base font-medium text-slate-400">
+                  暂无风险提示信息
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

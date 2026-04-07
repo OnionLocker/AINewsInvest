@@ -3,9 +3,13 @@ import api from "../api";
 import Card, { CardTitle } from "../components/Card";
 import Spinner, { PageLoader } from "../components/Spinner";
 import Badge, { MarketBadge, DirectionBadge, StrategyBadge } from "../components/Badge";
+import { useToast } from "../components/Toast";
+import { useConfirm } from "../components/ConfirmDialog";
 import { Shield, Users, Play, Upload, RefreshCw } from "lucide-react";
 
 function UsersSection() {
+  const toast = useToast();
+  const confirmDialog = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -20,17 +24,22 @@ function UsersSection() {
         prev.map((u) => (u.username === username ? { ...u, is_active: active } : u))
       );
     } catch (err) {
-      alert(err.message);
+      toast({ type: "error", message: err.message });
     }
   }
 
   async function deleteUser(username) {
-    if (!confirm("确定删除用户 " + username + " ?")) return;
+    const ok = await confirmDialog({
+      title: "删除用户",
+      message: `确定删除用户 ${username} ？此操作不可撤销。`,
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.adminDeleteUser(username);
       setUsers((prev) => prev.filter((u) => u.username !== username));
     } catch (err) {
-      alert(err.message);
+      toast({ type: "error", message: err.message });
     }
   }
 
@@ -71,6 +80,7 @@ function UsersSection() {
 }
 
 function RecommendationRunner() {
+  const toast = useToast();
   const [market, setMarket] = useState("us_stock");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState(null);
@@ -104,7 +114,7 @@ function RecommendationRunner() {
       await api.adminRunRecs({ market, force: false, note: "" });
       startPolling();
     } catch (err) {
-      alert(err.message);
+      toast({ type: "error", message: err.message });
       setRunning(false);
     }
   }
@@ -112,9 +122,9 @@ function RecommendationRunner() {
   async function handlePublish() {
     try {
       const result = await api.adminPublish("", market);
-      alert("已发布 " + result.count + " 条推荐 (" + market + ")");
+      toast({ type: "success", message: "已发布 " + result.count + " 条推荐 (" + market + ")" });
     } catch (err) {
-      alert(err.message);
+      toast({ type: "error", message: err.message });
     }
   }
 
@@ -169,6 +179,7 @@ function RecommendationRunner() {
 }
 
 function BothTablesView() {
+  const toast = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -178,7 +189,7 @@ function BothTablesView() {
       const d = await api.adminBothTables("");
       setData(d);
     } catch (err) {
-      alert(err.message);
+      toast({ type: "error", message: err.message });
     }
     setLoading(false);
   }

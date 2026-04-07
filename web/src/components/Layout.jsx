@@ -17,13 +17,13 @@ import {
 import { useState } from "react";
 
 const navItems = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盄1�7" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
   { to: "/recommendations/us", icon: DollarSign, label: "美股推荐" },
   { to: "/recommendations/hk", icon: TrendingUp, label: "港股推荐" },
   { to: "/win-rate", icon: Trophy, label: "胜率统计" },
-  { to: "/screening", icon: Search, label: "选股筛��1�7" },
+  { to: "/screening", icon: Search, label: "选股筛选" },
   { to: "/analysis", icon: BarChart3, label: "深度分析" },
-  { to: "/watchlist", icon: Heart, label: "自��股" },
+  { to: "/watchlist", icon: Heart, label: "自选股" },
 ];
 
 function SideLink({ to, icon: Icon, label, onClick }) {
@@ -87,7 +87,7 @@ export default function Layout() {
           <div>
             <p className="text-xs text-slate-300">{user?.username}</p>
             {user?.is_admin && (
-              <span className="text-[10px] text-indigo-400">管理呄1�7</span>
+              <span className="text-[10px] text-indigo-400">管理员</span>
             )}
           </div>
         </div>
@@ -96,7 +96,7 @@ export default function Layout() {
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-500 transition-colors hover:text-rose-400 hover:bg-rose-400/5"
         >
           <LogOut size={14} />
-          逢�出登彄1�7
+          退出登录
         </button>
       </div>
     </nav>

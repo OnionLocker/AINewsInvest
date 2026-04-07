@@ -1,11 +1,44 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../api";
 import Card, { CardTitle } from "../components/Card";
-import { PageLoader } from "../components/Spinner";
+import Skeleton from "../components/Skeleton";
 import PriceChange from "../components/PriceChange";
 import { MarketBadge, DirectionBadge, StrategyBadge } from "../components/Badge";
-import { TrendingUp, Star, Eye } from "lucide-react";
+import { Star, Eye, ArrowRight } from "lucide-react";
+
+function IndexSkeleton() {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="rounded-xl bg-surface-1 p-6 ring-1 ring-white/5">
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="mt-3 h-8 w-28" />
+          <Skeleton className="mt-3 h-4 w-16" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-4 w-24" />
+            <div className="ml-auto flex gap-2">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [indices, setIndices] = useState([]);
@@ -22,8 +55,6 @@ export default function DashboardPage() {
     );
   }, []);
 
-  if (loading) return <PageLoader />;
-
   const items = recs?.items || [];
 
   return (
@@ -32,38 +63,42 @@ export default function DashboardPage() {
 
       <section>
         <CardTitle>市场概览</CardTitle>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {indices.map((idx, i) => {
-            const isHK = idx.market === "hk_stock";
-            const bg = isHK
-              ? "bg-gradient-to-br from-amber-950/80 via-amber-900/40 to-surface-1"
-              : "bg-gradient-to-br from-brand-950/80 via-brand-900/40 to-surface-1";
-            return (
-              <div
-                key={i}
-                className={`rounded-xl ${bg} p-6 shadow-lg ring-1 ring-white/5`}
-              >
-                <div className="space-y-3">
-                  <p className="text-base font-semibold text-gray-300 tracking-wide">
-                    {idx.name || idx.symbol}
-                  </p>
-                  <p className="text-3xl font-bold tabular-nums tracking-tight text-white">
-                    {idx.price?.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }) ?? "--"}
-                  </p>
-                  <PriceChange value={idx.change_pct} size="xl" />
+        {loading ? (
+          <IndexSkeleton />
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {indices.map((idx, i) => {
+              const isHK = idx.market === "hk_stock";
+              const bg = isHK
+                ? "bg-gradient-to-br from-amber-950/80 via-amber-900/40 to-surface-1"
+                : "bg-gradient-to-br from-brand-950/80 via-brand-900/40 to-surface-1";
+              return (
+                <div
+                  key={i}
+                  className={`rounded-xl ${bg} p-6 shadow-lg ring-1 ring-white/5`}
+                >
+                  <div className="space-y-3">
+                    <p className="text-base font-semibold text-gray-300 tracking-wide">
+                      {idx.name || idx.symbol}
+                    </p>
+                    <p className="text-3xl font-bold tabular-nums tracking-tight text-white">
+                      {idx.price?.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }) ?? "--"}
+                    </p>
+                    <PriceChange value={idx.change_pct} size="xl" />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          {indices.length === 0 && (
-            <Card className="col-span-full text-center text-sm text-gray-500">
-              暂无市场数据
-            </Card>
-          )}
-        </div>
+              );
+            })}
+            {indices.length === 0 && (
+              <Card className="col-span-full text-center text-sm text-gray-500">
+                暂无市场数据
+              </Card>
+            )}
+          </div>
+        )}
       </section>
 
       <section>
@@ -72,101 +107,83 @@ export default function DashboardPage() {
             <Star size={16} className="mr-1 inline" />
             今日推荐
           </CardTitle>
-          <Link
-            to="/recommendations/us"
-            className="text-xs text-brand-400 hover:underline"
-          >
-            查看全部
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              to="/recommendations/us"
+              className="flex items-center gap-1 text-xs text-brand-400 hover:underline"
+            >
+              美股 <ArrowRight size={10} />
+            </Link>
+            <Link
+              to="/recommendations/hk"
+              className="flex items-center gap-1 text-xs text-amber-400 hover:underline"
+            >
+              港股 <ArrowRight size={10} />
+            </Link>
+          </div>
         </div>
 
         {recs?.display_message && (
           <p className="mb-3 text-xs text-yellow-400">{recs.display_message}</p>
         )}
 
-        {items.length === 0 ? (
+        {loading ? (
+          <RecSkeleton />
+        ) : items.length === 0 ? (
           <Card className="py-8 text-center text-sm text-gray-500">
             今日暂无推荐发布
           </Card>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {items.slice(0, 6).map((item, i) => {
+          <div className="space-y-2">
+            {items.slice(0, 8).map((item, i) => {
               const isHK = item.market === "hk_stock";
               const curr = isHK ? "HK$" : "$";
-              const confScore = item.confidence || item.combined_score || item.score || 0;
-              const confColor = confScore >= 70 ? "text-emerald-400" : confScore >= 50 ? "text-indigo-400" : "text-amber-400";
+              const conf = item.confidence || item.combined_score || item.score || 0;
+              const confColor = conf >= 70 ? "#34d399" : conf >= 50 ? "#818cf8" : "#f59e0b";
+              const confW = Math.max(0, Math.min(100, conf));
               return (
-              <Card key={i} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold">
-                      {item.ticker}
-                    </span>
+                <Link
+                  key={i}
+                  to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
+                  className="flex items-center gap-3 rounded-xl border border-slate-800/80 bg-slate-900/40 px-4 py-3 shadow-lg backdrop-blur-md transition-all hover:border-slate-700/50 hover:bg-slate-800/40"
+                >
+                  {/* Left: ticker + badges */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-sm font-bold text-slate-200">{item.ticker}</span>
+                    <span className="hidden truncate text-xs text-slate-500 sm:inline">{item.name}</span>
                     <MarketBadge market={item.market} />
-                  </div>
-                  <div className="flex gap-1">
                     <DirectionBadge direction={item.direction} />
                     <StrategyBadge strategy={item.strategy} />
                   </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-400">{item.name}</p>
-                  {item.sector && (
-                    <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-400">
-                      {item.sector}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className={`font-semibold ${confColor}`}>
-                    置信度: {confScore?.toFixed(0)}%
-                  </span>
-                  <span className="text-gray-500">
-                    入场: {curr}{item.entry_price?.toFixed(2) ?? "--"}
-                  </span>
-                </div>
-                {item.stop_loss && item.take_profit && (
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-rose-400/80">
-                      止损: {curr}{item.stop_loss?.toFixed(2)}
-                    </span>
-                    <span className="text-emerald-400/80">
-                      止盈: {curr}{item.take_profit?.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {item.risk_flags && (() => {
-                  let flags = [];
-                  if (Array.isArray(item.risk_flags)) flags = item.risk_flags;
-                  else if (typeof item.risk_flags === "string") {
-                    try { flags = JSON.parse(item.risk_flags); } catch { flags = item.risk_flags.split(","); }
-                  }
-                  flags = flags.filter(f => f && f !== "[]" && f !== "null");
-                  return flags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {flags.slice(0, 2).map((f, fi) => (
-                        <span key={fi} className="rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-400">
-                          {String(f).replace(/_/g, " ")}
-                        </span>
-                      ))}
-                      {flags.length > 2 && (
-                        <span className="text-[10px] text-rose-400/60">+{flags.length - 2}</span>
-                      )}
+
+                  {/* Center: price + confidence */}
+                  <div className="ml-auto flex items-center gap-4">
+                    <div className="hidden items-center gap-2 sm:flex">
+                      <span className="text-sm font-semibold tabular-nums text-slate-200">
+                        {curr}{item.price?.toFixed(2) ?? "--"}
+                      </span>
+                      <PriceChange value={item.change_pct} />
                     </div>
-                  ) : null;
-                })()}
-                {item.recommendation_reason && (
-                  <p className="line-clamp-2 text-xs text-gray-500">
-                    {item.recommendation_reason}
-                  </p>
-                )}
-                <Link
-                  to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
-                  className="inline-flex items-center gap-1 text-xs text-brand-400 hover:underline"
-                >
-                  <Eye size={12} /> 详情
+
+                    {/* Confidence mini bar */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-slate-800">
+                        <span className="block h-full rounded-full" style={{ width: `${confW}%`, background: confColor }} />
+                      </span>
+                      <span className="text-xs font-semibold tabular-nums" style={{ color: confColor }}>{Math.round(conf)}</span>
+                    </div>
+
+                    {/* SL/TP compact */}
+                    {item.stop_loss && item.take_profit && (
+                      <div className="hidden text-[10px] lg:flex lg:gap-2">
+                        <span className="text-rose-400/70">SL {item.stop_loss.toFixed(1)}</span>
+                        <span className="text-emerald-400/70">TP {item.take_profit.toFixed(1)}</span>
+                      </div>
+                    )}
+
+                    <Eye size={14} className="text-slate-600" />
+                  </div>
                 </Link>
-              </Card>
               );
             })}
           </div>

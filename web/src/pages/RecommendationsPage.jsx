@@ -4,6 +4,7 @@ import api from "../api";
 import PriceChange from "../components/PriceChange";
 import RecCard from "../components/RecCard";
 import MarketSentimentPanel from "../components/MarketSentimentPanel";
+import Skeleton from "../components/Skeleton";
 import { Calendar, Clock, Trophy, TrendingUp, TrendingDown } from "lucide-react";
 
 const MARKET_CFG = {
@@ -52,9 +53,6 @@ function IndexCard({ idx }) {
   );
 }
 
-function Skeleton({ className }) {
-  return <div className={`animate-pulse rounded-lg bg-slate-800/50 ${className}`} />;
-}
 
 function WinRateBanner({ market }) {
   const [wr, setWr] = useState(null);

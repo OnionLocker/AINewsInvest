@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Trophy, TrendingUp, TrendingDown, Clock, RefreshCw, Target, ShieldAlert } from "lucide-react";
 
 const API = "/api";
@@ -115,100 +115,234 @@ function MarketCard({ title, data, color }) {
   );
 }
 
+function SortHeader({ label, field, sortKey, sortDir, onSort, className = "" }) {
+  const active = sortKey === field;
+  return (
+    <th
+      className={`cursor-pointer select-none hover:text-slate-200 ${className}`}
+      onClick={() => onSort(field)}
+    >
+      {label}
+      {active && <span className="ml-1">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>}
+    </th>
+  );
+}
+
 function DetailsTable({ items }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+
+  function handleSort(field) {
+    if (sortKey === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(field); setSortDir('desc'); }
+  }
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return items;
+    return [...items].sort((a, b) => {
+      const va = a[sortKey] ?? -Infinity, vb = b[sortKey] ?? -Infinity;
+      if (typeof va === 'string' && typeof vb === 'string') {
+        return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
+      return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    });
+  }, [items, sortKey, sortDir]);
+
   if (!items || items.length === 0) {
     return <p className="text-sm text-slate-400 text-center py-8">{"\u6682\u65E0\u8BC4\u4F30\u8BB0\u5F55"}</p>;
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-slate-800/80 text-slate-400">
-            <th className="py-2 text-left font-medium">{"\u65E5\u671F"}</th>
-            <th className="py-2 text-left font-medium">{"\u80A1\u7968"}</th>
-            <th className="py-2 text-left font-medium">{"\u5E02\u573A"}</th>
-            <th className="py-2 text-center font-medium">{"\u65B9\u5411"}</th>
-            <th className="py-2 text-center font-medium">{"\u7B56\u7565"}</th>
-            <th className="py-2 text-right font-medium">{"\u5165\u573A\u4EF7"}</th>
-            <th className="py-2 text-right font-medium">TP1</th>
-            <th className="py-2 text-right font-medium">{"\u6B62\u635F"}</th>
-            <th className="py-2 text-right font-medium">{"\u51FA\u573A\u4EF7"}</th>
-            <th className="py-2 text-right font-medium">{"\u6536\u76CA"}</th>
-            <th className="py-2 text-center font-medium">{"\u6280\u672F"}</th>
-            <th className="py-2 text-center font-medium">{"\u65B0\u95FB"}</th>
-            <th className="py-2 text-center font-medium">{"\u57FA\u672C"}</th>
-            <th className="py-2 text-center font-medium">{"\u7F6E\u4FE1"}</th>
-            <th className="py-2 text-center font-medium">{"\u7ED3\u679C"}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it, i) => {
-            const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
-            const o = outcomeMap[it.outcome] || outcomeMap.timeout;
-            const mktLabel = it.market === "us_stock" ? "\u7F8E\u80A1" : "\u6E2F\u80A1";
-            const isShort = it.direction === "short";
-            return (
-              <tr key={it.id || i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                <td className="py-2 text-slate-200">{it.run_date}</td>
-                <td className="py-2 font-medium text-slate-200">{it.ticker} <span className="text-slate-400">{it.name}</span></td>
-                <td className="py-2 text-slate-400">{mktLabel}</td>
-                <td className="py-2 text-center">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${isShort ? "bg-[#d946ef]/15 text-[#d946ef]" : "bg-[#34d399]/15 text-[#34d399]"}`}>
-                    {isShort ? "SHORT" : "LONG"}
-                  </span>
-                </td>
-                <td className="py-2 text-center">
-                  {it.strategy && (
-                    <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-300">
-                      {it.strategy === "swing" ? "\u6CE2\u6BB5" : it.strategy === "short_term" ? "\u77ED\u7EBF" : it.strategy}
-                    </span>
-                  )}
-                </td>
-                <td className="py-2 text-right text-slate-200">{it.entry_price?.toFixed(2)}</td>
-                <td className="py-2 text-right text-[#34d399]">{it.take_profit?.toFixed(2)}</td>
-                <td className="py-2 text-right text-[#fb7185]">{it.stop_loss?.toFixed(2)}</td>
-                <td className="py-2 text-right text-slate-200">{it.exit_price?.toFixed(2) || "--"}</td>
-                <td className="py-2 text-right font-medium" style={{ color: (it.return_pct || 0) >= 0 ? "#34d399" : "#fb7185" }}>
-                  {it.return_pct != null ? `${it.return_pct >= 0 ? "+" : ""}${it.return_pct.toFixed(2)}%` : "--"}
-                </td>
-                <td className="py-2 text-center">
-                  {it.tech_score != null ? (
-                    <span className="text-[11px] tabular-nums" style={{ color: it.tech_score >= 60 ? "#34d399" : it.tech_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
-                      {Math.round(it.tech_score)}
-                    </span>
-                  ) : <span className="text-slate-600">--</span>}
-                </td>
-                <td className="py-2 text-center">
-                  {it.news_score != null ? (
-                    <span className="text-[11px] tabular-nums" style={{ color: it.news_score >= 60 ? "#34d399" : it.news_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
-                      {Math.round(it.news_score)}
-                    </span>
-                  ) : <span className="text-slate-600">--</span>}
-                </td>
-                <td className="py-2 text-center">
-                  {it.fundamental_score != null ? (
-                    <span className="text-[11px] tabular-nums" style={{ color: it.fundamental_score >= 60 ? "#34d399" : it.fundamental_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
-                      {Math.round(it.fundamental_score)}
-                    </span>
-                  ) : <span className="text-slate-600">--</span>}
-                </td>
-                <td className="py-2 text-center">
-                  {(it.confidence || it.combined_score) != null ? (
-                    <span className="text-[11px] font-semibold tabular-nums" style={{ color: (it.confidence || it.combined_score) >= 65 ? "#34d399" : (it.confidence || it.combined_score) >= 45 ? "#f59e0b" : "#fb7185" }}>
-                      {Math.round(it.confidence || it.combined_score)}
-                    </span>
-                  ) : <span className="text-slate-600">--</span>}
-                </td>
-                <td className="py-2 text-center">
-                  <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                    style={{ color: o.color, background: o.bg + "18" }}>{o.text}</span>
-                </td>
+    <>
+      {/* Desktop table */}
+      <div className="hidden lg:block">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-slate-800/80 text-slate-400">
+                <SortHeader label={"\u65E5\u671F"} field="run_date" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="py-2 text-left font-medium" />
+                <th className="py-2 text-left font-medium">{"\u80A1\u7968"}</th>
+                <th className="py-2 text-left font-medium">{"\u5E02\u573A"}</th>
+                <th className="py-2 text-center font-medium">{"\u65B9\u5411"}</th>
+                <th className="py-2 text-center font-medium">{"\u7B56\u7565"}</th>
+                <th className="py-2 text-right font-medium">{"\u5165\u573A\u4EF7"}</th>
+                <th className="py-2 text-right font-medium">TP1</th>
+                <th className="py-2 text-right font-medium">{"\u6B62\u635F"}</th>
+                <th className="py-2 text-right font-medium">{"\u51FA\u573A\u4EF7"}</th>
+                <SortHeader label={"\u6536\u76CA"} field="return_pct" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="py-2 text-right font-medium" />
+                <th className="py-2 text-center font-medium">{"\u6280\u672F"}</th>
+                <th className="py-2 text-center font-medium">{"\u65B0\u95FB"}</th>
+                <th className="py-2 text-center font-medium">{"\u57FA\u672C"}</th>
+                <th className="py-2 text-center font-medium">{"\u7F6E\u4FE1"}</th>
+                <SortHeader label={"\u7ED3\u679C"} field="outcome" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="py-2 text-center font-medium" />
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody>
+              {sorted.map((it, i) => {
+                const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
+                const o = outcomeMap[it.outcome] || outcomeMap.timeout;
+                const mktLabel = it.market === "us_stock" ? "\u7F8E\u80A1" : "\u6E2F\u80A1";
+                const isShort = it.direction === "short";
+                return (
+                  <tr key={it.id || i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                    <td className="py-2 text-slate-200">{it.run_date}</td>
+                    <td className="py-2 font-medium text-slate-200">{it.ticker} <span className="text-slate-400">{it.name}</span></td>
+                    <td className="py-2 text-slate-400">{mktLabel}</td>
+                    <td className="py-2 text-center">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${isShort ? "bg-[#d946ef]/15 text-[#d946ef]" : "bg-[#34d399]/15 text-[#34d399]"}`}>
+                        {isShort ? "SHORT" : "LONG"}
+                      </span>
+                    </td>
+                    <td className="py-2 text-center">
+                      {it.strategy && (
+                        <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-300">
+                          {it.strategy === "swing" ? "\u6CE2\u6BB5" : it.strategy === "short_term" ? "\u77ED\u7EBF" : it.strategy}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 text-right text-slate-200">{it.entry_price?.toFixed(2)}</td>
+                    <td className="py-2 text-right text-[#34d399]">{it.take_profit?.toFixed(2)}</td>
+                    <td className="py-2 text-right text-[#fb7185]">{it.stop_loss?.toFixed(2)}</td>
+                    <td className="py-2 text-right text-slate-200">{it.exit_price?.toFixed(2) || "--"}</td>
+                    <td className="py-2 text-right font-medium" style={{ color: (it.return_pct || 0) >= 0 ? "#34d399" : "#fb7185" }}>
+                      {it.return_pct != null ? `${it.return_pct >= 0 ? "+" : ""}${it.return_pct.toFixed(2)}%` : "--"}
+                    </td>
+                    <td className="py-2 text-center">
+                      {it.tech_score != null ? (
+                        <span className="text-[11px] tabular-nums" style={{ color: it.tech_score >= 60 ? "#34d399" : it.tech_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                          {Math.round(it.tech_score)}
+                        </span>
+                      ) : <span className="text-slate-600">--</span>}
+                    </td>
+                    <td className="py-2 text-center">
+                      {it.news_score != null ? (
+                        <span className="text-[11px] tabular-nums" style={{ color: it.news_score >= 60 ? "#34d399" : it.news_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                          {Math.round(it.news_score)}
+                        </span>
+                      ) : <span className="text-slate-600">--</span>}
+                    </td>
+                    <td className="py-2 text-center">
+                      {it.fundamental_score != null ? (
+                        <span className="text-[11px] tabular-nums" style={{ color: it.fundamental_score >= 60 ? "#34d399" : it.fundamental_score >= 40 ? "#e2e8f0" : "#fb7185" }}>
+                          {Math.round(it.fundamental_score)}
+                        </span>
+                      ) : <span className="text-slate-600">--</span>}
+                    </td>
+                    <td className="py-2 text-center">
+                      {(it.confidence || it.combined_score) != null ? (
+                        <span className="text-[11px] font-semibold tabular-nums" style={{ color: (it.confidence || it.combined_score) >= 65 ? "#34d399" : (it.confidence || it.combined_score) >= 45 ? "#f59e0b" : "#fb7185" }}>
+                          {Math.round(it.confidence || it.combined_score)}
+                        </span>
+                      ) : <span className="text-slate-600">--</span>}
+                    </td>
+                    <td className="py-2 text-center">
+                      <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                        style={{ color: o.color, background: o.bg + "18" }}>{o.text}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="lg:hidden space-y-2">
+        {sorted.map((it, i) => {
+          const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
+          const o = outcomeMap[it.outcome] || outcomeMap.timeout;
+          const isShort = it.direction === "short";
+          const cardKey = it.id || i;
+          const isExpanded = expandedId === cardKey;
+          const scoreColor = (v) => v >= 60 ? "#34d399" : v >= 40 ? "#e2e8f0" : "#fb7185";
+          const confValue = it.confidence || it.combined_score;
+          const confColor = confValue >= 65 ? "#34d399" : confValue >= 45 ? "#f59e0b" : "#fb7185";
+
+          return (
+            <div
+              key={cardKey}
+              className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3 cursor-pointer active:bg-slate-800/40 transition-colors"
+              onClick={() => setExpandedId(isExpanded ? null : cardKey)}
+            >
+              {/* Top row: date + outcome */}
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-slate-400">{it.run_date}</span>
+                <span className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                  style={{ color: o.color, background: o.bg + "18" }}>{o.text}</span>
+              </div>
+
+              {/* Main: ticker + name + direction */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-semibold text-slate-200">{it.ticker}</span>
+                <span className="text-xs text-slate-400 truncate">{it.name}</span>
+                <span className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${isShort ? "bg-[#d946ef]/15 text-[#d946ef]" : "bg-[#34d399]/15 text-[#34d399]"}`}>
+                  {isShort ? "SHORT" : "LONG"}
+                </span>
+              </div>
+
+              {/* Price row */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-slate-400">{it.entry_price?.toFixed(2)}</span>
+                <span className="text-slate-600">{"\u2192"}</span>
+                <span className="text-slate-200">{it.exit_price?.toFixed(2) || "--"}</span>
+                <span className="ml-auto font-medium" style={{ color: (it.return_pct || 0) >= 0 ? "#34d399" : "#fb7185" }}>
+                  {it.return_pct != null ? `${it.return_pct >= 0 ? "+" : ""}${it.return_pct.toFixed(2)}%` : "--"}
+                </span>
+              </div>
+
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="mt-3 border-t border-slate-800/50 pt-3 space-y-2">
+                  {/* Strategy + SL/TP */}
+                  <div className="flex items-center gap-3 text-xs">
+                    {it.strategy && (
+                      <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-300">
+                        {it.strategy === "swing" ? "\u6CE2\u6BB5" : it.strategy === "short_term" ? "\u77ED\u7EBF" : it.strategy}
+                      </span>
+                    )}
+                    <span className="text-slate-400">
+                      SL <span className="text-[#fb7185]">{it.stop_loss?.toFixed(2) || "--"}</span>
+                    </span>
+                    <span className="text-slate-400">
+                      TP <span className="text-[#34d399]">{it.take_profit?.toFixed(2) || "--"}</span>
+                    </span>
+                  </div>
+
+                  {/* Scores grid */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="rounded-lg bg-slate-900/60 px-2 py-1.5 text-center">
+                      <p className="text-[10px] text-slate-500">{"\u6280\u672F"}</p>
+                      {it.tech_score != null ? (
+                        <p className="text-xs font-semibold tabular-nums" style={{ color: scoreColor(it.tech_score) }}>{Math.round(it.tech_score)}</p>
+                      ) : <p className="text-xs text-slate-600">--</p>}
+                    </div>
+                    <div className="rounded-lg bg-slate-900/60 px-2 py-1.5 text-center">
+                      <p className="text-[10px] text-slate-500">{"\u65B0\u95FB"}</p>
+                      {it.news_score != null ? (
+                        <p className="text-xs font-semibold tabular-nums" style={{ color: scoreColor(it.news_score) }}>{Math.round(it.news_score)}</p>
+                      ) : <p className="text-xs text-slate-600">--</p>}
+                    </div>
+                    <div className="rounded-lg bg-slate-900/60 px-2 py-1.5 text-center">
+                      <p className="text-[10px] text-slate-500">{"\u57FA\u672C"}</p>
+                      {it.fundamental_score != null ? (
+                        <p className="text-xs font-semibold tabular-nums" style={{ color: scoreColor(it.fundamental_score) }}>{Math.round(it.fundamental_score)}</p>
+                      ) : <p className="text-xs text-slate-600">--</p>}
+                    </div>
+                    <div className="rounded-lg bg-slate-900/60 px-2 py-1.5 text-center">
+                      <p className="text-[10px] text-slate-500">{"\u7F6E\u4FE1"}</p>
+                      {confValue != null ? (
+                        <p className="text-xs font-semibold tabular-nums" style={{ color: confColor }}>{Math.round(confValue)}</p>
+                      ) : <p className="text-xs text-slate-600">--</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
