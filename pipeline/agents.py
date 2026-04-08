@@ -18,7 +18,7 @@ import pandas as pd
 from loguru import logger
 
 from analysis.llm_client import agent_analyze
-from analysis.news_fetcher import fetch_news
+from analysis.news_fetcher import fetch_news, news_quality_report
 from pipeline.config import get_config
 from pipeline.skills.news_skill import (
     build_news_skill_input, call_news_skill, skill_output_to_legacy as news_to_legacy,
@@ -59,10 +59,12 @@ def _build_news_payload(
     from analysis.news_fetcher import fetch_market_news
 
     items = []
+    _news_quality_samples: list[dict] = []  # collect quality reports per ticker
     for c in enriched:
         ticker = c["ticker"]
         mkt = c.get("market", market)
         news_items = fetch_news(ticker, mkt, limit=12)
+        _news_quality_samples.append(news_quality_report(news_items))
         news_summaries = []
         for n in news_items[:12]:
             entry: dict[str, Any] = {
@@ -100,11 +102,23 @@ def _build_news_payload(
         for m in market_context[:10]
     ]
 
+    # Aggregate news quality across all candidates
+    _agg_quality = {
+        "avg_items": round(sum(q["item_count"] for q in _news_quality_samples) / max(1, len(_news_quality_samples)), 1),
+        "avg_sources": round(sum(q["source_count"] for q in _news_quality_samples) / max(1, len(_news_quality_samples)), 1),
+        "has_premium_pct": round(sum(1 for q in _news_quality_samples if q["has_premium"]) / max(1, len(_news_quality_samples)) * 100),
+        "overall_tier": "good" if all(q["quality_tier"] == "good" for q in _news_quality_samples)
+                        else "poor" if all(q["quality_tier"] == "poor" for q in _news_quality_samples)
+                        else "fair",
+        "suggested_weight_factor": round(sum(q["suggested_weight_factor"] for q in _news_quality_samples) / max(1, len(_news_quality_samples)), 2),
+    }
+
     return {
         "market": market,
         "candidate_count": len(items),
         "market_context": market_headlines,
         "candidates": items,
+        "news_quality": _agg_quality,
     }
 
 
@@ -123,7 +137,6 @@ def _normalize_news_results(results: list[dict]) -> list[dict]:
             "analysis": str(r.get("analysis", ""))[:500],
             "risk_flags": list(r.get("risk_flags") or []),
             "risk_note": str(r.get("risk_note", ""))[:200],
-            "sector_bonus": _safe_int(r.get("sector_bonus", 0)),
             "themes": list(r.get("themes") or []),
         })
     return normalized
@@ -187,7 +200,10 @@ def run_news_filter(
         passed.append(c)
 
     bypass_count = 0
+    MAX_BYPASS = 5  # Cap to prevent runaway candidate lists
     for ns, c in scored[top_n:]:
+        if bypass_count >= MAX_BYPASS:
+            break
         if c["ticker"] not in passed_tickers and _check_tech_bypass(c):
             passed.append(c)
             passed_tickers.add(c["ticker"])
@@ -277,18 +293,27 @@ def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
 
 
 def _compute_rsi(closes: list[float], period: int = 14) -> float:
-    """Relative Strength Index."""
+    """Relative Strength Index — Wilder's EMA smoothing.
+
+    Uses the same algorithm as technical.py (_rsi_wilder) to avoid
+    inconsistencies between fallback scoring and indicator computation.
+    """
     if len(closes) < period + 1:
         return 50.0
-    gains, losses = [], []
+    gains = []
+    losses = []
     for i in range(1, len(closes)):
         diff = closes[i] - closes[i - 1]
         gains.append(max(diff, 0))
         losses.append(max(-diff, 0))
-    gains = gains[-(period):]
-    losses = losses[-(period):]
-    avg_gain = sum(gains) / period
-    avg_loss = sum(losses) / period
+
+    # Wilder's smoothing: first average is SMA, then EMA with alpha = 1/period
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
@@ -357,12 +382,48 @@ def _compute_obv_trend(closes: list[float], volumes: list[float], period: int = 
     return "neutral"
 
 
-def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
-    """Deterministic fallback when Tech Agent fails.
-    Uses pre-computed Layer 2 data for signal-based scoring.
+def _continuous_tech_score(value: float, breakpoints: list[float], scores: list[float]) -> float:
+    """Piecewise linear interpolation for continuous tech scoring.
+
+    Given breakpoints [b0, b1, ..., bn] and scores [s0, s1, ..., sn],
+    linearly interpolates between adjacent pairs. Values outside the
+    range clamp to the nearest endpoint score.
+    """
+    if value <= breakpoints[0]:
+        return scores[0]
+    if value >= breakpoints[-1]:
+        return scores[-1]
+    for i in range(len(breakpoints) - 1):
+        if breakpoints[i] <= value <= breakpoints[i + 1]:
+            t = (value - breakpoints[i]) / (breakpoints[i + 1] - breakpoints[i])
+            return scores[i] + t * (scores[i + 1] - scores[i])
+    return 0.0
+
+
+def fallback_technical_scores(
+    enriched: list[dict],
+    regime: dict | None = None,
+) -> list[dict]:
+    """Deterministic fallback when Tech Agent fails — v2 continuous scoring.
+
+    v2 changes over v1:
+    - Continuous scoring for RSI, Bollinger, MACD (no more step functions)
+    - Market regime awareness (crisis/bearish reduces bullish bonuses)
+    - Fixed overbought double-penalty (single continuous penalty, no cap)
+    - Volatility penalty proportional to severity
+    - Daily/weekly trend conflict detection
     """
     cfg = get_config()
     fb = cfg.agent.fallback
+
+    # Regime multiplier: in crisis, bullish signals less trustworthy
+    regime_level = (regime or {}).get("level", "normal")
+    regime_bull_mult = {
+        "normal": 1.0, "cautious": 0.85, "bearish": 0.65, "crisis": 0.40,
+    }.get(regime_level, 1.0)
+    regime_bear_mult = {
+        "normal": 1.0, "cautious": 1.1, "bearish": 1.25, "crisis": 1.4,
+    }.get(regime_level, 1.0)
 
     results = []
     for c in enriched:
@@ -372,35 +433,69 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
             continue
 
         signals = c.get("signals", {})
-        score = fb.base_score
+        score = float(fb.base_score)
+        risk_flags: list[str] = []
 
+        # --- MA alignment ---
         if signals.get("ma_bullish_align"):
-            score += fb.ma_bullish_bonus
+            score += fb.ma_bullish_bonus * regime_bull_mult
+            if signals.get("ma_short_golden_cross"):
+                score += fb.ma_short_golden_bonus * regime_bull_mult
         elif signals.get("ma_bearish_align"):
-            score -= fb.ma_bearish_penalty
+            score -= fb.ma_bearish_penalty * regime_bear_mult
 
+        # --- Volume ratio (continuous) ---
         vol_ratio = _safe_float(c.get("volume_ratio", 1.0))
-        if vol_ratio >= fb.volume_ratio_strong:
-            score += fb.volume_strong_bonus
-        elif vol_ratio >= fb.volume_ratio_medium:
-            score += fb.volume_medium_bonus
+        vol_score = _continuous_tech_score(
+            vol_ratio,
+            [0.5, 0.7, 1.0, 1.3, 1.5, 2.0, 3.0],
+            [-4.0, -2.0, 0.0, 4.0, 8.0, 10.0, 10.0],
+        )
+        score += vol_score * regime_bull_mult if vol_score > 0 else vol_score
 
-        if signals.get("overbought_bias"):
-            score = min(score, 65)
-        elif _safe_float(c.get("ma20_bias_pct")) > 10:
-            score -= 5
+        # --- Overbought / MA20 bias (continuous, replaces old cap+penalty) ---
+        ma20_bias = _safe_float(c.get("ma20_bias_pct"))
+        if ma20_bias > 5:
+            overbought_penalty = _continuous_tech_score(
+                ma20_bias,
+                [5.0, 10.0, 15.0, 20.0, 30.0],
+                [0.0, -4.0, -10.0, -16.0, -20.0],
+            )
+            score += overbought_penalty * regime_bear_mult
+            if ma20_bias > 15:
+                risk_flags.append("\u8d85\u4e70\u504f\u79bb")
 
+        # --- Volume-price divergence ---
         if signals.get("volume_price_divergence"):
-            score -= 12
+            score -= 12.0 * regime_bear_mult
+            risk_flags.append("\u91cf\u4ef7\u80cc\u79bb")
 
+        # --- Volatility (proportional, not just -3) ---
+        vol_20d = _safe_float(c.get("volatility_20d", 0.02))
+        vol_penalty = _continuous_tech_score(
+            vol_20d,
+            [0.01, 0.02, 0.03, 0.04, 0.06],
+            [2.0, 0.0, -3.0, -6.0, -10.0],
+        )
+        score += vol_penalty
         if c.get("volatility_class") == "high":
-            score -= 3
+            risk_flags.append("\u9ad8\u6ce2\u52a8")
 
+        # --- Weekly trend + conflict detection ---
         weekly_trend = c.get("weekly_trend", "neutral")
+        daily_bullish = signals.get("ma_bullish_align", False)
+        daily_bearish = signals.get("ma_bearish_align", False)
+
         if weekly_trend == "bearish":
-            score -= 8
+            score -= 8.0 * regime_bear_mult
         elif weekly_trend == "bullish":
-            score += 3
+            score += 3.0 * regime_bull_mult
+
+        if daily_bullish and weekly_trend == "bearish":
+            score -= 4.0
+            risk_flags.append("\u65e5\u5468\u8d8b\u52bf\u77db\u76fe")
+        elif daily_bearish and weekly_trend == "bullish":
+            score += 2.0
 
         rsi_val = None
         macd_hist_val = None
@@ -417,54 +512,67 @@ def fallback_technical_scores(enriched: list[dict]) -> list[dict]:
             if len(kl_closes) >= 14:
                 rsi = _compute_rsi(kl_closes)
                 rsi_val = rsi
-                if rsi > 75:
-                    score -= 8
-                elif rsi > 70:
-                    score -= 4
-                elif rsi < 25:
-                    score += 6
-                elif rsi < 30:
-                    score += 3
+                # Continuous RSI:
+                # 15→+10, 25→+6, 30→+3, 40→+1, 50→0, 60→-1, 70→-4, 75→-8, 85→-12
+                rsi_score = _continuous_tech_score(
+                    rsi,
+                    [15.0, 25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0, 85.0],
+                    [10.0, 6.0, 3.0, 1.0, 0.0, -1.0, -4.0, -8.0, -12.0],
+                )
+                score += rsi_score
 
             if len(kl_closes) >= 20:
                 bb_pos = _compute_bollinger_position(kl_closes)
                 bb_pos_val = bb_pos
-                if bb_pos > 0.95:
-                    score -= 5
-                elif bb_pos < 0.05:
-                    score += 4
+                # Continuous BB:
+                # 0.0→+6, 0.05→+4, 0.20→+1, 0.50→0, 0.80→-1, 0.95→-5, 1.0→-7
+                bb_score = _continuous_tech_score(
+                    bb_pos,
+                    [0.0, 0.05, 0.20, 0.50, 0.80, 0.95, 1.0],
+                    [6.0, 4.0, 1.0, 0.0, -1.0, -5.0, -7.0],
+                )
+                score += bb_score
 
                 macd_val, signal_val, macd_hist = _compute_macd(kl_closes)
                 macd_hist_val = macd_hist
-                if macd_hist > 0 and macd_val > signal_val:
-                    score += 3
-                elif macd_hist < 0 and macd_val < signal_val:
-                    score -= 3
+                # MACD: normalize by price for cross-stock comparability
+                macd_norm = macd_hist / max(kl_closes[-1], 1.0) * 100
+                macd_score = _continuous_tech_score(
+                    macd_norm,
+                    [-0.5, -0.2, 0.0, 0.2, 0.5],
+                    [-5.0, -3.0, 0.0, 3.0, 5.0],
+                )
+                score += macd_score
 
             if len(kl_closes) >= 14 and len(kl_volumes) >= 14:
                 obv_trend = _compute_obv_trend(kl_closes, kl_volumes)
                 obv_trend_val = obv_trend
                 if obv_trend == "bullish":
-                    score += 3
+                    score += 3.0 * regime_bull_mult
                 elif obv_trend == "bearish":
-                    score -= 3
+                    score -= 3.0 * regime_bear_mult
 
-        score = max(0, min(100, score))
+        score = max(0, min(100, int(round(score))))
 
-        action = "buy" if score >= 60 else ("hold" if score >= 45 else "avoid")
+        # Action thresholds (regime-adjusted)
+        buy_threshold = 60 if regime_level in ("normal", "cautious") else 65
+        hold_threshold = 45 if regime_level in ("normal", "cautious") else 50
+
+        action = "buy" if score >= buy_threshold else ("hold" if score >= hold_threshold else "avoid")
         risk_note = ""
-        if signals.get("overbought_bias"):
-            action = "hold"
+        if "\u8d85\u4e70\u504f\u79bb" in risk_flags:
+            if score >= buy_threshold:
+                action = "hold"
             risk_note = "MA20\u504f\u79bb\u8d85\u8fc715%\uff0c\u6709\u8d85\u4e70\u98ce\u9669"
-        elif signals.get("volume_price_divergence"):
+        elif "\u91cf\u4ef7\u80cc\u79bb" in risk_flags:
             risk_note = "20\u65e5\u9ad8\u70b9\u91cf\u4ef7\u80cc\u79bb"
 
         results.append({
             "ticker": ticker,
             "technical_score": score,
             "action": action,
-            "analysis": "\u57fa\u4e8e\u89c4\u5219\u7684\u6280\u672f\u9762\u8bc4\u5206",
-            "risk_flags": [],
+            "analysis": "\u57fa\u4e8e\u89c4\u5219\u7684\u6280\u672f\u9762\u8bc4\u5206(v2: \u8fde\u7eed\u51fd\u6570+\u4f53\u5236\u611f\u77e5)",
+            "risk_flags": risk_flags,
             "risk_note": risk_note,
             "position_note": "",
             "rsi": rsi_val,
@@ -813,55 +921,96 @@ def _compute_short_trade_params(
 # Layer 5: Score synthesis
 # ---------------------------------------------------------------------------
 
-def _compute_confidence(ns: int, ts: int, news: dict, tech: dict) -> int:
-    """Compute REAL confidence — how much agreement between signals.
+def _compute_confidence(
+    ns: int, ts: int, news: dict, tech: dict,
+    fundamental_score: int = 50,
+) -> int:
+    """Compute confidence — how much agreement and conviction across signals.
 
-    Confidence is NOT the same as score. A stock can score 70 with low
-    confidence (agents disagree) or score 70 with high confidence (agents agree).
+    v6: Multi-dimensional confidence with continuous adjustments.
+
+    Dimensions:
+    1. Direction agreement (news vs tech action)
+    2. Score convergence (gap between news & tech scores)
+    3. Fundamental alignment (does fundamental score agree?)
+    4. Risk flag penalty (more flags = less confident)
+    5. Signal source quality (LLM-backed vs fallback)
+
+    Returns: confidence in [10, 95]
     """
-    confidence = 50  # baseline
+    confidence = 50.0  # baseline
 
-    # --- Direction agreement (most important) ---
+    # --- 1. Direction agreement (most important, ~30pt swing) ---
     news_action = _classify_action(str(news.get("action", "hold")))
     tech_action = _classify_action(str(tech.get("action", "hold")))
 
-    # Both bullish
-    if news_action in ("buy", "strong_buy") and tech_action in ("buy", "strong_buy"):
-        confidence += 25
-    # Both bearish
-    elif news_action in ("avoid", "short") and tech_action in ("avoid", "short"):
-        confidence += 20
-    # One bullish, one bearish = strong contradiction
-    elif (news_action in ("buy", "strong_buy") and tech_action in ("avoid", "short")) or \
-         (tech_action in ("buy", "strong_buy") and news_action in ("avoid", "short")):
-        confidence -= 30
-    # One hold, one directional = mild uncertainty
+    bull_actions = ("buy", "strong_buy")
+    bear_actions = ("avoid", "short")
+
+    if news_action in bull_actions and tech_action in bull_actions:
+        # Both bullish — high agreement
+        bonus = 20.0
+        if news_action == "strong_buy" and tech_action == "strong_buy":
+            bonus = 28.0  # extra conviction for both strong_buy
+        elif news_action == "strong_buy" or tech_action == "strong_buy":
+            bonus = 24.0
+        confidence += bonus
+    elif news_action in bear_actions and tech_action in bear_actions:
+        confidence += 18.0  # bearish agreement (slightly lower — shorts are harder)
+    elif (news_action in bull_actions and tech_action in bear_actions) or \
+         (tech_action in bull_actions and news_action in bear_actions):
+        confidence -= 28.0  # direct contradiction — very bad
+    elif news_action == "hold" and tech_action == "hold":
+        confidence -= 5.0  # both uncertain
     elif news_action == "hold" or tech_action == "hold":
-        confidence += 5
+        confidence += 3.0  # one directional, one neutral — mild
 
-    # --- Score agreement ---
+    # --- 2. Score convergence (continuous, ~20pt swing) ---
     score_gap = abs(ns - ts)
-    if score_gap <= 10:
-        confidence += 15  # very aligned
-    elif score_gap <= 20:
-        confidence += 5   # reasonably aligned
-    elif score_gap >= 35:
-        confidence -= 15  # strongly divergent
+    # Gap: 0→+15, 10→+10, 20→+3, 30→-5, 40→-12, 50+→-18
+    gap_adj = _continuous_tech_score(
+        float(score_gap),
+        [0.0, 10.0, 20.0, 30.0, 40.0, 50.0],
+        [15.0, 10.0, 3.0, -5.0, -12.0, -18.0],
+    )
+    confidence += gap_adj
 
-    # --- Both scores strong in same direction ---
-    if ns >= 65 and ts >= 65:
-        confidence += 10  # double confirmation
-    elif ns <= 35 and ts <= 35:
-        confidence += 10  # double bearish confirmation
+    # --- 3. Fundamental alignment (~8pt swing) ---
+    # If news+tech say buy but fundamentals are terrible, lower confidence
+    avg_signal = (ns + ts) / 2
+    if avg_signal >= 60 and fundamental_score >= 55:
+        confidence += 5.0  # signals + fundamentals agree
+    elif avg_signal >= 60 and fundamental_score < 35:
+        confidence -= 8.0  # bullish signals but terrible fundamentals
+    elif avg_signal <= 40 and fundamental_score <= 35:
+        confidence += 4.0  # bearish agreement with weak fundamentals
 
-    # --- Risk flag count penalty ---
+    # --- 4. Both scores strong in same direction ---
+    if ns >= 70 and ts >= 70:
+        confidence += 8.0  # double strong bullish
+    elif ns <= 30 and ts <= 30:
+        confidence += 6.0  # double strong bearish
+
+    # --- 5. Risk flag penalty (continuous) ---
     n_risks = len(news.get("risk_flags") or []) + len(tech.get("risk_flags") or [])
-    if n_risks >= 5:
-        confidence -= 10
-    elif n_risks >= 3:
-        confidence -= 5
+    if n_risks > 0:
+        # 1 flag → -2, 3 flags → -6, 5 flags → -12, 8+ → -18
+        risk_penalty = _continuous_tech_score(
+            float(n_risks),
+            [0.0, 1.0, 3.0, 5.0, 8.0],
+            [0.0, -2.0, -6.0, -12.0, -18.0],
+        )
+        confidence += risk_penalty
 
-    return max(10, min(95, confidence))
+    # --- 6. Signal source quality ---
+    # If tech analysis is from LLM (has structured skill output), it's more reliable
+    if tech.get("_skill_output"):
+        confidence += 3.0  # LLM-validated tech score
+    # If analysis text is the fallback boilerplate, slightly less confident
+    if "v2:" in str(tech.get("analysis", "")) or not tech.get("analysis"):
+        confidence -= 2.0  # fallback-only scoring
+
+    return max(10, min(95, int(round(confidence))))
 
 
 def synthesize_agent_results(
@@ -880,6 +1029,8 @@ def synthesize_agent_results(
     - No sector_bonus inflation
     - Breakout vs pullback entry routing
     - R:R reject (not force-adjust)
+    v5 changes:
+    - News quality aware: auto-reduce news_weight when data is degraded
     """
     cfg = get_config()
     syn = cfg.synthesis
@@ -891,47 +1042,74 @@ def synthesize_agent_results(
         news_weight = syn.news_weight
         tech_weight = syn.tech_weight
 
-    # Adaptive weight adjustment based on historical win-rate data
-    try:
-        from pipeline.analyzer import analyze_score_effectiveness
-        effectiveness = analyze_score_effectiveness(min_records=50)
-        if effectiveness.get("status") == "ok":
-            corrs = effectiveness.get("correlation_summary", {})
-            nc = (corrs.get("news_score") or {}).get("correlation")
-            tc = (corrs.get("tech_score") or {}).get("correlation")
-            if nc is not None and tc is not None:
-                prior_blend = 0.7
-                if nc < 0.05:
-                    adj_news = max(0.05, news_weight * 0.5)
-                elif nc > 0.2:
-                    adj_news = min(0.35, news_weight * 1.3)
-                else:
-                    adj_news = news_weight
-                if tc > 0.2:
-                    adj_tech = min(0.70, tech_weight * 1.2)
-                elif tc < 0.05:
-                    adj_tech = max(0.30, tech_weight * 0.8)
-                else:
-                    adj_tech = tech_weight
-                news_weight = news_weight * prior_blend + adj_news * (1 - prior_blend)
-                tech_weight = tech_weight * prior_blend + adj_tech * (1 - prior_blend)
-                total = news_weight + tech_weight + syn.fundamental_weight
-                news_weight /= total
-                tech_weight /= total
-                logger.info(f"Adaptive weights: news={news_weight:.2f} tech={tech_weight:.2f} (nc={nc:.3f} tc={tc:.3f})")
-    except Exception as e:
-        logger.debug(f"Adaptive weights skipped: {e}")
+    # --- v5: News data quality check ---
+    # Compute aggregate news quality from what sources actually provided
+    nc_cfg = cfg.news
+    has_premium_sources = bool(nc_cfg.finnhub_key) or bool(nc_cfg.marketaux_key)
+    if not has_premium_sources:
+        # No premium news APIs configured — significantly reduce news influence
+        news_quality_factor = 0.5
+        logger.info(
+            f"News quality: no premium sources (Finnhub/MarketAux keys empty). "
+            f"Reducing news_weight by {1 - news_quality_factor:.0%}"
+        )
+        news_weight *= news_quality_factor
+        # Re-normalize weights
+        total_w = news_weight + tech_weight + syn.fundamental_weight
+        news_weight /= total_w
+        tech_weight /= total_w
+        logger.info(
+            f"Adjusted weights: news={news_weight:.3f} tech={tech_weight:.3f} "
+            f"fundamental={syn.fundamental_weight / total_w:.3f}"
+        )
 
-    min_confidence = syn.min_confidence
-    quality_threshold = syn.quality_threshold
+    # Adaptive weight adjustment based on historical win-rate data
+    # v6: Disabled in crisis/bearish — historical correlations unreliable during regime shifts
+    if regime_level in ("normal", "cautious"):
+        try:
+            from pipeline.analyzer import analyze_score_effectiveness
+            effectiveness = analyze_score_effectiveness(min_records=50)
+            if effectiveness.get("status") == "ok":
+                corrs = effectiveness.get("correlation_summary", {})
+                nc = (corrs.get("news_score") or {}).get("correlation")
+                tc = (corrs.get("tech_score") or {}).get("correlation")
+                if nc is not None and tc is not None:
+                    prior_blend = 0.7
+                    if nc < 0.05:
+                        adj_news = max(0.05, news_weight * 0.5)
+                    elif nc > 0.2:
+                        adj_news = min(0.35, news_weight * 1.3)
+                    else:
+                        adj_news = news_weight
+                    if tc > 0.2:
+                        adj_tech = min(0.70, tech_weight * 1.2)
+                    elif tc < 0.05:
+                        adj_tech = max(0.30, tech_weight * 0.8)
+                    else:
+                        adj_tech = tech_weight
+                    news_weight = news_weight * prior_blend + adj_news * (1 - prior_blend)
+                    tech_weight = tech_weight * prior_blend + adj_tech * (1 - prior_blend)
+                    total = news_weight + tech_weight + syn.fundamental_weight
+                    news_weight /= total
+                    tech_weight /= total
+                    logger.info(f"Adaptive weights: news={news_weight:.2f} tech={tech_weight:.2f} (nc={nc:.3f} tc={tc:.3f})")
+        except Exception as e:
+            logger.debug(f"Adaptive weights skipped: {e}")
+    else:
+        logger.info(f"Adaptive weights disabled in {regime_level} regime")
+
+    min_score = syn.min_confidence  # v6: renamed semantically — this is a score threshold
+    quality_threshold = max(syn.quality_threshold, 55)  # v6: safety floor — never show trades for <55
 
     regime_level = (regime or {}).get("level", "normal")
     if regime_level == "bearish":
-        min_confidence = min(95, min_confidence + 10)
-        logger.info(f"Bearish regime: min_confidence raised to {min_confidence}")
+        min_score = min(95, min_score + 10)
+        quality_threshold = min(90, quality_threshold + 5)
+        logger.info(f"Bearish regime: min_score raised to {min_score}")
     elif regime_level == "crisis":
-        min_confidence = min(95, min_confidence + 20)
-        logger.info(f"Crisis regime: min_confidence raised to {min_confidence}")
+        min_score = min(95, min_score + 20)
+        quality_threshold = min(90, quality_threshold + 10)
+        logger.info(f"Crisis regime: min_score raised to {min_score}")
 
     if max_count is None:
         max_count = cfg.max_recommendations
@@ -945,6 +1123,7 @@ def synthesize_agent_results(
     all_scored: list[dict] = []
     skipped_hold = 0
     skipped_contradiction = 0
+    skipped_rr = 0
 
     for c in enriched:
         ticker = c["ticker"]
@@ -957,13 +1136,24 @@ def synthesize_agent_results(
         ns = _safe_int(news.get("news_score", 0))
         ts = _safe_int(tech.get("technical_score", 0))
 
-        if not news and tech:
+        # v6: Cross-fill with source penalty — if one signal is missing,
+        # we fill a diluted estimate AND penalize confidence later
+        _has_news = bool(news)
+        _has_tech = bool(tech)
+        if not _has_news and _has_tech:
             ns = int(NEUTRAL + (ts - NEUTRAL) * BLEND)
-        elif news and not tech:
+        elif _has_news and not _has_tech:
             ts = int(NEUTRAL + (ns - NEUTRAL) * BLEND)
 
-        # --- FIX 1: Real confidence (agent agreement) ---
-        confidence = _compute_confidence(ns, ts, news, tech)
+        # --- FIX 1: Real confidence (agent agreement + fundamentals) ---
+        fs = _safe_int(c.get("fundamental_score", 50))
+        confidence = _compute_confidence(ns, ts, news, tech, fundamental_score=fs)
+
+        # v6: Penalize confidence when one signal source is missing/synthetic
+        if not _has_news:
+            confidence = max(10, confidence - 12)
+        if not _has_tech:
+            confidence = max(10, confidence - 15)  # tech missing is worse
 
         # --- FIX 2: Filter contradictory signals ---
         news_action = _classify_action(str(news.get("action", "hold")))
@@ -986,7 +1176,7 @@ def synthesize_agent_results(
             continue
 
         # --- Combined score (no sector_bonus inflation) ---
-        fs = _safe_int(c.get("fundamental_score", 50))
+        # fs already computed above for confidence calculation
         fw = syn.fundamental_weight
         if fw > 0:
             total_w = news_weight + tech_weight + fw
@@ -1042,7 +1232,10 @@ def synthesize_agent_results(
 
         # --- FIX 5: R:R reject — if trade params are invalid, skip ---
         if trade.get("_rejected"):
-            logger.debug(f"R:R reject {ticker}: insufficient reward-to-risk")
+            logger.warning(
+                f"R:R reject {ticker}: insufficient reward-to-risk, skipping recommendation"
+            )
+            skipped_rr += 1
             continue
 
         is_quality = combined >= quality_threshold and confidence >= 50
@@ -1147,28 +1340,34 @@ def synthesize_agent_results(
             "_tech_skill_output": tech.get("_skill_output"),
         })
 
-    if skipped_hold or skipped_contradiction:
+    if skipped_hold or skipped_contradiction or skipped_rr:
         logger.info(
             f"Synthesis filter: skipped {skipped_hold} hold + "
-            f"{skipped_contradiction} contradictions"
+            f"{skipped_contradiction} contradictions + {skipped_rr} R:R rejects"
         )
 
-    # Sort by combined_score * confidence (reward conviction, not just score)
-    all_scored.sort(
-        key=lambda x: x["combined_score"] * (x["confidence"] / 100.0),
-        reverse=True,
-    )
+    # v6: conviction_score = score × (confidence/100)^0.7
+    # The exponent 0.7 means confidence matters but doesn't dominate.
+    # A 75-score / 80-confidence stock beats a 70-score / 90-confidence stock.
+    for s in all_scored:
+        s["conviction_score"] = round(
+            s["combined_score"] * (s["confidence"] / 100.0) ** 0.7, 2
+        )
 
+    all_scored.sort(key=lambda x: x["conviction_score"], reverse=True)
+
+    # v6: Dual filter — score AND confidence must pass thresholds
+    min_conf_threshold = 50  # absolute confidence floor
     filtered = [
         s for s in all_scored
-        if s["combined_score"] >= min_confidence and s["confidence"] >= 50
+        if s["combined_score"] >= min_score and s["confidence"] >= min_conf_threshold
     ]
 
     if not filtered:
         top_score = all_scored[0]["combined_score"] if all_scored else 0
         top_conf = all_scored[0]["confidence"] if all_scored else 0
         logger.info(
-            f"No stocks passed min_confidence={min_confidence} "
+            f"No stocks passed min_score={min_score} & min_conf={min_conf_threshold} "
             f"(top: score={top_score}, conf={top_conf}). Sit out today."
         )
         return []
@@ -1259,15 +1458,21 @@ def _suggest_position_pct(
 def _limit_sector_concentration(
     items: list[dict], max_ratio: float = 0.4,
 ) -> list[dict]:
-    """Ensure no single sector exceeds max_ratio of the final list."""
+    """Ensure no single sector exceeds max_ratio of the final list.
+
+    v6: Uses real sector field (from yfinance financials) instead of themes[0].
+    """
     if not items or len(items) <= 2:
         return items
     max_per = max(1, int(len(items) * max_ratio))
     counts: dict[str, int] = {}
     selected: list[dict] = []
     for item in items:
-        themes = item.get("themes") or []
-        sector = themes[0] if themes else "_other"
+        # v6: Prefer real sector, fall back to themes, then _other
+        sector = item.get("sector", "")
+        if not sector:
+            themes = item.get("themes") or []
+            sector = themes[0] if themes else "_other"
         cnt = counts.get(sector, 0)
         if cnt >= max_per:
             continue
@@ -1409,6 +1614,8 @@ def _batched_tech_agent(
     market: str,
     max_retries: int,
     progress_cb: Callable[[dict], None] | None = None,
+    regime: dict | None = None,
+    strategy_type: str = "short",
 ) -> list[dict]:
     """Hybrid scoring: deterministic primary + TechSkill LLM for borderline.
 
@@ -1419,24 +1626,32 @@ def _batched_tech_agent(
     4. Score LLM output with score_tech_output() (60% hard + 40% soft)
     5. Blend: for borderline cases, replace deterministic with hybrid score
     """
-    det_results = fallback_technical_scores(candidates)
+    det_results = fallback_technical_scores(candidates, regime=regime)
     det_map = {r["ticker"]: r for r in det_results}
 
     # Build enriched lookup for indicators
     enriched_map = {c["ticker"]: c for c in candidates}
 
-    borderline = [c for c in candidates if 45 <= det_map.get(c["ticker"], {}).get("technical_score", 0) <= 60]
+    # v2: Expanded LLM verification scope
+    # - Borderline (40-65): uncertain zone, LLM decides
+    # - High score (>70): verify against false positives
+    # Only truly clear scores (65-70 or <40) skip LLM
+    llm_candidates = []
+    for c in candidates:
+        det_score = det_map.get(c["ticker"], {}).get("technical_score", 0)
+        if 40 <= det_score <= 65 or det_score > 70:
+            llm_candidates.append(c)
 
-    if not borderline:
-        logger.info(f"TechSkill: {len(det_results)} deterministic, 0 borderline -> skip LLM")
+    if not llm_candidates:
+        logger.info(f"TechSkill: {len(det_results)} deterministic, 0 need LLM -> skip")
         return det_results
 
-    logger.info(f"TechSkill: {len(det_results)} deterministic, {len(borderline)} borderline -> LLM")
+    logger.info(f"TechSkill: {len(det_results)} deterministic, {len(llm_candidates)} -> LLM verification")
     skill_outputs: dict[str, dict] = {}
 
-    total = len(borderline)
+    total = len(llm_candidates)
     for i in range(0, total, LLM_BATCH_SIZE):
-        batch = borderline[i : i + LLM_BATCH_SIZE]
+        batch = llm_candidates[i : i + LLM_BATCH_SIZE]
         skill_input = build_tech_skill_input(batch, market)
         response = call_tech_skill(skill_input, max_retries=max_retries)
 
@@ -1464,11 +1679,12 @@ def _batched_tech_agent(
             }
             signals = c.get("signals", {})
 
-            # Hybrid score: 60% hard + 40% soft via scorer
+            # Hybrid score via scorer (strategy-aware hard/soft weights)
             hybrid_score = score_tech_output(
                 so.model_dump(),
                 indicators=indicators,
                 signals=signals,
+                strategy_type=strategy_type,
             )
             final_sc = max(0, min(100, int(round(hybrid_score))))
 
@@ -1534,11 +1750,14 @@ def run_agent_pipeline(
 
     # Layer 4: TechSkill (batched, hybrid deterministic + LLM)
     _progress(55.0, f"Layer 4: TechSkill analyzing {len(tech_candidates)} candidates")
-    tech_results = _batched_tech_agent(tech_candidates, market, max_retries, progress_cb)
+    tech_results = _batched_tech_agent(
+        tech_candidates, market, max_retries, progress_cb,
+        regime=regime, strategy_type=strategy_type,
+    )
 
     if not tech_results:
         logger.warning("TechSkill returned no results, using fallback scoring")
-        tech_results = fallback_technical_scores(tech_candidates)
+        tech_results = fallback_technical_scores(tech_candidates, regime=regime)
 
     # Consistency check between agents
     if news_results and tech_results:

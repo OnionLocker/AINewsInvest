@@ -14,8 +14,8 @@ app:
 #   MarketAux: https://www.marketaux.com/register (free tier)
 # Sources without keys (Yahoo Finance, Google News RSS, SEC EDGAR) always active
 news_sources:
-  finnhub_key: ""
-  marketaux_key: ""
+  finnhub_key: "d7b4k99r01qtpbhagi9gd7b4k99r01qtpbhagia0"
+  marketaux_key: "tL0IdnccE8E1iJCRZWqvAGTg7UzQ294rNi05rhng"
   max_per_source: 10
   max_total: 15
 

@@ -151,6 +151,7 @@ class FinnhubNews:
 
     def fetch(self, ticker: str, market: str, limit: int = 15) -> list[dict]:
         if not self.api_key:
+            # Caller (_get_sources in news_fetcher) already logs the warning
             return []
 
         symbol = self._to_finnhub_symbol(ticker, market)
