@@ -278,6 +278,18 @@ class Database:
                 ON skill_outputs(run_date, market);
             CREATE INDEX IF NOT EXISTS idx_skill_outputs_ticker
                 ON skill_outputs(ticker, skill_name);
+
+            -- Win-rate record indexes for performance
+            CREATE INDEX IF NOT EXISTS idx_win_rate_outcome
+                ON win_rate_records(outcome);
+            CREATE INDEX IF NOT EXISTS idx_win_rate_run_date
+                ON win_rate_records(run_date);
+            CREATE INDEX IF NOT EXISTS idx_win_rate_market_strategy
+                ON win_rate_records(market, strategy);
+            CREATE INDEX IF NOT EXISTS idx_win_rate_ticker_market
+                ON win_rate_records(ticker, market);
+            CREATE INDEX IF NOT EXISTS idx_win_rate_created_at
+                ON win_rate_records(created_at);
         """)
         self._conn.commit()
 
@@ -773,7 +785,7 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT run_date,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome IN ('win', 'trailing_stop') THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}
@@ -796,7 +808,7 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT {dimension} as dim,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome IN ('win', 'trailing_stop') THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}
@@ -854,6 +866,71 @@ class Database:
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
+    def cleanup_old_records(self) -> dict:
+        """Delete old win-rate records based on retention policy.
+        
+        Called manually or as part of scheduled maintenance.
+        Respects strategy-specific retention periods from config.
+        """
+        from pipeline.config import get_config
+        
+        cfg = get_config()
+        today = datetime.now()
+        
+        try:
+            # Short-term strategy retention
+            short_cutoff = today - timedelta(days=cfg.win_rate.short_retention_days)
+            short_cutoff_str = short_cutoff.strftime("%Y%m%d")
+            
+            result_short = self._conn.execute(
+                """DELETE FROM win_rate_records 
+                   WHERE strategy = 'short_term' AND run_date < ?""",
+                (short_cutoff_str,)
+            )
+            short_deleted = result_short.rowcount
+            
+            # Swing strategy retention
+            swing_cutoff = today - timedelta(days=cfg.win_rate.swing_retention_days)
+            swing_cutoff_str = swing_cutoff.strftime("%Y%m%d")
+            
+            result_swing = self._conn.execute(
+                """DELETE FROM win_rate_records 
+                   WHERE strategy = 'swing' AND run_date < ?""",
+                (swing_cutoff_str,)
+            )
+            swing_deleted = result_swing.rowcount
+            
+            # Evaluation records (any strategy) retention
+            eval_cutoff = today - timedelta(days=cfg.win_rate.evaluation_retention_days)
+            eval_cutoff_str = eval_cutoff.strftime("%Y%m%d")
+            
+            result_eval = self._conn.execute(
+                """DELETE FROM win_rate_records 
+                   WHERE outcome = 'pending' AND created_at < ?""",
+                (eval_cutoff_str,)
+            )
+            eval_deleted = result_eval.rowcount
+            
+            self._conn.commit()
+            
+            from loguru import logger
+            logger.info(
+                f"Win-rate cleanup: short_term={short_deleted} rows, "
+                f"swing={swing_deleted} rows, pending={eval_deleted} rows"
+            )
+            
+            return {
+                "status": "success",
+                "short_term_deleted": short_deleted,
+                "swing_deleted": swing_deleted,
+                "pending_deleted": eval_deleted,
+                "total_deleted": short_deleted + swing_deleted + eval_deleted,
+            }
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"Win-rate cleanup failed: {e}")
+            return {"status": "error", "message": str(e)}
+
     # Deep analysis cache
     # ------------------------------------------------------------------
 

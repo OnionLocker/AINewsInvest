@@ -266,6 +266,22 @@ async def trigger_evaluation(user: User = Depends(get_current_user)):
     return result
 
 
+
+@router.post("/win-rate/cleanup")
+async def trigger_cleanup(user: User = Depends(get_current_user)):
+    """Admin-only endpoint to trigger win-rate record cleanup based on retention policy."""
+    if not user.is_admin:
+        raise HTTPException(403, "需要管理员权限")
+    
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        result = await run_in_threadpool(db.cleanup_old_records)
+        return result
+    finally:
+        db.close()
+
+
+
 @router.get("/performance/summary")
 async def performance_summary(
     market: str = "all", user: User = Depends(get_current_user),
