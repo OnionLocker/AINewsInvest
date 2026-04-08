@@ -303,6 +303,12 @@ const RISK_FLAG_CN = {
   downtrend: "\u4e0b\u884c\u8d8b\u52bf",
   oversold_bounce: "\u8d85\u5356\u53cd\u5f39",
   overbought: "\u8d85\u4e70",
+  // v2 tech fallback risk flags (Chinese already, but map for consistency)
+  "\u8d85\u4e70\u504f\u79bb": "\u8d85\u4e70\u504f\u79bb",
+  "\u91cf\u4ef7\u80cc\u79bb": "\u91cf\u4ef7\u80cc\u79bb",
+  "\u9ad8\u6ce2\u52a8": "\u9ad8\u6ce2\u52a8",
+  "\u65e5\u5468\u8d8b\u52bf\u77db\u76fe": "\u65e5\u5468\u8d8b\u52bf\u77db\u76fe",
+  "\u4e34\u8fd1\u8d22\u62a5": "\u4e34\u8fd1\u8d22\u62a5",
 };
 
 const RISK_PHRASE_CN = {

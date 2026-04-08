@@ -33,6 +33,7 @@ class Database:
         self._migrate_win_rate_scores()
         self._migrate_recommendation_extra_cols()
         self._migrate_trailing_position_cols()
+        self._migrate_conviction_score_col()
 
     def close(self):
         try:
@@ -456,6 +457,21 @@ class Database:
             except Exception:
                 pass
 
+    def _migrate_conviction_score_col(self):
+        """v6: Add conviction_score column for proper sorting."""
+        for table in ("published_recommendation_items", "daily_recommendation_items"):
+            try:
+                existing = {
+                    row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                if "conviction_score" not in existing:
+                    self._conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN conviction_score REAL DEFAULT 0"
+                    )
+                    self._conn.commit()
+            except Exception:
+                pass
+
     # ------------------------------------------------------------------
     # Screening
     # ------------------------------------------------------------------
@@ -550,7 +566,7 @@ class Database:
         if not run:
             return None, []
         items = self._conn.execute(
-            "SELECT * FROM daily_recommendation_items WHERE run_id=? ORDER BY combined_score DESC",
+            "SELECT * FROM daily_recommendation_items WHERE run_id=? ORDER BY conviction_score DESC, combined_score DESC",
             (run["id"],),
         ).fetchall()
         return dict(run), [dict(i) for i in items]
@@ -602,7 +618,7 @@ class Database:
         if not run:
             return None, []
         items = self._conn.execute(
-            "SELECT * FROM published_recommendation_items WHERE run_id=? ORDER BY combined_score DESC",
+            "SELECT * FROM published_recommendation_items WHERE run_id=? ORDER BY conviction_score DESC, combined_score DESC",
             (run["id"],),
         ).fetchall()
         return dict(run), [dict(i) for i in items]
@@ -620,7 +636,7 @@ class Database:
         if not run:
             return None, []
         items = self._conn.execute(
-            "SELECT * FROM published_recommendation_items WHERE run_id=? ORDER BY combined_score DESC",
+            "SELECT * FROM published_recommendation_items WHERE run_id=? ORDER BY conviction_score DESC, combined_score DESC",
             (run["id"],),
         ).fetchall()
         return dict(run), [dict(i) for i in items]
@@ -1023,9 +1039,9 @@ class Database:
                      obv_trend, options_signal, options_pc_ratio,
                      options_unusual_activity, insider_signal,
                      trailing_activation_price, trailing_distance_pct,
-                     position_rationale)
+                     position_rationale, conviction_score)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
                  item.get("direction", "buy"), item.get("action", "hold"),
@@ -1060,7 +1076,8 @@ class Database:
                  item.get("insider_signal", ""),
                  item.get("trailing_activation_price", 0),
                  item.get("trailing_distance_pct", 0),
-                 item.get("position_rationale", "")),
+                 item.get("position_rationale", ""),
+                 item.get("conviction_score", 0)),
             )
 
     # ------------------------------------------------------------------
