@@ -19,12 +19,12 @@ news_sources:
   max_per_source: 10
   max_total: 15
 
-# LLM settings (OpenAI API compatible)
+# LLM settings (OpenAI API compatible, via OpenClaw local gateway)
 llm:
   enabled: true
-  base_url: "https://gmncode.cn/v1"
-  model: "gpt-5.4"
-  api_key: "sk-8969e7ef4a82ad508a702cf1c1587705d0d3c9355186db3d111f3ee392be2ef1"
+  base_url: "http://127.0.0.1:18789/v1"
+  model: "openclaw/default"
+  api_key: "1896f74b7ed4be3d81c1883434d9ae5ccaa673991ecdc2a0"
   temperature: 0.3
   max_tokens: 4096
   timeout: 180
@@ -58,7 +58,7 @@ agent:
 scheduler:
   enabled: true
   us_run_time: "07:30"
-  hk_run_time: "07:30"
+  hk_run_time: ""
 
 # Pipeline parameters
 pipeline:
@@ -76,9 +76,9 @@ pipeline:
     weight_trend_setup: 0.30
     weight_volatility_fit: 0.10
     weight_fundamental: 0.15
-    # Absolute quality gate — below this score, don't recommend at all
+    # Absolute quality gate 閳ワ拷 below this score, don't recommend at all
     min_absolute_score: 35.0
-    # Volatility fit — strategy-aware optimal daily volatility
+    # Volatility fit 閳ワ拷 strategy-aware optimal daily volatility
     optimal_vol_short: 0.025
     optimal_vol_swing: 0.018
     optimal_vol_width: 0.025
@@ -98,13 +98,13 @@ pipeline:
     news_weight: 0.40
     tech_weight: 0.55
     fundamental_weight: 0.05
-    # v4: ATR-based TP/SL — these are FALLBACKS when ATR is unavailable
+    # v4: ATR-based TP/SL 閳ワ拷 these are FALLBACKS when ATR is unavailable
     default_stop_loss_pct: 0.97       # -3% (was -5%)
     default_take_profit_pct: 1.05     # +5% (was +8%)
     take_profit_2_pct: 1.08           # +8% (was +12%)
     # ATR multipliers for dynamic TP/SL
-    atr_sl_multiplier: 2.0            # SL = entry - 2.0 × ATR (room to breathe)
-    atr_tp_multiplier: 3.0            # TP = entry + 3.0 × ATR (R:R = 1.5)
+    atr_sl_multiplier: 2.0            # SL = entry - 2.0 鑴� ATR (room to breathe)
+    atr_tp_multiplier: 3.0            # TP = entry + 3.0 鑴� ATR (R:R = 1.5)
     default_holding_days: 3
     max_holding_days: 5
     # v4.1: trailing stop & SL bounds

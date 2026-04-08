@@ -1034,6 +1034,7 @@ def synthesize_agent_results(
     """
     cfg = get_config()
     syn = cfg.synthesis
+    regime_level = (regime or {}).get("level", "normal")
 
     if strategy_type == "swing":
         news_weight = cfg.swing.news_weight

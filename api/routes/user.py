@@ -271,7 +271,7 @@ async def trigger_evaluation(user: User = Depends(get_current_user)):
 async def trigger_cleanup(user: User = Depends(get_current_user)):
     """Admin-only endpoint to trigger win-rate record cleanup based on retention policy."""
     if not user.is_admin:
-        raise HTTPException(403, "需要管理员权限")
+        raise HTTPException(403, "闇�瑕佺鐞嗗憳鏉冮檺")
     
     db = Database(SYSTEM_DB_PATH)
     try:

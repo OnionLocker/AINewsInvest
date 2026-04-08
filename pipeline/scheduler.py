@@ -67,11 +67,15 @@ class PipelineScheduler:
             if not self._running:
                 return
 
+        target_time = self._hk_time if market == "hk_stock" else self._us_time
+        if not target_time:
+            logger.info(f"Scheduler: {market} disabled (no run_time configured)")
+            return
+
         tz_name = _MARKET_TZ[market]
         tz = ZoneInfo(tz_name)
         now = datetime.now(tz)
 
-        target_time = self._hk_time if market == "hk_stock" else self._us_time
         hour, minute = map(int, target_time.split(":"))
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
