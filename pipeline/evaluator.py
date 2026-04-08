@@ -119,26 +119,33 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
 
         # --- Phase 1: check if the limit-order entry was filled ---
         entry_filled = False
-        post_fill_rows = []
+        fill_idx = -1
 
         for idx, (_, row) in enumerate(hist.iterrows()):
             high = float(row["High"])
             low = float(row["Low"])
 
-            if not entry_filled:
-                if is_short:
-                    if high >= entry:
-                        entry_filled = True
-                        post_fill_rows = list(hist.iloc[idx:].iterrows())
-                else:
-                    if low <= entry:
-                        entry_filled = True
-                        post_fill_rows = list(hist.iloc[idx:].iterrows())
+            if is_short:
+                if high >= entry:
+                    entry_filled = True
+                    fill_idx = idx
+                    break
+            else:
+                if low <= entry:
+                    entry_filled = True
+                    fill_idx = idx
+                    break
 
         if not entry_filled:
             if holding_expired:
                 return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
             return None
+
+        # Post-fill rows start from the NEXT bar after entry fill day
+        # (entry day's high/low happened before/during fill — not tradeable)
+        post_fill_rows = list(hist.iloc[fill_idx + 1:].iterrows())
+        if not post_fill_rows and not holding_expired:
+            return None  # filled today, wait for next bar
 
         # --- Phase 2: evaluate TP / SL / trailing on post-fill bars ---
         # Derive trailing stop parameters from config

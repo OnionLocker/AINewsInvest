@@ -23,7 +23,10 @@ import yfinance as yf
 from core.database import Database
 from core.user import SYSTEM_DB_PATH
 from pipeline.config import get_config
-from pipeline.screening import run_screening, batch_fetch_klines, build_enriched_candidates
+from pipeline.screening import (
+    run_screening, batch_fetch_klines, build_enriched_candidates,
+    _layer1_kline_cache,
+)
 
 _MARKET_TZ = {
     "us_stock": "America/New_York",
@@ -119,6 +122,51 @@ def _progress(
             logger.warning(f"progress_cb error: {e}")
 
 
+def _record_skill_outputs(db: "Database", ref_date: str, market: str, analyzed: list[dict]) -> int:
+    """Record skill outputs from analyzed recommendations for backtesting."""
+    count = 0
+    for item in analyzed:
+        ticker = item.get("ticker", "")
+        if not ticker:
+            continue
+
+        # Record news skill output
+        news_skill = item.get("_news_skill_output")
+        if news_skill:
+            try:
+                db.save_skill_output(
+                    run_date=ref_date,
+                    market=market,
+                    ticker=ticker,
+                    skill_name="news_skill",
+                    raw_output=news_skill,
+                    scored_value=item.get("news_score"),
+                )
+                count += 1
+            except Exception as e:
+                logger.debug(f"Skill output save {ticker}/news: {e}")
+
+        # Record tech skill output
+        tech_skill = item.get("_tech_skill_output")
+        if tech_skill:
+            try:
+                db.save_skill_output(
+                    run_date=ref_date,
+                    market=market,
+                    ticker=ticker,
+                    skill_name="tech_skill",
+                    raw_output=tech_skill,
+                    scored_value=item.get("tech_score"),
+                )
+                count += 1
+            except Exception as e:
+                logger.debug(f"Skill output save {ticker}/tech: {e}")
+
+    if count:
+        logger.info(f"Recorded {count} skill outputs for backtesting")
+    return count
+
+
 def run_daily_pipeline(
     market: str = "us_stock",
     force: bool = False,
@@ -181,8 +229,16 @@ def run_daily_pipeline(
             }
 
         # Phase 2: Layer 2 - Technical enrichment
+        # Reuse K-line data from Layer 1 if available, fetch missing ones
         _progress(progress_cb, 20.0, f"Layer 2: Enriching {len(candidates)} candidates")
-        kline_map = batch_fetch_klines(candidates, days=80)
+        cached = _layer1_kline_cache or {}
+        missing = [c for c in candidates if c["ticker"] not in cached]
+        if missing:
+            logger.info(f"Layer 2: {len(cached)} cached, fetching {len(missing)} missing K-lines")
+            extra = batch_fetch_klines(missing, days=80)
+            kline_map = {**cached, **extra}
+        else:
+            kline_map = cached
         enriched = build_enriched_candidates(candidates, kline_map)
 
         if not enriched:
@@ -264,6 +320,13 @@ def run_daily_pipeline(
 
         for it in saved_items:
             try:
+                # Skip records without valid trading params (is_quality=False)
+                ep = it.get("entry_price")
+                slp = it.get("stop_loss")
+                tpp = it.get("take_profit")
+                if not ep or not slp or not tpp:
+                    continue
+
                 themes = it.get("themes", [])
                 if isinstance(themes, str):
                     try:
@@ -295,6 +358,13 @@ def run_daily_pipeline(
                 logger.warning(f"win_rate record {it.get('ticker')}: {e}")
 
         _progress(progress_cb, 95.0, "Computing market sentiment cache")
+
+        # Record skill outputs for backtesting
+        try:
+            _record_skill_outputs(db, ref_date, market, analyzed)
+        except Exception as e:
+            logger.warning(f"Skill output recording failed: {e}")
+
         try:
             _cache_market_sentiment(db, market)
         except Exception as e:

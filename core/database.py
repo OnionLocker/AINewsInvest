@@ -740,6 +740,10 @@ class Database:
         best_trade = max((r["return_pct"] for r in all_rows if r["return_pct"] is not None), default=0)
         worst_trade = min((r["return_pct"] for r in all_rows if r["return_pct"] is not None), default=0)
 
+        # Trailing stops only count as wins when profitable (return > 0)
+        profitable_trailing = sum(1 for r in all_rows
+                                  if r["outcome"] == "trailing_stop" and (r["return_pct"] or 0) > 0)
+
         return {
             "total_evaluated": total,
             "pending": pending_cnt,
@@ -750,7 +754,7 @@ class Database:
             "timeouts": timeouts,
             "timeout_at_profit": timeout_at_profit,
             "timeout_at_loss": timeout_at_loss,
-            "win_rate": round((wins + trailing_stops) / max(total, 1) * 100, 1),
+            "win_rate": round((wins + profitable_trailing) / max(total, 1) * 100, 1),
             "avg_return_pct": round(avg_return, 2),
             "avg_win_return_pct": round(avg_win_return, 2),
             "avg_loss_return_pct": round(avg_loss_return, 2),
@@ -785,7 +789,9 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT run_date,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome IN ('win', 'trailing_stop') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'win'
+                                  OR (outcome = 'trailing_stop' AND return_pct > 0)
+                            THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}
@@ -808,7 +814,9 @@ class Database:
         rows = self._conn.execute(
             f"""SELECT {dimension} as dim,
                        COUNT(*) as total,
-                       SUM(CASE WHEN outcome IN ('win', 'trailing_stop') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'win'
+                                  OR (outcome = 'trailing_stop' AND return_pct > 0)
+                            THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END) as losses,
                        AVG(return_pct) as avg_return
                 FROM win_rate_records {where}
