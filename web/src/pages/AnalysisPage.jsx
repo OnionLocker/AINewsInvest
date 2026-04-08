@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../api";
 import Card, { CardTitle } from "../components/Card";
@@ -85,25 +85,25 @@ export default function AnalysisPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-light tracking-tight">深度分析</h1>
+      <h1 className="text-3xl font-light tracking-tight text-primary">深度分析</h1>
 
       <Card>
         <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-4">
           <div>
-            <label className="mb-1 block text-xs text-gray-400">股票代码</label>
+            <label className="mb-1 block text-xs text-secondary">股票代码</label>
             <input
               value={ticker}
               onChange={(e) => setTicker(e.target.value.toUpperCase())}
               placeholder="AAPL"
-              className="w-32 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[15px] uppercase outline-none focus:border-brand-500"
+              className="w-32 rounded-lg border border-border bg-surface-0 px-3 py-2 text-[15px] uppercase outline-none placeholder:text-tertiary focus:border-brand"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">市场</label>
+            <label className="mb-1 block text-xs text-secondary">市场</label>
             <select
               value={market}
               onChange={(e) => setMarket(e.target.value)}
-              className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[15px]"
+              className="rounded-lg border border-border bg-surface-0 px-3 py-2 text-[15px]"
             >
               <option value="us_stock">美股</option>
               <option value="hk_stock">港股</option>
@@ -112,7 +112,7 @@ export default function AnalysisPage() {
           <button
             type="submit"
             disabled={streaming || !ticker}
-            className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-[#A04E30] disabled:opacity-50"
           >
             {streaming ? <Spinner size="sm" /> : <Send size={16} />}
             {streaming ? "分析中..." : "开始分析"}
@@ -130,8 +130,8 @@ export default function AnalysisPage() {
                   <span className="text-red-400">{s.message}</span>
                 ) : (
                   <>
-                    <Zap size={12} className="text-brand-400" />
-                    <span className="text-gray-400">
+                    <Zap size={12} className="text-brand" />
+                    <span className="text-secondary">
                       {s.step}: {s.message || "完成"}
                     </span>
                   </>
@@ -152,8 +152,8 @@ export default function AnalysisPage() {
                   if (typeof v === "object" && v !== null) return null;
                   return (
                     <div key={k} className="flex justify-between">
-                      <span className="text-gray-500">{k}</span>
-                      <span className="text-gray-300">
+                      <span className="text-tertiary">{k}</span>
+                      <span className="text-secondary">
                         {typeof v === "number" ? v.toFixed(2) : String(v)}
                       </span>
                     </div>
@@ -179,8 +179,8 @@ export default function AnalysisPage() {
                   if (typeof v === "object" && v !== null) return null;
                   return (
                     <div key={k} className="flex justify-between">
-                      <span className="text-gray-500">{k}</span>
-                      <span className="text-gray-300">
+                      <span className="text-tertiary">{k}</span>
+                      <span className="text-secondary">
                         {typeof v === "number" ? v.toFixed(2) : String(v)}
                       </span>
                     </div>
@@ -204,8 +204,8 @@ export default function AnalysisPage() {
                   if (typeof v === "object" && v !== null) return null;
                   return (
                     <div key={k} className="flex justify-between">
-                      <span className="text-gray-500">{k}</span>
-                      <span className="text-gray-300">
+                      <span className="text-tertiary">{k}</span>
+                      <span className="text-secondary">
                         {typeof v === "number" ? v.toFixed(2) : String(v)}
                       </span>
                     </div>
@@ -235,16 +235,16 @@ export default function AnalysisPage() {
               )}
               <div className="space-y-2">
                 {(result.news.items || []).slice(0, 5).map((n, i) => (
-                  <div key={i} className="text-xs text-gray-400">
+                  <div key={i} className="text-xs text-secondary">
                     {n.link ? (
                       <a href={n.link} target="_blank" rel="noopener noreferrer"
-                        className="font-medium text-brand-400 hover:underline">
+                        className="font-medium text-brand hover:underline">
                         {n.title}
                       </a>
                     ) : (
-                      <p className="font-medium text-gray-300">{n.title}</p>
+                      <p className="font-medium text-secondary">{n.title}</p>
                     )}
-                    <p className="text-gray-600">{n.published} | {n.source}</p>
+                    <p className="text-tertiary">{n.published} | {n.source}</p>
                   </div>
                 ))}
               </div>
@@ -256,7 +256,7 @@ export default function AnalysisPage() {
               <CardTitle>
                 <Zap size={14} className="mr-1 inline" /> AI 分析
               </CardTitle>
-              <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-xs text-gray-300">
+              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-xs text-secondary">
                 {result.llm_analysis}
               </div>
             </Card>

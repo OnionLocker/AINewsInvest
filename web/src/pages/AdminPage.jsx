@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import api from "../api";
 import Card, { CardTitle } from "../components/Card";
 import Spinner, { PageLoader } from "../components/Spinner";
@@ -60,13 +60,13 @@ function UsersSection() {
               <div className="flex gap-2">
                 <button
                   onClick={() => toggleActive(u.username, !u.is_active)}
-                  className="text-xs text-gray-400 hover:text-brand-400"
+                  className="text-xs text-secondary hover:text-brand"
                 >
                   {u.is_active ? "禁用" : "启用"}
                 </button>
                 <button
                   onClick={() => deleteUser(u.username)}
-                  className="text-xs text-gray-400 hover:text-red-400"
+                  className="text-xs text-secondary hover:text-red-400"
                 >
                   删除
                 </button>
@@ -133,11 +133,11 @@ function RecommendationRunner() {
       <CardTitle><Play size={14} className="mr-1 inline" /> 推荐生成</CardTitle>
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <label className="mb-1 block text-xs text-gray-400">市场</label>
+          <label className="mb-1 block text-xs text-secondary">市场</label>
           <select
             value={market}
             onChange={(e) => setMarket(e.target.value)}
-            className="rounded-lg border border-surface-3 bg-surface-2 px-3 py-2 text-sm"
+            className="rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm"
           >
             <option value="us_stock">美股</option>
             <option value="hk_stock">港股</option>
@@ -146,14 +146,14 @@ function RecommendationRunner() {
         <button
           onClick={handleRun}
           disabled={running}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm text-white hover:bg-[#A04E30] disabled:opacity-50"
         >
           {running ? <Spinner size="sm" /> : <Play size={16} />}
           {running ? "运行中..." : "运行推荐"}
         </button>
         <button
           onClick={handlePublish}
-          className="flex items-center gap-2 rounded-lg border border-brand-600 px-4 py-2 text-sm text-brand-400 hover:bg-brand-600/10"
+          className="flex items-center gap-2 rounded-lg border border-brand px-4 py-2 text-sm text-brand hover:bg-brand/10"
         >
           <Upload size={16} /> 发布
         </button>
@@ -166,11 +166,11 @@ function RecommendationRunner() {
               {status.status}
             </Badge>
             {status.progress != null && (
-              <span className="text-xs text-gray-400">{status.progress}%</span>
+              <span className="text-xs text-secondary">{status.progress}%</span>
             )}
           </div>
           {status.message && (
-            <p className="mt-1 text-xs text-gray-400">{status.message}</p>
+            <p className="mt-1 text-xs text-secondary">{status.message}</p>
           )}
         </div>
       )}
@@ -203,7 +203,7 @@ function BothTablesView() {
         <button
           onClick={loadTables}
           disabled={loading}
-          className="flex items-center gap-1 rounded-lg border border-surface-3 px-3 py-1.5 text-xs text-gray-400 hover:bg-surface-2"
+          className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-2"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           加载
@@ -214,7 +214,7 @@ function BothTablesView() {
         <div className="grid gap-4 lg:grid-cols-2">
           {["admin", "published"].map((key) => (
             <div key={key}>
-              <p className="mb-2 text-xs font-semibold text-gray-400 uppercase">{tableLabel[key]}</p>
+              <p className="mb-2 text-xs font-semibold text-secondary uppercase">{tableLabel[key]}</p>
               {data[key]?.items?.length > 0 ? (
                 <div className="space-y-1">
                   {data[key].items.map((item, i) => (
@@ -226,20 +226,20 @@ function BothTablesView() {
                           <DirectionBadge direction={item.direction} />
                           <StrategyBadge strategy={item.strategy} />
                         </div>
-                        <span className="font-semibold text-indigo-400">{item.score?.toFixed(1)}</span>
+                        <span className="font-semibold text-brand">{item.score?.toFixed(1)}</span>
                       </div>
-                      <div className="mt-1 flex items-center gap-3 text-[10px] text-gray-500">
+                      <div className="mt-1 flex items-center gap-3 text-[10px] text-tertiary">
                         {item.entry_price != null && (
                           <span>入场: {Number(item.entry_price).toFixed(2)}</span>
                         )}
                         {item.stop_loss != null && (
-                          <span className="text-rose-400/70">止损: {Number(item.stop_loss).toFixed(2)}</span>
+                          <span className="text-down/70">止损: {Number(item.stop_loss).toFixed(2)}</span>
                         )}
                         {item.take_profit != null && (
-                          <span className="text-emerald-400/70">止盈: {Number(item.take_profit).toFixed(2)}</span>
+                          <span className="text-up/70">止盈: {Number(item.take_profit).toFixed(2)}</span>
                         )}
                         {(item.confidence || item.combined_score) != null && (
-                          <span className="text-amber-400/70">置信: {Math.round(item.confidence || item.combined_score)}%</span>
+                          <span className="text-[#D97706]/70">置信: {Math.round(item.confidence || item.combined_score)}%</span>
                         )}
                         {item.risk_flags && (() => {
                           let flags = Array.isArray(item.risk_flags) ? item.risk_flags : [];
@@ -248,7 +248,7 @@ function BothTablesView() {
                           }
                           flags = flags.filter(f => f && f !== "[]" && f !== "null");
                           return flags.length > 0 ? (
-                            <span className="text-rose-400/70">风险: {flags.length}项</span>
+                            <span className="text-down/70">风险: {flags.length}项</span>
                           ) : null;
                         })()}
                       </div>
@@ -256,7 +256,7 @@ function BothTablesView() {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-gray-600">暂无数据</p>
+                <p className="text-xs text-tertiary">暂无数据</p>
               )}
             </div>
           ))}
@@ -269,8 +269,8 @@ function BothTablesView() {
 export default function AdminPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">
-        <Shield size={20} className="mr-2 inline text-brand-400" />
+      <h1 className="text-xl font-bold text-primary">
+        <Shield size={20} className="mr-2 inline text-brand" />
         管理后台
       </h1>
       <UsersSection />

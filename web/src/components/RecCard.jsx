@@ -15,11 +15,11 @@ function pctFromEntry(tp, entry, isShort = false) {
 
 function ConfidenceBar({ value }) {
   const v = Math.max(0, Math.min(100, value || 0));
-  const color = v >= 70 ? "#34d399" : v >= 50 ? "#818cf8" : v >= 35 ? "#f59e0b" : "#fb7185";
+  const color = v >= 70 ? "#16A34A" : v >= 50 ? "#2563EB" : v >= 35 ? "#D97706" : "#DC2626";
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="text-base font-semibold text-neutral-400">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
-      <span className="inline-block h-2.5 w-28 overflow-hidden rounded-full bg-slate-800">
+      <span className="text-base font-semibold text-secondary">{"\u7f6e\u4fe1\u5ea6"} {v}%</span>
+      <span className="inline-block h-2.5 w-28 overflow-hidden rounded-full bg-surface-3">
         <span className="block h-full rounded-full" style={{ width: `${v}%`, background: color }} />
       </span>
     </span>
@@ -28,11 +28,11 @@ function ConfidenceBar({ value }) {
 
 function ActionArrow({ action, direction }) {
   const map = {
-    buy:        { label: "\u4e70\u5165", color: "#34d399" },
-    strong_buy: { label: "\u79ef\u6781\u4e70\u5165", color: "#34d399" },
-    hold:       { label: "\u89c2\u671b", color: "#818cf8" },
-    avoid:      { label: "\u56de\u907f", color: "#fb7185" },
-    short:      { label: "\u505a\u7a7a", color: "#d946ef" },
+    buy:        { label: "\u4e70\u5165", color: "#16A34A" },
+    strong_buy: { label: "\u79ef\u6781\u4e70\u5165", color: "#16A34A" },
+    hold:       { label: "\u89c2\u671b", color: "#2563EB" },
+    avoid:      { label: "\u56de\u907f", color: "#DC2626" },
+    short:      { label: "\u505a\u7a7a", color: "#9333EA" },
   };
   const a = (action || "").toLowerCase();
   const isShort = direction === "short" || a === "short";
@@ -46,8 +46,8 @@ function ActionArrow({ action, direction }) {
 
 function ThemeTag({ text }) {
   return (
-    <span className="inline-flex items-center gap-1 text-sm font-medium text-neutral-400">
-      <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
+    <span className="inline-flex items-center gap-1 text-sm font-medium text-secondary">
+      <span className="h-1.5 w-1.5 rounded-full bg-surface-3" />
       {text}
     </span>
   );
@@ -67,16 +67,16 @@ function PriceBar({ sl, entry, tp, isShort }) {
     const entryPct = Math.max(12, Math.min(88, ((sl - entry) / range) * 100));
     return (
       <div className="mt-3 flex h-9 w-full overflow-hidden rounded text-sm font-bold">
-        <div className="flex items-center justify-center text-emerald-400"
-          style={{ width: `${Math.max(10, 100 - entryPct - 20)}%`, background: "#34d399" + "30" }}>
+        <div className="flex items-center justify-center text-up"
+          style={{ width: `${Math.max(10, 100 - entryPct - 20)}%`, background: "#16A34A" + "12" }}>
           TP {fmt(tp)}
         </div>
-        <div className="flex items-center justify-center text-slate-200"
-          style={{ width: `${Math.max(8, entryPct - 20)}%`, background: "#d946ef" + "25" }}>
+        <div className="flex items-center justify-center text-primary"
+          style={{ width: `${Math.max(8, entryPct - 20)}%`, background: "#9333EA" + "10" }}>
           {"\u5165\u573a"} {fmt(entry)}
         </div>
-        <div className="flex items-center justify-center text-rose-400"
-          style={{ flex: 1, background: "#fb7185" + "30" }}>
+        <div className="flex items-center justify-center text-down"
+          style={{ flex: 1, background: "#DC2626" + "12" }}>
           SL {fmt(sl)}
         </div>
       </div>
@@ -87,19 +87,19 @@ function PriceBar({ sl, entry, tp, isShort }) {
   const entryPct = Math.max(12, Math.min(88, ((entry - sl) / range) * 100));
   return (
     <div className="mt-3 flex h-9 w-full overflow-hidden rounded text-sm font-bold">
-      <div className="flex items-center justify-center text-rose-400"
-        style={{ width: `${entryPct}%`, background: "#fb7185" + "30" }}>
+      <div className="flex items-center justify-center text-down"
+        style={{ width: `${entryPct}%`, background: "#DC2626" + "12" }}>
         SL {fmt(sl)}
       </div>
-      <div className="flex items-center justify-center text-slate-200"
-        style={{ width: "1px", background: "#475569" }}>
+      <div className="flex items-center justify-center text-primary"
+        style={{ width: "1px", background: "#E8E2DA" }}>
       </div>
-      <div className="flex items-center justify-center text-slate-200"
-        style={{ width: `${Math.max(8, 100 - entryPct - 40)}%`, background: "#818cf8" + "25" }}>
+      <div className="flex items-center justify-center text-primary"
+        style={{ width: `${Math.max(8, 100 - entryPct - 40)}%`, background: "#2563EB" + "10" }}>
         {"\u5165\u573a"} {fmt(entry)}
       </div>
-      <div className="flex items-center justify-center text-emerald-400"
-        style={{ flex: 1, background: "#34d399" + "30" }}>
+      <div className="flex items-center justify-center text-up"
+        style={{ flex: 1, background: "#16A34A" + "12" }}>
         TP {fmt(tp)}
       </div>
     </div>
@@ -122,36 +122,36 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
   const pctTP3 = pctFromEntry(tp3Auto, entry, isShort);
 
   const dirLabel = isShort ? "\u505a\u7a7a\u8ba1\u5212" : "\u4ea4\u6613\u8ba1\u5212";
-  const dirColor = isShort ? "#d946ef" : undefined;
+  const dirColor = isShort ? "#9333EA" : undefined;
   const entryLabel = isShort ? "\u505a\u7a7a\u5165\u573a" : "\u5165\u573a\u4ef7\u4f4d";
   const slLabel = isShort ? "\u6b62\u635f\u4ef7\u4f4d(\u4e0a\u65b9)" : "\u6b62\u635f\u4ef7\u4f4d";
   const addLabel = isShort ? "\u52a0\u4ed3\u4ef7\u4f4d(\u4e0a\u65b9)" : "\u52a0\u4ed3\u4ef7\u4f4d";
 
   return (
-    <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-5">
+    <div className="mt-4 rounded-xl border border-border bg-white p-5">
       <div className="mb-4 flex items-center gap-2">
-        {isShort ? <TrendingDown size={16} style={{ color: "#d946ef" }} /> : <Target size={16} className="text-indigo-500" />}
-        <span className="text-base font-medium text-white" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
-        <span className="rounded border border-white/[0.06] bg-white/[0.04] px-2.5 py-0.5 text-sm font-semibold text-neutral-400 backdrop-blur-md">
+        {isShort ? <TrendingDown size={16} style={{ color: "#9333EA" }} /> : <Target size={16} className="text-brand" />}
+        <span className="text-base font-medium text-primary" style={dirColor ? { color: dirColor } : undefined}>{dirLabel}</span>
+        <span className="rounded border border-border bg-white px-2.5 py-0.5 text-sm font-semibold text-secondary">
           {"\u5efa\u8bae\u6301\u4ed3"} {item.holding_days || 3} {"\u5929"}
         </span>
         {isShort && (
-          <span className="rounded border border-fuchsia-500/20 bg-fuchsia-500/10 px-2.5 py-0.5 text-sm font-bold text-fuchsia-400">SHORT</span>
+          <span className="rounded border border-[#9333EA]/20 bg-[#9333EA]/10 px-2.5 py-0.5 text-sm font-bold text-[#9333EA]">SHORT</span>
         )}
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <div className={`rounded-xl border p-4 text-center ${isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-white/[0.06] bg-white/[0.04] backdrop-blur-md"}`}>
-          <div className={`text-base font-bold ${isShort ? "text-fuchsia-400" : "text-indigo-400"}`}>{entryLabel}</div>
-          <div className="mt-2 text-4xl font-semibold text-slate-200 tabular-nums">{fmt(entry)}</div>
-          <div className="mt-1 text-sm font-medium text-neutral-400">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
+        <div className={`rounded-xl border p-4 text-center ${isShort ? "border-[#9333EA]/20 bg-[#9333EA]/10" : "border-brand/20 bg-brand-light"}`}>
+          <div className={`text-base font-bold ${isShort ? "text-[#9333EA]" : "text-brand"}`}>{entryLabel}</div>
+          <div className="mt-2 text-4xl font-semibold text-primary tabular-nums">{fmt(entry)}</div>
+          <div className="mt-1 text-sm font-medium text-secondary">{isShort ? "\u9650\u4ef7\u5356\u51fa" : "\u9650\u4ef7\u6302\u5355"}</div>
         </div>
-        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-center">
-          <div className="text-base font-bold text-rose-400">{slLabel}</div>
-          <div className="mt-2 text-4xl font-semibold text-rose-400 tabular-nums">{fmt(item.stop_loss)}</div>
+        <div className="rounded-xl border border-down/20 bg-down/10 p-4 text-center">
+          <div className="text-base font-bold text-down">{slLabel}</div>
+          <div className="mt-2 text-4xl font-semibold text-down tabular-nums">{fmt(item.stop_loss)}</div>
         </div>
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-center">
-          <div className="text-base font-bold text-amber-400">{addLabel}</div>
-          <div className="mt-2 text-4xl font-semibold text-amber-400 tabular-nums">{fmt(item.entry_2)}</div>
+        <div className="rounded-xl border border-[#D97706]/20 bg-[#D97706]/10 p-4 text-center">
+          <div className="text-base font-bold text-[#D97706]">{addLabel}</div>
+          <div className="mt-2 text-4xl font-semibold text-[#D97706] tabular-nums">{fmt(item.entry_2)}</div>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-3">
@@ -160,28 +160,28 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
           { label: "TP2 \u6807\u51c6", val: item.take_profit_2, pct: pctTP2 },
           { label: "TP3 \u6fc0\u8fdb", val: tp3Auto, pct: pctTP3 },
         ].map((tp) => (
-          <div key={tp.label} className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
-            <div className="text-base font-bold text-emerald-400">{tp.label}</div>
-            <div className="mt-2 text-4xl font-semibold text-slate-200 tabular-nums">{fmt(tp.val)}</div>
-            {tp.pct && <div className="mt-1 text-base font-bold text-emerald-400">{isShort ? "" : "+"}{tp.pct}%</div>}
+          <div key={tp.label} className="rounded-xl border border-up/20 bg-up/10 p-4 text-center">
+            <div className="text-base font-bold text-up">{tp.label}</div>
+            <div className="mt-2 text-4xl font-semibold text-primary tabular-nums">{fmt(tp.val)}</div>
+            {tp.pct && <div className="mt-1 text-base font-bold text-up">{isShort ? "" : "+"}{tp.pct}%</div>}
           </div>
         ))}
       </div>
       <PriceBar sl={item.stop_loss} entry={entry} tp={item.take_profit} isShort={isShort} />
       {item.trailing_activation_price > 0 && item.trailing_distance_pct > 0 && (
-        <div className="mt-3 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
-          <div className="mb-2 flex items-center gap-2 text-base font-bold text-sky-400">
+        <div className="mt-3 rounded-xl border border-accent/20 bg-accent/10 p-4">
+          <div className="mb-2 flex items-center gap-2 text-base font-bold text-accent">
             <Activity size={14} />
             {"\u8ffd\u8e2a\u6b62\u635f\u7b56\u7565"}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <span className="text-sm text-neutral-400">{"\u6fc0\u6d3b\u4ef7\u4f4d: "}</span>
-              <span className="text-base font-semibold text-sky-300 tabular-nums">
+              <span className="text-sm text-secondary">{"\u6fc0\u6d3b\u4ef7\u4f4d: "}</span>
+              <span className="text-base font-semibold text-accent tabular-nums">
                 {currencySymbol}{fmt(item.trailing_activation_price)}
               </span>
               {entry > 0 && item.take_profit > 0 && (
-                <span className="ml-1 text-sm text-neutral-500">
+                <span className="ml-1 text-sm text-tertiary">
                   {isShort
                     ? `(\u76c8\u5229\u8fbe${Math.round(((entry - item.trailing_activation_price) / (entry - item.take_profit)) * 100)}%)`
                     : `(\u76c8\u5229\u8fbe${Math.round(((item.trailing_activation_price - entry) / (item.take_profit - entry)) * 100)}%)`}
@@ -189,16 +189,16 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
               )}
             </div>
             <div>
-              <span className="text-sm text-neutral-400">{"\u56de\u64a4\u4fdd\u62a4: "}</span>
-              <span className="text-base font-semibold text-sky-300">
+              <span className="text-sm text-secondary">{"\u56de\u64a4\u4fdd\u62a4: "}</span>
+              <span className="text-base font-semibold text-accent">
                 {(item.trailing_distance_pct * 100).toFixed(0)}%
               </span>
-              <span className="ml-1 text-sm text-neutral-500">
+              <span className="ml-1 text-sm text-tertiary">
                 {"\u4ece\u6700\u4f18\u4ef7\u56de\u64a4\u5373\u6b62\u76c8"}
               </span>
             </div>
           </div>
-          <p className="mt-2 text-sm text-sky-400/60">
+          <p className="mt-2 text-sm text-accent/60">
             {isShort
               ? "\u80a1\u4ef7\u8dcc\u81f3\u6fc0\u6d3b\u4ef7\u540e\uff0c\u6b62\u635f\u5c06\u968f\u4ef7\u683c\u4e0b\u884c\u81ea\u52a8\u6536\u7d27\uff0c\u9501\u5b9a\u90e8\u5206\u5229\u6da6\u3002"
               : "\u80a1\u4ef7\u6da8\u81f3\u6fc0\u6d3b\u4ef7\u540e\uff0c\u6b62\u635f\u5c06\u968f\u4ef7\u683c\u4e0a\u884c\u81ea\u52a8\u62ac\u5347\uff0c\u9501\u5b9a\u90e8\u5206\u5229\u6da6\u3002"}
@@ -206,13 +206,13 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
         </div>
       )}
       {item.position_rationale && (
-        <p className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-400">
-          <BarChart3 size={13} className="text-indigo-400" />
+        <p className="mt-2 flex items-center gap-1 text-sm font-medium text-secondary">
+          <BarChart3 size={13} className="text-brand" />
           {"\u4ed3\u4f4d\u5efa\u8bae: "}{item.position_rationale}
         </p>
       )}
-      <p className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-400">
-        <Lightbulb size={13} className="text-amber-400" />
+      <p className="mt-2 flex items-center gap-1 text-sm font-medium text-secondary">
+        <Lightbulb size={13} className="text-[#D97706]" />
         {isShort
           ? "\u505a\u7a7a\u64cd\u4f5c\uff1a\u5728\u5165\u573a\u4ef7\u4f4d\u5356\u51fa\uff0c\u80a1\u4ef7\u4e0b\u8dcc\u81f3TP\u65f6\u4e70\u5165\u5e73\u4ed3\u83b7\u5229\uff0c\u4e0a\u6da8\u81f3SL\u65f6\u4e70\u5165\u6b62\u635f\u3002"
           : "\u5165\u573a\u4ef7\u4e3a\u5efa\u8bae\u6302\u9650\u4ef7\u5355\u4f4d\uff0c\u7b49\u56de\u843d\u81f3\u8be5\u4ef7\u4f4d\u81ea\u52a8\u6210\u4ea4\u3002"}
@@ -224,19 +224,19 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
 function AnalysisSection({ newsReason, techReason }) {
   return (
     <div className="mt-3 grid gap-3 md:grid-cols-2">
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-white">
-          <span className="h-2.5 w-2.5 rounded-full border-2 border-slate-400" />
+      <div className="rounded-xl border border-border bg-white p-4">
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-primary">
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-secondary" />
           {"\u65b0\u95fb\u9762"}
         </div>
-        <p className="text-base font-medium leading-relaxed text-neutral-400">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-secondary">{newsReason && newsReason.trim() ? newsReason : "\u6682\u65e0\u65b0\u95fb\u5206\u6790"}</p>
       </div>
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-white">
-          <span className="h-2.5 w-2.5 rounded-full border-2 border-slate-400" />
+      <div className="rounded-xl border border-border bg-white p-4">
+        <div className="mb-2 flex items-center gap-2 text-lg font-bold text-primary">
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-secondary" />
           {"\u6280\u672f\u9762"}
         </div>
-        <p className="text-base font-medium leading-relaxed text-neutral-400">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
+        <p className="text-base font-medium leading-relaxed text-secondary">{techReason && techReason.trim() ? techReason : "\u6682\u65e0\u6280\u672f\u5206\u6790"}</p>
       </div>
     </div>
   );
@@ -360,16 +360,16 @@ function RiskSection({ riskFlags, riskNote }) {
   }
   if (flags.length === 0 && !riskNote) return null;
   return (
-    <div className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4">
-      <div className="mb-1.5 flex items-center gap-2 text-base font-bold text-rose-400">
+    <div className="mt-3 rounded-xl border border-down/20 bg-down/10 p-4">
+      <div className="mb-1.5 flex items-center gap-2 text-base font-bold text-down">
         <AlertTriangle size={16} />
         {"\u98ce\u9669\u63d0\u793a"}
       </div>
-      {riskNote && <p className="text-base font-medium leading-relaxed text-rose-400/70">{riskNote}</p>}
+      {riskNote && <p className="text-base font-medium leading-relaxed text-down/70">{riskNote}</p>}
       {flags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {flags.map((f, i) => (
-            <span key={i} className="rounded border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-sm font-bold text-rose-400/90">
+            <span key={i} className="rounded border border-down/20 bg-down/10 px-2.5 py-1 text-sm font-bold text-down/90">
               {translateFlag(f)}
             </span>
           ))}
@@ -381,12 +381,12 @@ function RiskSection({ riskFlags, riskNote }) {
 
 function ScoreDimensionBar({ label, value, icon: Icon, color }) {
   const v = Math.max(0, Math.min(100, value || 0));
-  const barColor = v >= 65 ? "#34d399" : v >= 45 ? "#818cf8" : v >= 30 ? "#f59e0b" : "#fb7185";
+  const barColor = v >= 65 ? "#16A34A" : v >= 45 ? "#2563EB" : v >= 30 ? "#D97706" : "#DC2626";
   return (
     <div className="flex items-center gap-2">
       <Icon size={14} style={{ color }} />
-      <span className="w-16 text-sm font-semibold text-neutral-400">{label}</span>
-      <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
+      <span className="w-16 text-sm font-semibold text-secondary">{label}</span>
+      <div className="flex-1 h-2 rounded-full bg-surface-3 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${v}%`, background: barColor }} />
       </div>
       <span className="w-8 text-right text-sm font-bold tabular-nums" style={{ color: barColor }}>{v}</span>
@@ -400,34 +400,34 @@ function ScoreDimensions({ item }) {
   const fs = item.fundamental_score || 0;
   if (!ts && !ns && !fs) return null;
   return (
-    <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-      <div className="mb-3 flex items-center gap-2 text-base font-medium text-white">
-        <BarChart3 size={16} className="text-indigo-400" />
+    <div className="mt-3 rounded-xl border border-border bg-white p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-medium text-primary">
+        <BarChart3 size={16} className="text-brand" />
         {"\u591a\u7ef4\u8bc4\u5206"}
       </div>
       <div className="space-y-2.5">
-        <ScoreDimensionBar label={"\u6280\u672f\u9762"} value={ts} icon={Activity} color="#818cf8" />
-        <ScoreDimensionBar label={"\u57fa\u672c\u9762"} value={fs} icon={BarChart3} color="#f59e0b" />
-        <ScoreDimensionBar label={"\u65b0\u95fb\u9762"} value={ns} icon={Eye} color="#34d399" />
+        <ScoreDimensionBar label={"\u6280\u672f\u9762"} value={ts} icon={Activity} color="#2563EB" />
+        <ScoreDimensionBar label={"\u57fa\u672c\u9762"} value={fs} icon={BarChart3} color="#D97706" />
+        <ScoreDimensionBar label={"\u65b0\u95fb\u9762"} value={ns} icon={Eye} color="#16A34A" />
       </div>
     </div>
   );
 }
 
 const INSIDER_SIGNAL_CN = {
-  strong_buy: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u4e70\u5165", color: "#34d399" },
-  moderate_buy: { text: "\u5185\u90e8\u4eba\u4e70\u5165", color: "#34d399" },
-  strong_sell: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u5356\u51fa", color: "#fb7185" },
-  moderate_sell: { text: "\u5185\u90e8\u4eba\u5356\u51fa", color: "#fb7185" },
-  neutral: { text: "\u5185\u90e8\u4eba\u4e2d\u6027", color: "#94a3b8" },
+  strong_buy: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u4e70\u5165", color: "#16A34A" },
+  moderate_buy: { text: "\u5185\u90e8\u4eba\u4e70\u5165", color: "#16A34A" },
+  strong_sell: { text: "\u5185\u90e8\u4eba\u5f3a\u70c8\u5356\u51fa", color: "#DC2626" },
+  moderate_sell: { text: "\u5185\u90e8\u4eba\u5356\u51fa", color: "#DC2626" },
+  neutral: { text: "\u5185\u90e8\u4eba\u4e2d\u6027", color: "#8B7E74" },
 };
 
 const OPTIONS_SIGNAL_CN = {
-  strong_bullish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u591a", color: "#34d399" },
-  bullish: { text: "\u671f\u6743\u770b\u591a", color: "#34d399" },
-  strong_bearish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u7a7a", color: "#fb7185" },
-  bearish: { text: "\u671f\u6743\u770b\u7a7a", color: "#fb7185" },
-  neutral: { text: "\u671f\u6743\u4e2d\u6027", color: "#94a3b8" },
+  strong_bullish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u591a", color: "#16A34A" },
+  bullish: { text: "\u671f\u6743\u770b\u591a", color: "#16A34A" },
+  strong_bearish: { text: "\u671f\u6743\u5f3a\u70c8\u770b\u7a7a", color: "#DC2626" },
+  bearish: { text: "\u671f\u6743\u770b\u7a7a", color: "#DC2626" },
+  neutral: { text: "\u671f\u6743\u4e2d\u6027", color: "#8B7E74" },
 };
 
 function TechIndicators({ item }) {
@@ -438,48 +438,48 @@ function TechIndicators({ item }) {
   const hasAny = rsi != null || macdHist != null || bbPos != null || (obvTrend && obvTrend !== "");
   if (!hasAny) return null;
 
-  const rsiColor = rsi > 70 ? "#fb7185" : rsi < 30 ? "#34d399" : "#e2e8f0";
+  const rsiColor = rsi > 70 ? "#DC2626" : rsi < 30 ? "#16A34A" : "#3D3029";
   const rsiLabel = rsi > 70 ? "\u8d85\u4e70" : rsi < 30 ? "\u8d85\u5356" : "\u4e2d\u6027";
-  const macdColor = macdHist > 0 ? "#34d399" : macdHist < 0 ? "#fb7185" : "#94a3b8";
+  const macdColor = macdHist > 0 ? "#16A34A" : macdHist < 0 ? "#DC2626" : "#8B7E74";
   const macdLabel = macdHist > 0 ? "\u591a\u5934" : macdHist < 0 ? "\u7a7a\u5934" : "\u4e2d\u6027";
   const bbPct = bbPos != null ? Math.round(bbPos * 100) : null;
-  const bbColor = bbPct > 90 ? "#fb7185" : bbPct < 10 ? "#34d399" : "#e2e8f0";
-  const obvMap = { bullish: { text: "\u591a\u5934", color: "#34d399" }, bearish: { text: "\u7a7a\u5934", color: "#fb7185" }, neutral: { text: "\u4e2d\u6027", color: "#94a3b8" } };
+  const bbColor = bbPct > 90 ? "#DC2626" : bbPct < 10 ? "#16A34A" : "#3D3029";
+  const obvMap = { bullish: { text: "\u591a\u5934", color: "#16A34A" }, bearish: { text: "\u7a7a\u5934", color: "#DC2626" }, neutral: { text: "\u4e2d\u6027", color: "#8B7E74" } };
   const obvInfo = obvMap[obvTrend] || obvMap.neutral;
 
   return (
-    <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-      <div className="mb-3 flex items-center gap-2 text-base font-medium text-white">
-        <Activity size={16} className="text-indigo-400" />
+    <div className="mt-3 rounded-xl border border-border bg-white p-4">
+      <div className="mb-3 flex items-center gap-2 text-base font-medium text-primary">
+        <Activity size={16} className="text-brand" />
         {"\u6280\u672f\u6307\u6807"}
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {rsi != null && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-neutral-400">RSI(14)</div>
+          <div className="rounded-xl border border-border bg-surface-3 p-3 text-center">
+            <div className="text-xs font-semibold text-secondary">RSI(14)</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: rsiColor }}>{fmt(rsi, 1)}</div>
             <div className="mt-0.5 text-xs font-semibold" style={{ color: rsiColor }}>{rsiLabel}</div>
           </div>
         )}
         {macdHist != null && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-neutral-400">MACD</div>
+          <div className="rounded-xl border border-border bg-surface-3 p-3 text-center">
+            <div className="text-xs font-semibold text-secondary">MACD</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: macdColor }}>{fmt(macdHist, 4)}</div>
             <div className="mt-0.5 text-xs font-semibold" style={{ color: macdColor }}>{macdLabel}</div>
           </div>
         )}
         {bbPct != null && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-neutral-400">{"\u5e03\u6797\u5e26"}</div>
+          <div className="rounded-xl border border-border bg-surface-3 p-3 text-center">
+            <div className="text-xs font-semibold text-secondary">{"\u5e03\u6797\u5e26"}</div>
             <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: bbColor }}>{bbPct}%</div>
-            <div className="mt-0.5 text-xs font-semibold text-neutral-400">{bbPct > 80 ? "\u8fd1\u4e0a\u8f68" : bbPct < 20 ? "\u8fd1\u4e0b\u8f68" : "\u4e2d\u4f4d"}</div>
+            <div className="mt-0.5 text-xs font-semibold text-secondary">{bbPct > 80 ? "\u8fd1\u4e0a\u8f68" : bbPct < 20 ? "\u8fd1\u4e0b\u8f68" : "\u4e2d\u4f4d"}</div>
           </div>
         )}
         {obvTrend && obvTrend !== "" && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-center backdrop-blur-md">
-            <div className="text-xs font-semibold text-neutral-400">OBV</div>
+          <div className="rounded-xl border border-border bg-surface-3 p-3 text-center">
+            <div className="text-xs font-semibold text-secondary">OBV</div>
             <div className="mt-1 text-xl font-bold" style={{ color: obvInfo.color }}>{obvInfo.text}</div>
-            <div className="mt-0.5 text-xs font-semibold text-neutral-400">{"\u80fd\u91cf\u6f6e"}</div>
+            <div className="mt-0.5 text-xs font-semibold text-secondary">{"\u80fd\u91cf\u6f6e"}</div>
           </div>
         )}
       </div>
@@ -500,17 +500,17 @@ function SignalBadges({ item }) {
     if (info) badges.push({ text: info.text, color: info.color, icon: Eye });
   }
   if (item.options_unusual_activity) {
-    badges.push({ text: "\u671f\u6743\u5f02\u52a8", color: "#f59e0b", icon: Activity });
+    badges.push({ text: "\u671f\u6743\u5f02\u52a8", color: "#D97706", icon: Activity });
   }
   if (item.options_pc_ratio != null && item.options_pc_ratio > 0) {
     const pcr = Number(item.options_pc_ratio);
-    const pcrColor = pcr > 1.2 ? "#fb7185" : pcr < 0.7 ? "#34d399" : "#94a3b8";
+    const pcrColor = pcr > 1.2 ? "#DC2626" : pcr < 0.7 ? "#16A34A" : "#8B7E74";
     badges.push({ text: `P/C ${pcr.toFixed(2)}`, color: pcrColor, icon: BarChart3 });
   }
   const eda = item.earnings_days_away;
   const eds = item.earnings_date_str;
   if (eda != null && eda >= 0 && eda <= 10) {
-    const eColor = eda <= 3 ? "#fb7185" : "#f59e0b";
+    const eColor = eda <= 3 ? "#DC2626" : "#D97706";
     badges.push({ text: `${eda}\u5929\u540e\u8d22\u62a5${eds ? ` (${eds})` : ""}`, color: eColor, icon: Calendar });
   }
   if (badges.length === 0) return null;
@@ -518,7 +518,7 @@ function SignalBadges({ item }) {
     <div className="mt-3 flex flex-wrap gap-2">
       {badges.map((b, i) => (
         <span key={i} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold"
-          style={{ color: b.color, background: b.color + "15", border: `1px solid ${b.color}30` }}>
+          style={{ color: b.color, background: b.color + "08", border: `1px solid ${b.color}12` }}>
           <b.icon size={13} />
           {b.text}
         </span>
@@ -560,30 +560,30 @@ export default function RecCard({ item, rank }) {
     : (item.take_profit && item.entry_price ? item.take_profit - item.entry_price : 0);
   const rrRatio = rrRisk > 0 ? (rrReward / rrRisk).toFixed(1) : "--";
 
-  const borderHighlight = isShort ? "border-fuchsia-500/30" : "border-white/[0.08]";
-  const hoverBorder = isShort ? "hover:border-fuchsia-500/40" : "hover:border-white/[0.08]";
+  const borderHighlight = isShort ? "border-[#9333EA]/30" : "border-border";
+  const hoverBorder = isShort ? "hover:border-[#9333EA]/40" : "hover:border-border";
 
   return (
-    <div className={`rounded-3xl border bg-white/[0.03] shadow-xl backdrop-blur-md transition-all ${
-      expanded ? borderHighlight : `border-white/[0.06] ${hoverBorder}`
+    <div className={`rounded-2xl border bg-white shadow-md transition-all ${
+      expanded ? borderHighlight : `border-border ${hoverBorder}`
     }`}>
       {/* Header */}
       <div className="cursor-pointer px-6 py-5" onClick={() => setExpanded(!expanded)}>
         {/* Row 1 */}
         <div className="flex items-center gap-3">
           <span className={`rounded px-3 py-1 text-base font-extrabold font-mono ${
-            isShort ? "border border-fuchsia-500/20 bg-fuchsia-500/10 text-fuchsia-400" : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+            isShort ? "border border-[#9333EA]/20 bg-[#9333EA]/10 text-[#9333EA]" : "border border-up/20 bg-up/10 text-up"
           }`}>
             {item.ticker}
           </span>
           {isShort && (
-            <span className="rounded border border-fuchsia-500/20 bg-fuchsia-500/10 px-2 py-0.5 text-sm font-bold text-fuchsia-400">
+            <span className="rounded border border-[#9333EA]/20 bg-[#9333EA]/10 px-2 py-0.5 text-sm font-bold text-[#9333EA]">
               SHORT
             </span>
           )}
-          <span className="text-xl font-light text-white">{displayName}</span>
+          <span className="text-xl font-light text-primary">{displayName}</span>
           {item.sector && item.sector !== "" && (
-            <span className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-0.5 text-xs font-bold text-indigo-400">
+            <span className="rounded-full border border-brand/20 bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
               {SECTOR_CN[item.sector] || item.sector}
             </span>
           )}
@@ -594,11 +594,11 @@ export default function RecCard({ item, rank }) {
             <Link
               to={`/analysis?ticker=${item.ticker}&market=${item.market}`}
               onClick={(e) => e.stopPropagation()}
-              className="rounded bg-indigo-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-indigo-600"
+              className="rounded bg-brand px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-brand/90"
             >
               {"\u67e5\u770b\u8be6\u60c5"}
             </Link>
-            <button className="text-neutral-400 transition-colors hover:text-slate-200"
+            <button className="text-secondary transition-colors hover:text-primary"
               onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
               {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -607,25 +607,25 @@ export default function RecCard({ item, rank }) {
 
         {/* Row 2 */}
         <div className="mt-2 flex flex-wrap items-center gap-4">
-          <span className="text-4xl font-semibold tabular-nums text-slate-200">
+          <span className="text-4xl font-semibold tabular-nums text-primary">
             {currencySymbol}{fmt(item.price)}
           </span>
           <span className={`text-lg font-bold tabular-nums ${
-            (item.change_pct || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+            (item.change_pct || 0) >= 0 ? "text-up" : "text-down"
           }`}>
             {(item.change_pct || 0) >= 0 ? "+" : ""}{fmt(item.change_pct, 2)}%
           </span>
           <ActionArrow action={item.action || item.direction} direction={item.direction} />
           <ConfidenceBar value={score} />
           {showTrading && (
-            <span className="text-base font-semibold text-neutral-400">
+            <span className="text-base font-semibold text-secondary">
               {"\u98ce\u9669\u56de\u62a5"} 1:{rrRatio}
             </span>
           )}
           {item.position_pct > 0 && (
             <span className={`text-sm font-semibold ${
-              item.position_pct >= 6 ? "text-emerald-400" :
-              item.position_pct >= 4 ? "text-amber-400" : "text-rose-400"
+              item.position_pct >= 6 ? "text-up" :
+              item.position_pct >= 4 ? "text-[#D97706]" : "text-down"
             }`}>
               {"\u4ed3\u4f4d"} {item.position_pct}%
             </span>
@@ -635,17 +635,17 @@ export default function RecCard({ item, rank }) {
 
       {/* Expanded Detail */}
       {expanded && (
-        <div className="border-t border-white/[0.06] px-5 pb-5">
+        <div className="border-t border-border px-5 pb-5">
           {/* Tab Bar */}
-          <div className="mt-3 flex border-b border-white/[0.06]">
+          <div className="mt-3 flex border-b border-border">
             {["\u4ea4\u6613\u8ba1\u5212", "\u5206\u6790\u8be6\u60c5", "\u98ce\u9669\u8bc4\u4f30"].map((label, idx) => (
               <button
                 key={label}
                 onClick={(e) => { e.stopPropagation(); setActiveTab(idx); }}
                 className={`px-4 py-2.5 text-base font-medium transition-colors ${
                   activeTab === idx
-                    ? "border-b-2 border-indigo-400 text-indigo-400"
-                    : "text-neutral-500 hover:text-slate-300"
+                    ? "border-b-2 border-brand text-brand"
+                    : "text-tertiary hover:text-primary"
                 }`}
               >
                 {label}
@@ -658,21 +658,21 @@ export default function RecCard({ item, rank }) {
             <div>
               {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
               {!showTrading && (
-                <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-base font-medium text-neutral-400">
+                <div className="mt-4 rounded-xl border border-border bg-white p-4 text-base font-medium text-secondary">
                   {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
                 </div>
               )}
               {/* Position suggestion */}
               <div className={`mt-3 rounded-xl border p-4 ${
-                isShort ? "border-fuchsia-500/20 bg-fuchsia-500/10" : "border-amber-500/20 bg-amber-500/10"
+                isShort ? "border-[#9333EA]/20 bg-[#9333EA]/10" : "border-[#D97706]/20 bg-[#D97706]/10"
               }`}>
                 <div className={`mb-1 flex items-center gap-2 text-base font-bold ${
-                  isShort ? "text-fuchsia-400" : "text-amber-400"
+                  isShort ? "text-[#9333EA]" : "text-[#D97706]"
                 }`}>
                   <Crosshair size={16} />
                   {isShort ? "\u505a\u7a7a\u4ed3\u4f4d\u5efa\u8bae" : "\u4ed3\u4f4d\u5efa\u8bae"}
                 </div>
-                <p className={`text-base font-medium ${isShort ? "text-fuchsia-400/70" : "text-amber-400/70"}`}>
+                <p className={`text-base font-medium ${isShort ? "text-[#9333EA]/70" : "text-[#D97706]/70"}`}>
                   {isShort
                     ? (score >= 70
                       ? "\u505a\u7a7a\u4fe1\u53f7\u8f83\u5f3a\uff0c\u53ef\u9002\u5f53\u52a0\u5927\u7a7a\u5934\u4ed3\u4f4d\uff0c\u4f46\u6ce8\u610f\u8bbe\u7f6e\u4e25\u683c\u6b62\u635f\u3002"
@@ -699,30 +699,30 @@ export default function RecCard({ item, rank }) {
               {(item.llm_reason || item.fundamental_reason || item.valuation_summary) && (
                 <div className="mt-3 space-y-3">
                   {item.llm_reason && !looksMojibake(item.llm_reason) && (
-                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-indigo-400">
+                    <div className="rounded-xl border border-brand/20 bg-brand/10 p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-bold text-brand">
                         <Lightbulb size={16} />
                         AI 综合研判
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-neutral-400 whitespace-pre-wrap">{item.llm_reason}</p>
+                      <p className="text-base font-medium leading-relaxed text-secondary whitespace-pre-wrap">{item.llm_reason}</p>
                     </div>
                   )}
                   {item.fundamental_reason && !looksMojibake(item.fundamental_reason) && (
-                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-white">
-                        <BarChart3 size={16} className="text-amber-400" />
+                    <div className="rounded-xl border border-border bg-white p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-primary">
+                        <BarChart3 size={16} className="text-[#D97706]" />
                         基本面分析
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-neutral-400">{item.fundamental_reason}</p>
+                      <p className="text-base font-medium leading-relaxed text-secondary">{item.fundamental_reason}</p>
                     </div>
                   )}
                   {item.valuation_summary && !looksMojibake(item.valuation_summary) && (
-                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-white">
-                        <Target size={16} className="text-emerald-400" />
+                    <div className="rounded-xl border border-border bg-white p-4">
+                      <div className="mb-2 flex items-center gap-2 text-base font-medium text-primary">
+                        <Target size={16} className="text-up" />
                         估值摘要
                       </div>
-                      <p className="text-base font-medium leading-relaxed text-neutral-400">{item.valuation_summary}</p>
+                      <p className="text-base font-medium leading-relaxed text-secondary">{item.valuation_summary}</p>
                     </div>
                   )}
                 </div>
@@ -735,7 +735,7 @@ export default function RecCard({ item, rank }) {
             <div>
               <RiskSection riskFlags={item.risk_flags} riskNote={item.risk_note} />
               {!item.risk_flags && !item.risk_note && (
-                <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-base font-medium text-neutral-400">
+                <div className="mt-4 rounded-xl border border-border bg-white p-4 text-base font-medium text-secondary">
                   暂无风险提示信息
                 </div>
               )}

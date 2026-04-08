@@ -1,7 +1,7 @@
 export default function PriceChange({ value, suffix = "%", size = "sm" }) {
-  if (value == null) return <span className="text-neutral-600">--</span>;
+  if (value == null) return <span className="text-tertiary">--</span>;
   const num = Number(value);
-  const color = num > 0 ? "text-emerald-400" : num < 0 ? "text-rose-400" : "text-neutral-500";
+  const color = num > 0 ? "text-up" : num < 0 ? "text-down" : "text-secondary";
   const sign = num > 0 ? "+" : "";
   const textSize =
     size === "xl" ? "text-xl font-semibold" :

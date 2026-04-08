@@ -12,7 +12,7 @@ function SortHeader({ label, field, sortKey, sortDir, onSort, className = "" }) 
   const active = sortKey === field;
   return (
     <th
-      className={`cursor-pointer select-none hover:text-slate-200 ${className}`}
+      className={`cursor-pointer select-none hover:text-primary ${className}`}
       onClick={() => onSort(field)}
     >
       {label}
@@ -77,36 +77,36 @@ export default function ScreeningPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-medium text-white">选股筛选</h1>
+      <h1 className="text-xl font-medium text-primary">选股筛选</h1>
 
       <Card>
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">市场</label>
+            <label className="mb-1 block text-xs text-secondary">市场</label>
             <select
               value={market}
               onChange={(e) => setMarket(e.target.value)}
-              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-indigo-500"
+              className="rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm text-primary focus:border-brand"
             >
               <option value="us_stock">美股</option>
               <option value="hk_stock">港股</option>
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">数量</label>
+            <label className="mb-1 block text-xs text-secondary">数量</label>
             <input
               type="number"
               value={topN}
               onChange={(e) => setTopN(Number(e.target.value))}
               min={5}
               max={100}
-              className="w-20 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-indigo-500"
+              className="w-20 rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm text-primary focus:border-brand"
             />
           </div>
           <button
             onClick={runScreen}
             disabled={running}
-            className="flex items-center gap-2 rounded-lg bg-indigo-500 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white shadow-lg shadow-brand/15 hover:bg-[#A04E30] disabled:opacity-50"
           >
             {running ? <Spinner size="sm" /> : <Search size={16} />}
             {running ? "筛选中..." : "开始筛选"}
@@ -119,7 +119,7 @@ export default function ScreeningPage() {
           <CardTitle>
             筛选结果 ({results.length}){" "}
             {latest?.ref_date && (
-              <span className="font-normal text-slate-500">
+              <span className="font-normal text-secondary">
                 {" "}- {latest.ref_date}
               </span>
             )}
@@ -129,7 +129,7 @@ export default function ScreeningPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-800/40 text-xs text-slate-500">
+                  <tr className="border-b border-border text-xs text-secondary">
                     <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">代码</th>
                     <th className="px-3 py-2">名称</th>
@@ -148,31 +148,31 @@ export default function ScreeningPage() {
                   {sorted.map((r, i) => (
                     <tr
                       key={r.ticker}
-                      className="border-b border-slate-800/40 hover:bg-slate-800/30"
+                      className="border-b border-border hover:bg-surface-2"
                     >
-                      <td className="px-3 py-2 text-slate-500">{i + 1}</td>
+                      <td className="px-3 py-2 text-secondary">{i + 1}</td>
                       <td className="px-3 py-2 font-mono font-semibold">{r.ticker}</td>
-                      <td className="max-w-[200px] truncate px-3 py-2 text-slate-400">{r.name}</td>
+                      <td className="max-w-[200px] truncate px-3 py-2 text-secondary">{r.name}</td>
                       <td className="px-3 py-2"><MarketBadge market={r.market} /></td>
                       <td className="px-3 py-2 text-right font-mono">{r.price?.toFixed(2) ?? "--"}</td>
                       <td className="px-3 py-2 text-right"><PriceChange value={r.change_pct} /></td>
-                      <td className="px-3 py-2 text-right text-xs text-slate-500">
+                      <td className="px-3 py-2 text-right text-xs text-secondary">
                         {r.volume ? (r.volume >= 1e9 ? (r.volume / 1e9).toFixed(1) + "B" : (r.volume / 1e6).toFixed(1) + "M") : "--"}
                       </td>
-                      <td className="px-3 py-2 text-right text-xs text-slate-500">
+                      <td className="px-3 py-2 text-right text-xs text-secondary">
                         {r.market_cap ? (r.market_cap >= 1e12 ? (r.market_cap / 1e12).toFixed(1) + "T" : r.market_cap >= 1e9 ? (r.market_cap / 1e9).toFixed(1) + "B" : (r.market_cap / 1e6).toFixed(0) + "M") : "--"}
                       </td>
-                      <td className="px-3 py-2 text-right text-xs text-slate-400">
+                      <td className="px-3 py-2 text-right text-xs text-secondary">
                         {r.pe_ttm != null && r.pe_ttm > 0 ? r.pe_ttm.toFixed(1) : "--"}
                       </td>
-                      <td className="px-3 py-2 text-right text-xs text-slate-400">
+                      <td className="px-3 py-2 text-right text-xs text-secondary">
                         {r.pb != null && r.pb > 0 ? r.pb.toFixed(2) : "--"}
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-indigo-400">{r.score?.toFixed(1)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-brand">{r.score?.toFixed(1)}</td>
                       <td className="px-3 py-2">
                         <Link
                           to={`/analysis?ticker=${r.ticker}&market=${r.market}`}
-                          className="text-slate-500 hover:text-indigo-400"
+                          className="text-secondary hover:text-brand"
                         >
                           <Eye size={14} />
                         </Link>
@@ -189,40 +189,40 @@ export default function ScreeningPage() {
             {sorted.map((r, i) => (
               <div
                 key={r.ticker}
-                className="rounded-xl border border-slate-800/60 bg-slate-950/50 p-3"
+                className="rounded-xl border border-border bg-white p-3"
               >
                 {/* Top row: rank + ticker + market badge + score */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">#{i + 1}</span>
+                  <span className="text-xs text-secondary">#{i + 1}</span>
                   <span className="font-mono font-bold text-sm">{r.ticker}</span>
                   <MarketBadge market={r.market} />
-                  <span className="ml-auto font-semibold text-indigo-400">{r.score?.toFixed(1)}</span>
+                  <span className="ml-auto font-semibold text-brand">{r.score?.toFixed(1)}</span>
                 </div>
 
                 {/* Name */}
-                <p className="mt-1 truncate text-xs text-slate-400">{r.name}</p>
+                <p className="mt-1 truncate text-xs text-secondary">{r.name}</p>
 
                 {/* Metrics 2x2 grid */}
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">价格</span>
+                    <span className="text-secondary">价格</span>
                     <span className="font-mono">{r.price?.toFixed(2) ?? "--"} <PriceChange value={r.change_pct} /></span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">PE(TTM)</span>
-                    <span className="text-slate-400">{r.pe_ttm != null && r.pe_ttm > 0 ? r.pe_ttm.toFixed(1) : "--"}</span>
+                    <span className="text-secondary">PE(TTM)</span>
+                    <span className="text-secondary">{r.pe_ttm != null && r.pe_ttm > 0 ? r.pe_ttm.toFixed(1) : "--"}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">PB</span>
-                    <span className="text-slate-400">{r.pb != null && r.pb > 0 ? r.pb.toFixed(2) : "--"}</span>
+                    <span className="text-secondary">PB</span>
+                    <span className="text-secondary">{r.pb != null && r.pb > 0 ? r.pb.toFixed(2) : "--"}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">成交量</span>
-                    <span className="text-slate-500">{r.volume ? (r.volume >= 1e9 ? (r.volume / 1e9).toFixed(1) + "B" : (r.volume / 1e6).toFixed(1) + "M") : "--"}</span>
+                    <span className="text-secondary">成交量</span>
+                    <span className="text-secondary">{r.volume ? (r.volume >= 1e9 ? (r.volume / 1e9).toFixed(1) + "B" : (r.volume / 1e6).toFixed(1) + "M") : "--"}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">市值</span>
-                    <span className="text-slate-500">{r.market_cap ? (r.market_cap >= 1e12 ? (r.market_cap / 1e12).toFixed(1) + "T" : r.market_cap >= 1e9 ? (r.market_cap / 1e9).toFixed(1) + "B" : (r.market_cap / 1e6).toFixed(0) + "M") : "--"}</span>
+                    <span className="text-secondary">市值</span>
+                    <span className="text-secondary">{r.market_cap ? (r.market_cap >= 1e12 ? (r.market_cap / 1e12).toFixed(1) + "T" : r.market_cap >= 1e9 ? (r.market_cap / 1e9).toFixed(1) + "B" : (r.market_cap / 1e6).toFixed(0) + "M") : "--"}</span>
                   </div>
                 </div>
 
@@ -230,7 +230,7 @@ export default function ScreeningPage() {
                 <div className="mt-2 flex justify-end">
                   <Link
                     to={`/analysis?ticker=${r.ticker}&market=${r.market}`}
-                    className="text-slate-500 hover:text-indigo-400"
+                    className="text-secondary hover:text-brand"
                   >
                     <Eye size={14} />
                   </Link>
@@ -248,11 +248,11 @@ export default function ScreeningPage() {
           </CardTitle>
           <div className="space-y-1">
             {historyList.map((h, i) => (
-              <Card key={i} className="flex items-center justify-between !py-2 rounded-xl border border-slate-800/60 bg-slate-950/50">
-                <span className="text-xs text-slate-400">
+              <Card key={i} className="flex items-center justify-between !py-2 rounded-xl border border-border bg-white">
+                <span className="text-xs text-secondary">
                   {h.ref_date} - {h.market}
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-secondary">
                   {h.result_count} 条结果
                 </span>
               </Card>

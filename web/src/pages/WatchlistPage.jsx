@@ -12,7 +12,7 @@ function SortHeader({ label, field, sortKey, sortDir, onSort, className = "" }) 
   const active = sortKey === field;
   return (
     <th
-      className={`cursor-pointer select-none hover:text-slate-200 ${className}`}
+      className={`cursor-pointer select-none hover:text-primary ${className}`}
       onClick={() => onSort(field)}
     >
       {label}
@@ -129,22 +129,22 @@ export default function WatchlistPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-medium text-white">
-          <Heart size={20} className="mr-2 inline text-rose-400" />
+        <h1 className="text-xl font-medium text-primary">
+          <Heart size={20} className="mr-2 inline text-down" />
           自选股
         </h1>
         <div className="flex gap-2">
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="flex items-center gap-1 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800/50"
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-secondary hover:bg-surface-3"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             刷新
           </button>
           <button
             onClick={() => setShowAdd(!showAdd)}
-            className="flex items-center gap-1 rounded-lg bg-indigo-500 px-3 py-1.5 text-xs text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600"
+            className="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-xs text-white shadow-lg shadow-brand/15 hover:bg-[#A04E30]"
           >
             <Plus size={14} /> 添加
           </button>
@@ -155,29 +155,29 @@ export default function WatchlistPage() {
         <Card>
           <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="mb-1 block text-xs text-slate-400">代码</label>
+              <label className="mb-1 block text-xs text-secondary">代码</label>
               <input
                 value={addTicker}
                 onChange={(e) => setAddTicker(e.target.value.toUpperCase())}
                 placeholder="AAPL"
-                className="w-28 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm uppercase text-slate-200 outline-none focus:border-indigo-500"
+                className="w-28 rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm uppercase text-primary outline-none placeholder:text-tertiary focus:border-brand"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-400">名称</label>
+              <label className="mb-1 block text-xs text-secondary">名称</label>
               <input
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
                 placeholder="Apple Inc."
-                className="w-40 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+                className="w-40 rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm text-primary outline-none placeholder:text-tertiary focus:border-brand"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-400">市场</label>
+              <label className="mb-1 block text-xs text-secondary">市场</label>
               <select
                 value={addMarket}
                 onChange={(e) => setAddMarket(e.target.value)}
-                className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-indigo-500"
+                className="rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm text-primary focus:border-brand"
               >
                 <option value="us_stock">美股</option>
                 <option value="hk_stock">港股</option>
@@ -185,7 +185,7 @@ export default function WatchlistPage() {
             </div>
             <button
               type="submit"
-              className="rounded-lg bg-indigo-500 px-4 py-2 text-sm text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600"
+              className="rounded-lg bg-brand px-4 py-2 text-sm text-white shadow-lg shadow-brand/15 hover:bg-[#A04E30]"
             >
               添加
             </button>
@@ -194,7 +194,7 @@ export default function WatchlistPage() {
       )}
 
       {items.length === 0 ? (
-        <Card className="py-10 text-center text-sm text-slate-500">
+        <Card className="py-10 text-center text-sm text-secondary">
           自选股列表为空，请添加股票
         </Card>
       ) : (
@@ -202,7 +202,7 @@ export default function WatchlistPage() {
         <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-800/40 text-xs text-slate-500">
+              <tr className="border-b border-border text-xs text-secondary">
                 <SortHeader label="代码" field="ticker" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="px-3 py-2" />
                 <th className="px-3 py-2">名称</th>
                 <th className="px-3 py-2">市场</th>
@@ -220,33 +220,33 @@ export default function WatchlistPage() {
                 return (
                   <tr
                     key={item.id}
-                    className="border-b border-slate-800/40 hover:bg-slate-800/30"
+                    className="border-b border-border hover:bg-surface-2"
                   >
                     <td className="px-3 py-2 font-mono font-semibold">{item.ticker}</td>
-                    <td className="max-w-[180px] truncate px-3 py-2 text-slate-400">{item.name}</td>
+                    <td className="max-w-[180px] truncate px-3 py-2 text-secondary">{item.name}</td>
                     <td className="px-3 py-2"><MarketBadge market={item.market} /></td>
                     <td className="px-3 py-2 text-right font-mono">{q?.price?.toFixed(2) ?? "--"}</td>
                     <td className="px-3 py-2 text-right"><PriceChange value={q?.change_pct} /></td>
-                    <td className="px-3 py-2 text-right text-xs text-slate-500">
+                    <td className="px-3 py-2 text-right text-xs text-secondary">
                       {q?.volume ? (q.volume / 1e6).toFixed(1) + "M" : "--"}
                     </td>
-                    <td className="max-w-[150px] truncate px-3 py-2 text-xs text-slate-500" title={item.note || ""}>
+                    <td className="max-w-[150px] truncate px-3 py-2 text-xs text-secondary" title={item.note || ""}>
                       {item.note || "--"}
                     </td>
-                    <td className="px-3 py-2 text-right text-[10px] text-slate-500 whitespace-nowrap">
+                    <td className="px-3 py-2 text-right text-[10px] text-secondary whitespace-nowrap">
                       {item.created_at ? new Date(item.created_at).toLocaleDateString("zh-CN") : "--"}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <Link
                           to={"/analysis?ticker=" + item.ticker + "&market=" + item.market}
-                          className="text-slate-500 hover:text-indigo-400"
+                          className="text-secondary hover:text-brand"
                         >
                           <Eye size={14} />
                         </Link>
                         <button
                           onClick={() => handleRemove(item.id)}
-                          className="text-slate-500 hover:text-rose-400"
+                          className="text-secondary hover:text-down"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -266,48 +266,48 @@ export default function WatchlistPage() {
             return (
               <div
                 key={item.id}
-                className="rounded-lg border border-slate-800/40 bg-slate-900/50 px-4 py-3 space-y-2"
+                className="rounded-lg border border-border bg-surface-0 px-4 py-3 space-y-2"
               >
                 {/* Top: ticker + name + market */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono font-bold text-slate-200">{item.ticker}</span>
-                    <span className="truncate text-sm text-slate-400">{item.name}</span>
+                    <span className="font-mono font-bold text-primary">{item.ticker}</span>
+                    <span className="truncate text-sm text-secondary">{item.name}</span>
                   </div>
                   <MarketBadge market={item.market} />
                 </div>
 
                 {/* Price row */}
                 <div className="flex items-baseline gap-3">
-                  <span className="text-lg font-mono text-slate-100">
+                  <span className="text-lg font-mono text-primary">
                     {q?.price?.toFixed(2) ?? "--"}
                   </span>
                   <PriceChange value={q?.change_pct} />
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-secondary">
                     {q?.volume ? (q.volume / 1e6).toFixed(1) + "M" : "--"}
                   </span>
                 </div>
 
                 {/* Note (if any) */}
                 {item.note && (
-                  <p className="truncate text-xs text-slate-500">{item.note}</p>
+                  <p className="truncate text-xs text-secondary">{item.note}</p>
                 )}
 
                 {/* Bottom: date + actions */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800/30">
-                  <span className="text-[10px] text-slate-500">
+                <div className="flex items-center justify-between pt-1 border-t border-border">
+                  <span className="text-[10px] text-secondary">
                     {item.created_at ? new Date(item.created_at).toLocaleDateString("zh-CN") : "--"}
                   </span>
                   <div className="flex items-center gap-3">
                     <Link
                       to={"/analysis?ticker=" + item.ticker + "&market=" + item.market}
-                      className="text-slate-500 hover:text-indigo-400"
+                      className="text-secondary hover:text-brand"
                     >
                       <Eye size={16} />
                     </Link>
                     <button
                       onClick={() => handleRemove(item.id)}
-                      className="text-slate-500 hover:text-rose-400"
+                      className="text-secondary hover:text-down"
                     >
                       <Trash2 size={16} />
                     </button>

@@ -38,9 +38,9 @@ function normalizeIndexName(idx) {
 
 function IndexCard({ idx }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-      <p className="text-xs text-neutral-400">{normalizeIndexName(idx)}</p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-white">
+    <div className="rounded-xl border border-border bg-white p-4">
+      <p className="text-xs text-secondary">{normalizeIndexName(idx)}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-primary">
         {idx.price?.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
@@ -66,35 +66,35 @@ function WinRateBanner({ market }) {
   const all = d.all || {};
   if (!all.total_evaluated) return null;
   const rate = all.win_rate || 0;
-  const rateColor = rate >= 60 ? "#34d399" : rate >= 45 ? "#f59e0b" : "#fb7185";
+  const rateColor = rate >= 60 ? "#16A34A" : rate >= 45 ? "#D97706" : "#DC2626";
   const avgRet = all.avg_return_pct || 0;
-  const retColor = avgRet >= 0 ? "#34d399" : "#fb7185";
+  const retColor = avgRet >= 0 ? "#16A34A" : "#DC2626";
   return (
     <Link to="/win-rate"
-      className="flex items-center gap-4 rounded-2xl border border-slate-800/80 bg-slate-900/40 px-5 py-3 shadow-xl backdrop-blur-md transition-colors hover:border-slate-700/50">
+      className="flex items-center gap-4 rounded-2xl border border-border px-5 py-3 shadow-lg transition-colors hover:border-border">
       <div className="flex items-center gap-2">
-        <Trophy size={16} className="text-amber-400" />
-        <span className="text-sm font-bold text-slate-200">{"\u7cfb\u7edf\u80dc\u7387"}</span>
+        <Trophy size={16} className="text-[#D97706]" />
+        <span className="text-sm font-bold text-primary">{"\u7cfb\u7edf\u80dc\u7387"}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <span className="text-lg font-extrabold tabular-nums" style={{ color: rateColor }}>{rate.toFixed(1)}%</span>
-        <span className="text-xs text-slate-400">({all.wins || 0}W / {all.total_evaluated}T)</span>
+        <span className="text-xs text-secondary">({all.wins || 0}W / {all.total_evaluated}T)</span>
       </div>
-      <div className="h-4 w-px bg-slate-800" />
+      <div className="h-4 w-px bg-border" />
       <div className="flex items-center gap-1.5">
         {avgRet >= 0 ? <TrendingUp size={14} style={{ color: retColor }} /> : <TrendingDown size={14} style={{ color: retColor }} />}
         <span className="text-sm font-bold tabular-nums" style={{ color: retColor }}>
           {avgRet >= 0 ? "+" : ""}{avgRet.toFixed(2)}%
         </span>
-        <span className="text-xs text-slate-400">{"\u5e73\u5747\u6536\u76ca"}</span>
+        <span className="text-xs text-secondary">{"\u5e73\u5747\u6536\u76ca"}</span>
       </div>
       {all.pending > 0 && (
         <>
-          <div className="h-4 w-px bg-slate-800" />
-          <span className="text-xs text-slate-400">{all.pending} {"\u5f85\u8bc4\u4f30"}</span>
+          <div className="h-4 w-px bg-border" />
+          <span className="text-xs text-secondary">{all.pending} {"\u5f85\u8bc4\u4f30"}</span>
         </>
       )}
-      <span className="ml-auto text-xs text-slate-400 hover:text-indigo-400">{"\u67e5\u770b\u8be6\u60c5 \u2192"}</span>
+      <span className="ml-auto text-xs text-secondary hover:text-brand">{"\u67e5\u770b\u8be6\u60c5 \u2192"}</span>
     </Link>
   );
 }
@@ -170,9 +170,9 @@ export default function RecommendationsPage({ market = "us" }) {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-end justify-between gap-3">
-        <h1 className="text-3xl font-light text-white">{cfg.title}</h1>
+        <h1 className="text-3xl font-light text-primary">{cfg.title}</h1>
         {updatedAtBj && (
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-secondary">
             {"\u66f4\u65b0\u4e8e\u5317\u4eac\u65f6\u95f4 "} {updatedAtBj}
           </p>
         )}
@@ -183,7 +183,7 @@ export default function RecommendationsPage({ market = "us" }) {
         {loading ? (
           <div className="grid gap-3 sm:grid-cols-3">
             {[1,2,3].map(i => (
-              <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+              <div key={i} className="rounded-xl border border-border bg-white p-4">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="mt-2 h-6 w-28" />
                 <Skeleton className="mt-2 h-3 w-14" />
@@ -201,7 +201,7 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* Market sentiment */}
       {sentimentLoading ? (
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 shadow-xl backdrop-blur-md">
+        <div className="rounded-2xl border border-border p-5 shadow-lg">
           <Skeleton className="mb-4 h-4 w-28" />
           <div className="grid gap-4 md:grid-cols-3">
             <Skeleton className="h-28" />
@@ -218,7 +218,7 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* Display message */}
       {today?.display_message && !detail && (
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-3 text-xs text-secondary">
           <Clock size={14} />
           {today.display_message}
         </div>
@@ -226,15 +226,15 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* History bar + Rec header */}
       <div className="flex items-center gap-3">
-        <Calendar size={13} className="text-neutral-400" />
-        <p className="text-xs font-medium text-neutral-400">{"\u5386\u53f2\u8bb0\u5f55"}</p>
+        <Calendar size={13} className="text-secondary" />
+        <p className="text-xs font-medium text-secondary">{"\u5386\u53f2\u8bb0\u5f55"}</p>
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
           <button
             onClick={() => setDetail(null)}
             className={`shrink-0 rounded-lg px-2.5 py-1 text-xs transition-colors ${
               !detail
-                ? "bg-white/[0.08] font-semibold text-indigo-400"
-                : "text-neutral-500 hover:text-slate-300"
+                ? "bg-surface-3 font-semibold text-brand"
+                : "text-secondary hover:text-primary"
             }`}
           >
             {"\u4eca\u65e5\u63a8\u8350"}
@@ -245,12 +245,12 @@ export default function RecommendationsPage({ market = "us" }) {
               onClick={() => loadDate(h.ref_date)}
               className={`shrink-0 rounded-lg px-2.5 py-1 text-xs transition-colors ${
                 detail?.run?.ref_date === h.ref_date
-                  ? "bg-indigo-500/10 font-semibold text-indigo-400"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-brand/10 font-semibold text-brand"
+                  : "text-secondary hover:text-primary"
               }`}
             >
               {h.ref_date}
-              <span className="ml-1 text-neutral-500">{h.published_count ?? h.result_count}</span>
+              <span className="ml-1 text-secondary">{h.published_count ?? h.result_count}</span>
             </button>
           ))}
         </div>
@@ -259,8 +259,8 @@ export default function RecommendationsPage({ market = "us" }) {
       {/* Recommendations - full width */}
       <div>
         <div className="mb-3 flex items-center gap-2">
-          <p className="text-sm font-semibold text-white">{"\u63a8\u8350\u5217\u8868"}</p>
-          <span className="text-xs text-neutral-400">
+          <p className="text-sm font-semibold text-primary">{"\u63a8\u8350\u5217\u8868"}</p>
+          <span className="text-xs text-secondary">
             {items.length} {"\u53ea"}
           </span>
         </div>
@@ -268,7 +268,7 @@ export default function RecommendationsPage({ market = "us" }) {
         {loading ? (
           <div className="space-y-2">
             {[1,2,3].map(i => (
-              <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+              <div key={i} className="rounded-xl border border-border bg-white p-4">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-5 w-14" />
                   <Skeleton className="h-4 w-28" />
@@ -281,9 +281,9 @@ export default function RecommendationsPage({ market = "us" }) {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03] py-16 shadow-xl backdrop-blur-md">
-            <p className="text-lg font-bold text-indigo-400">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
-            <p className="mt-2 text-sm text-neutral-400">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-16 shadow-lg">
+            <p className="text-lg font-bold text-brand">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
+            <p className="mt-2 text-sm text-secondary">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
           </div>
         ) : (
           <div className="space-y-2">

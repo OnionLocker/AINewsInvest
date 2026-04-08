@@ -11,9 +11,9 @@ const ICONS = {
 };
 
 const COLORS = {
-  success: { text: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.2)" },
-  error: { text: "#fb7185", bg: "rgba(251,113,133,0.08)", border: "rgba(251,113,133,0.2)" },
-  info: { text: "#818cf8", bg: "rgba(129,140,248,0.08)", border: "rgba(129,140,248,0.2)" },
+  success: { text: "#16A34A", bg: "rgba(22,163,74,0.08)", border: "rgba(22,163,74,0.2)" },
+  error: { text: "#DC2626", bg: "rgba(220,38,38,0.08)", border: "rgba(220,38,38,0.2)" },
+  info: { text: "#2563EB", bg: "rgba(37,99,235,0.08)", border: "rgba(37,99,235,0.2)" },
 };
 
 let toastId = 0;
@@ -35,20 +35,20 @@ function ToastItem({ item, onRemove }) {
 
   return (
     <div
-      className="pointer-events-auto flex items-start gap-3 rounded-2xl border px-5 py-4 shadow-2xl backdrop-blur-xl transition-all duration-200"
+      className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-border bg-white px-5 py-4 shadow-lg transition-all duration-200"
       style={{
-        background: "rgba(10,10,10,0.95)",
-        borderColor: c.border,
+        borderLeftColor: c.border,
+        borderLeftWidth: 3,
         opacity: visible ? 1 : 0,
         transform: visible ? "translateX(0)" : "translateX(100%)",
         maxWidth: 360,
       }}
     >
       <Icon size={18} style={{ color: c.text, marginTop: 2, flexShrink: 0 }} />
-      <p className="flex-1 text-[15px] text-white/90">{item.message}</p>
+      <p className="flex-1 text-[15px] text-primary">{item.message}</p>
       <button
         onClick={() => { setVisible(false); setTimeout(() => onRemove(item.id), 200); }}
-        className="text-neutral-500 hover:text-white"
+        className="text-tertiary hover:text-primary"
       >
         <X size={14} />
       </button>
