@@ -63,50 +63,70 @@ scheduler:
 # Pipeline parameters
 pipeline:
   max_candidates: 40
-  max_recommendations: 20
+  max_recommendations: 5
 
   screening:
     min_market_cap: 1.0e9
     min_avg_volume: 500000
-    max_pe: 80.0
-    min_pe: 0
     max_pb: 15.0
-    weight_volume: 0.25
-    weight_momentum: 0.30
-    weight_market_cap: 0.20
-    weight_volatility: 0.25
+    max_daily_change_pct: 10.0
+    # v4 factors (short-term trading optimized)
+    # acceleration: 涨幅加速度 (10d vs 20d return acceleration)
+    # volume_anomaly: 成交量异常 (recent vs historical)
+    # trend_setup: MA结构+回踩质量 (not just direction)
+    # volatility_fit: 适度波动 (too low = can't reach TP, too high = SL hit)
+    weight_acceleration: 0.30
+    weight_volume_anomaly: 0.25
+    weight_trend_setup: 0.30
+    weight_volatility_fit: 0.15
 
   synthesis:
-    news_weight: 0.35
-    tech_weight: 0.65
-    fundamental_weight: 0.0
-    min_confidence: 40
-    quality_threshold: 50
-    adaptive_threshold_drop: 20
-    adaptive_threshold_floor: 30
+    news_weight: 0.15
+    tech_weight: 0.55
+    fundamental_weight: 0.30
+    min_confidence: 65
+    quality_threshold: 60
+    adaptive_threshold_drop: 15
+    adaptive_threshold_floor: 55
     cross_fill_factor: 0.3
 
   short_term:
-    max_recommendations: 8
-    news_weight: 0.30
-    tech_weight: 0.50
-    fundamental_weight: 0.20
-    default_stop_loss_pct: 0.95
-    default_take_profit_pct: 1.08
-    take_profit_2_pct: 1.12
+    max_recommendations: 5
+    news_weight: 0.40
+    tech_weight: 0.55
+    fundamental_weight: 0.05
+    # v4: ATR-based TP/SL — these are FALLBACKS when ATR is unavailable
+    default_stop_loss_pct: 0.97       # -3% (was -5%)
+    default_take_profit_pct: 1.05     # +5% (was +8%)
+    take_profit_2_pct: 1.08           # +8% (was +12%)
+    # ATR multipliers for dynamic TP/SL
+    atr_sl_multiplier: 2.0            # SL = entry - 2.0 × ATR (room to breathe)
+    atr_tp_multiplier: 3.0            # TP = entry + 3.0 × ATR (R:R = 1.5)
     default_holding_days: 3
     max_holding_days: 5
+    # v4.1: trailing stop & SL bounds
+    trailing_activation_pct: 0.50
+    trailing_distance_pct: 0.40
+    sl_max_pct: 0.06
+    sl_min_pct: 0.015
 
   swing:
-    max_recommendations: 8
+    max_recommendations: 5
     news_weight: 0.40
     tech_weight: 0.35
     fundamental_weight: 0.25
-    default_stop_loss_pct: 0.92
-    default_take_profit_pct: 1.15
-    take_profit_2_pct: 1.25
+    default_stop_loss_pct: 0.94       # -6% (was -8%)
+    default_take_profit_pct: 1.12     # +12% (was +15%)
+    take_profit_2_pct: 1.20           # +20% (was +25%)
+    atr_sl_multiplier: 2.0
+    atr_tp_multiplier: 3.5
     default_holding_days: 10
     max_holding_days: 30
+    # v4.1: trailing stop & SL bounds
+    trailing_activation_pct: 0.40
+    trailing_distance_pct: 0.35
+    sl_max_pct: 0.10
+    sl_min_pct: 0.015
 
   win_rate:
     short_retention_days: 21

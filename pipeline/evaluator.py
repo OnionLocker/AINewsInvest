@@ -25,6 +25,7 @@ from loguru import logger
 from core.database import Database
 from core.data_source import to_yf_ticker
 from core.user import SYSTEM_DB_PATH
+from pipeline.config import get_config
 
 
 def evaluate_pending_records() -> dict[str, Any]:
@@ -38,7 +39,7 @@ def evaluate_pending_records() -> dict[str, Any]:
         if not pending:
             return {"evaluated": 0, "still_pending": 0, "message": "No pending records"}
 
-        results = {"win": 0, "loss": 0, "timeout": 0, "timeout_at_profit": 0, "timeout_at_loss": 0, "partial_win": 0, "still_pending": 0, "errors": 0}
+        results = {"win": 0, "loss": 0, "trailing_stop": 0, "timeout": 0, "timeout_at_profit": 0, "timeout_at_loss": 0, "partial_win": 0, "still_pending": 0, "errors": 0}
         today = datetime.now()
 
         for rec in pending:
@@ -60,7 +61,8 @@ def evaluate_pending_records() -> dict[str, Any]:
                 results["errors"] += 1
 
         results["evaluated"] = (
-            results["win"] + results["loss"] + results["timeout"]
+            results["win"] + results["loss"] + results["trailing_stop"]
+            + results["timeout"]
             + results["timeout_at_profit"] + results["timeout_at_loss"]
             + results["partial_win"]
         )
@@ -139,73 +141,107 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
             return None
 
         # --- Phase 2: evaluate TP / SL / trailing on post-fill bars ---
+        # Derive trailing stop parameters from config
+        cfg = get_config()
+        strategy = str(rec.get("strategy", "short_term"))
+        strat_cfg = cfg.swing if strategy == "swing" else cfg.short_term
+        trailing_activation_pct = strat_cfg.trailing_activation_pct
+        trailing_distance_pct = strat_cfg.trailing_distance_pct
+
         if is_short:
             tp_distance = entry - tp1
             best_price = entry
+            trailing_activation_price = entry - tp_distance * trailing_activation_pct
         else:
             tp_distance = tp1 - entry
             best_price = entry
+            trailing_activation_price = entry + tp_distance * trailing_activation_pct
+
+        trailing_active = False
+        effective_sl = sl
 
         for _, row in post_fill_rows:
             high = float(row["High"])
             low = float(row["Low"])
 
             if is_short:
-                hit_sl = sl > 0 and high >= sl
+                # Update best (lowest) price
+                best_price = min(best_price, low)
+
+                # Check trailing activation
+                if not trailing_active and tp_distance > 0 and best_price <= trailing_activation_price:
+                    trailing_active = True
+                if trailing_active and trailing_distance_pct > 0:
+                    trailing_sl = round(best_price * (1 + trailing_distance_pct), 2)
+                    effective_sl = min(sl, trailing_sl)  # tighter (lower) for shorts
+
+                hit_sl = effective_sl > 0 and high >= effective_sl
                 hit_tp = low <= tp1
+
                 if hit_sl and hit_tp:
-                    # Both hit same bar: judge by which level is closer
-                    # (closer = more likely hit first)
                     tp_dist = abs(low - tp1)
-                    sl_dist = abs(high - sl)
+                    sl_dist = abs(high - effective_sl)
                     if tp_dist <= sl_dist:
                         ret_pct = round((entry - tp1) / entry * 100, 2)
                         return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
                     else:
-                        ret_pct = round((entry - sl) / entry * 100, 2)
-                        return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                        ret_pct = round((entry - effective_sl) / entry * 100, 2)
+                        outcome_str = "trailing_stop" if trailing_active else "loss"
+                        return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_sl:
-                    ret_pct = round((entry - sl) / entry * 100, 2)
-                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                    ret_pct = round((entry - effective_sl) / entry * 100, 2)
+                    outcome_str = "trailing_stop" if trailing_active else "loss"
+                    return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_tp:
                     ret_pct = round((entry - tp1) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
 
-                best_price = min(best_price, low)
+                # Partial win detection
                 gain = entry - best_price
                 if tp_distance > 0 and gain > tp_distance * 0.5:
                     pullback = high - best_price
                     if pullback > gain * 0.5:
-                        # Conservative simulated exit: 40% of gain from entry
                         exit_p = round(entry - gain * 0.4, 2)
                         ret_pct = round((entry - exit_p) / entry * 100, 2)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
-            else:
-                hit_sl = sl > 0 and low <= sl
+
+            else:  # LONG
+                # Update best (highest) price
+                best_price = max(best_price, high)
+
+                # Check trailing activation
+                if not trailing_active and tp_distance > 0 and best_price >= trailing_activation_price:
+                    trailing_active = True
+                if trailing_active and trailing_distance_pct > 0:
+                    trailing_sl = round(best_price * (1 - trailing_distance_pct), 2)
+                    effective_sl = max(sl, trailing_sl)  # tighter (higher) for longs
+
+                hit_sl = effective_sl > 0 and low <= effective_sl
                 hit_tp = high >= tp1
+
                 if hit_sl and hit_tp:
-                    # Both hit same bar: judge by which level is closer
                     tp_dist = abs(high - tp1)
-                    sl_dist = abs(low - sl)
+                    sl_dist = abs(low - effective_sl)
                     if tp_dist <= sl_dist:
                         ret_pct = round((tp1 - entry) / entry * 100, 2)
                         return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
                     else:
-                        ret_pct = round((sl - entry) / entry * 100, 2)
-                        return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                        ret_pct = round((effective_sl - entry) / entry * 100, 2)
+                        outcome_str = "trailing_stop" if trailing_active else "loss"
+                        return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_sl:
-                    ret_pct = round((sl - entry) / entry * 100, 2)
-                    return {"outcome": "loss", "exit_price": sl, "return_pct": ret_pct}
+                    ret_pct = round((effective_sl - entry) / entry * 100, 2)
+                    outcome_str = "trailing_stop" if trailing_active else "loss"
+                    return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_tp:
                     ret_pct = round((tp1 - entry) / entry * 100, 2)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
 
-                best_price = max(best_price, high)
+                # Partial win detection
                 gain = best_price - entry
                 if tp_distance > 0 and gain > tp_distance * 0.5:
                     pullback = best_price - low
                     if pullback > gain * 0.5:
-                        # Conservative simulated exit: 40% of gain from entry
                         exit_p = round(entry + gain * 0.4, 2)
                         ret_pct = round((exit_p - entry) / entry * 100, 2)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}

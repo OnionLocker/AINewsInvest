@@ -65,6 +65,9 @@ function MarketCard({ title, data, color }) {
           {(d.partial_wins || 0) > 0 && (
             <StatBox icon={Target} label={"\u90E8\u5206\u6B62\u76C8"} value={d.partial_wins} color="#818cf8" />
           )}
+          {(d.trailing_stops || 0) > 0 && (
+            <StatBox icon={TrendingUp} label={"\u8FFD\u8E2A\u6B62\u76C8"} value={d.trailing_stops} color="#38bdf8" />
+          )}
           <StatBox icon={TrendingDown} label={"\u6B62\u635F"} value={d.losses || 0} color="#fb7185" />
           <StatBox icon={Clock} label={"\u8D85\u65F6"} value={d.timeouts || 0} color="#94a3b8" />
         </div>
@@ -272,7 +275,7 @@ function DetailsTable({ items }) {
             </thead>
             <tbody>
               {sorted.map((it, i) => {
-                const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
+                const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, trailing_stop: { text: "\u8FFD\u8E2A\u6B62\u76C8", color: "#38bdf8", bg: "#38bdf8" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
                 const o = outcomeMap[it.outcome] || outcomeMap.timeout;
                 const mktLabel = it.market === "us_stock" ? "\u7F8E\u80A1" : "\u6E2F\u80A1";
                 const isShort = it.direction === "short";
@@ -343,7 +346,7 @@ function DetailsTable({ items }) {
       {/* Mobile card list */}
       <div className="lg:hidden space-y-2">
         {sorted.map((it, i) => {
-          const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
+          const outcomeMap = { win: { text: "\u80DC", color: "#34d399", bg: "#34d399" }, trailing_stop: { text: "\u8FFD\u8E2A\u6B62\u76C8", color: "#38bdf8", bg: "#38bdf8" }, partial_win: { text: "\u90E8\u5206\u6B62\u76C8", color: "#818cf8", bg: "#818cf8" }, loss: { text: "\u8D25", color: "#fb7185", bg: "#fb7185" }, timeout: { text: "\u8D85\u65F6", color: "#94a3b8", bg: "#94a3b8" } };
           const o = outcomeMap[it.outcome] || outcomeMap.timeout;
           const isShort = it.direction === "short";
           const cardKey = it.id || i;
@@ -593,6 +596,7 @@ export default function WinRatePage() {
           <FilterButton label={"\u505A\u7A7A"} active={filter.direction === 'short'} onClick={() => toggleFilter('direction', 'short')} />
           <span className="w-px h-4 bg-white/[0.06]" />
           <FilterButton label={"\u80DC"} active={filter.outcome === 'win'} onClick={() => toggleFilter('outcome', 'win')} />
+          <FilterButton label={"\u8FFD\u8E2A\u6B62\u76C8"} active={filter.outcome === 'trailing_stop'} onClick={() => toggleFilter('outcome', 'trailing_stop')} />
           <FilterButton label={"\u8D1F"} active={filter.outcome === 'loss'} onClick={() => toggleFilter('outcome', 'loss')} />
           <FilterButton label={"\u8D85\u65F6"} active={filter.outcome === 'timeout'} onClick={() => toggleFilter('outcome', 'timeout')} />
         </div>

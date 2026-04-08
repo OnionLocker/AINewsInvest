@@ -213,21 +213,30 @@ def _simulate_trade(
     take_profit: float,
     holding_days: int,
     direction: str = "buy",
+    trailing_activation_price: float = 0,
+    trailing_distance_pct: float = 0,
 ) -> dict:
-    """Simulate a trade outcome using future K-line data after sim_date."""
+    """Simulate a trade outcome using future K-line data after sim_date.
+
+    v4.1: Supports trailing stop — once best_price reaches activation,
+    the SL tightens dynamically to lock in profits.
+    """
     future = kdf[kdf["date"] > sim_date].head(holding_days + 3)
-    
+
     if future.empty:
         return {"outcome": "no_data", "return_pct": 0.0, "exit_price": entry_price, "days_held": 0}
-    
+
     is_short = direction == "short"
     entry_filled = False
-    
+    best_price = entry_price
+    trailing_active = False
+    effective_sl = stop_loss
+
     for day_idx, (_, row) in enumerate(future.iterrows()):
         high = float(row["high"])
         low = float(row["low"])
         close_val = float(row["close"])
-        
+
         if not entry_filled:
             if is_short:
                 if high >= entry_price:
@@ -243,25 +252,43 @@ def _simulate_trade(
                         entry_filled = True
                     else:
                         continue
-        
+
         if is_short:
-            if stop_loss > 0 and high >= stop_loss:
-                ret = round((entry_price - stop_loss) / entry_price * 100, 2)
-                return {"outcome": "loss", "return_pct": ret, "exit_price": stop_loss, "days_held": day_idx + 1}
+            best_price = min(best_price, low)
+            if trailing_activation_price > 0 and not trailing_active:
+                if best_price <= trailing_activation_price:
+                    trailing_active = True
+            if trailing_active and trailing_distance_pct > 0:
+                trailing_sl = round(best_price * (1 + trailing_distance_pct), 2)
+                effective_sl = min(stop_loss, trailing_sl)
+
+            if effective_sl > 0 and high >= effective_sl:
+                ret = round((entry_price - effective_sl) / entry_price * 100, 2)
+                outcome = "trailing_stop" if trailing_active else "loss"
+                return {"outcome": outcome, "return_pct": ret, "exit_price": effective_sl, "days_held": day_idx + 1}
             if low <= take_profit:
                 ret = round((entry_price - take_profit) / entry_price * 100, 2)
                 return {"outcome": "win", "return_pct": ret, "exit_price": take_profit, "days_held": day_idx + 1}
         else:
-            if stop_loss > 0 and low <= stop_loss:
-                ret = round((stop_loss - entry_price) / entry_price * 100, 2)
-                return {"outcome": "loss", "return_pct": ret, "exit_price": stop_loss, "days_held": day_idx + 1}
+            best_price = max(best_price, high)
+            if trailing_activation_price > 0 and not trailing_active:
+                if best_price >= trailing_activation_price:
+                    trailing_active = True
+            if trailing_active and trailing_distance_pct > 0:
+                trailing_sl = round(best_price * (1 - trailing_distance_pct), 2)
+                effective_sl = max(stop_loss, trailing_sl)
+
+            if effective_sl > 0 and low <= effective_sl:
+                ret = round((effective_sl - entry_price) / entry_price * 100, 2)
+                outcome = "trailing_stop" if trailing_active else "loss"
+                return {"outcome": outcome, "return_pct": ret, "exit_price": effective_sl, "days_held": day_idx + 1}
             if high >= take_profit:
                 ret = round((take_profit - entry_price) / entry_price * 100, 2)
                 return {"outcome": "win", "return_pct": ret, "exit_price": take_profit, "days_held": day_idx + 1}
-    
+
     if not entry_filled:
         return {"outcome": "no_fill", "return_pct": 0.0, "exit_price": entry_price, "days_held": 0}
-    
+
     last_close = float(future["close"].iloc[-1])
     if is_short:
         ret = round((entry_price - last_close) / entry_price * 100, 2)
@@ -381,6 +408,8 @@ def run_backtest(
                 take_profit=trade["take_profit"],
                 holding_days=trade["holding_days"],
                 direction="buy",
+                trailing_activation_price=trade.get("trailing_activation_price", 0),
+                trailing_distance_pct=trade.get("trailing_distance_pct", 0),
             )
             
             if outcome["outcome"] in ("no_data", "no_fill"):
@@ -441,7 +470,11 @@ def _compute_stats(trades: list[dict], daily_returns: list[float]) -> dict[str, 
     returns = [t["return_pct"] for t in trades]
     wins = [t for t in trades if t["outcome"] == "win"]
     losses = [t for t in trades if t["outcome"] == "loss"]
+    trailing_stops = [t for t in trades if t["outcome"] == "trailing_stop"]
     timeouts = [t for t in trades if t["outcome"] == "timeout"]
+
+    # Count trailing_stop as win for rate calculation (profit was locked in)
+    effective_wins = wins + [t for t in trailing_stops if t["return_pct"] > 0]
     
     win_returns = [t["return_pct"] for t in wins]
     loss_returns = [t["return_pct"] for t in losses]
@@ -482,7 +515,7 @@ def _compute_stats(trades: list[dict], daily_returns: list[float]) -> dict[str, 
     by_score = {}
     for rng, tlist in score_ranges.items():
         if tlist:
-            w = sum(1 for t in tlist if t["outcome"] == "win")
+            w = sum(1 for t in tlist if t["outcome"] in ("win", "trailing_stop"))
             by_score[rng] = {
                 "trades": len(tlist),
                 "win_rate_pct": round(w / len(tlist) * 100, 1),
@@ -494,7 +527,7 @@ def _compute_stats(trades: list[dict], daily_returns: list[float]) -> dict[str, 
     for action in ("buy", "hold", "avoid"):
         atrades = [t for t in trades if t.get("action") == action]
         if atrades:
-            w = sum(1 for t in atrades if t["outcome"] == "win")
+            w = sum(1 for t in atrades if t["outcome"] in ("win", "trailing_stop"))
             by_action[action] = {
                 "trades": len(atrades),
                 "win_rate_pct": round(w / len(atrades) * 100, 1),
@@ -505,8 +538,9 @@ def _compute_stats(trades: list[dict], daily_returns: list[float]) -> dict[str, 
         "total_trades": len(trades),
         "wins": len(wins),
         "losses": len(losses),
+        "trailing_stops": len(trailing_stops),
         "timeouts": len(timeouts),
-        "win_rate_pct": round(len(wins) / len(trades) * 100, 1),
+        "win_rate_pct": round(len(effective_wins) / len(trades) * 100, 1),
         "avg_return_pct": round(sum(returns) / len(returns), 2),
         "total_return_pct": round(sum(returns), 2),
         "sharpe_ratio": round(sharpe, 2),

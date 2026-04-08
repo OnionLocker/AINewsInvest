@@ -168,6 +168,49 @@ function TradingPlanGrid({ item, currencySymbol, isShort }) {
         ))}
       </div>
       <PriceBar sl={item.stop_loss} entry={entry} tp={item.take_profit} isShort={isShort} />
+      {item.trailing_activation_price > 0 && item.trailing_distance_pct > 0 && (
+        <div className="mt-3 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
+          <div className="mb-2 flex items-center gap-2 text-base font-bold text-sky-400">
+            <Activity size={14} />
+            {"\u8ffd\u8e2a\u6b62\u635f\u7b56\u7565"}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className="text-sm text-neutral-400">{"\u6fc0\u6d3b\u4ef7\u4f4d: "}</span>
+              <span className="text-base font-semibold text-sky-300 tabular-nums">
+                {currencySymbol}{fmt(item.trailing_activation_price)}
+              </span>
+              {entry > 0 && item.take_profit > 0 && (
+                <span className="ml-1 text-sm text-neutral-500">
+                  {isShort
+                    ? `(\u76c8\u5229\u8fbe${Math.round(((entry - item.trailing_activation_price) / (entry - item.take_profit)) * 100)}%)`
+                    : `(\u76c8\u5229\u8fbe${Math.round(((item.trailing_activation_price - entry) / (item.take_profit - entry)) * 100)}%)`}
+                </span>
+              )}
+            </div>
+            <div>
+              <span className="text-sm text-neutral-400">{"\u56de\u64a4\u4fdd\u62a4: "}</span>
+              <span className="text-base font-semibold text-sky-300">
+                {(item.trailing_distance_pct * 100).toFixed(0)}%
+              </span>
+              <span className="ml-1 text-sm text-neutral-500">
+                {"\u4ece\u6700\u4f18\u4ef7\u56de\u64a4\u5373\u6b62\u76c8"}
+              </span>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-sky-400/60">
+            {isShort
+              ? "\u80a1\u4ef7\u8dcc\u81f3\u6fc0\u6d3b\u4ef7\u540e\uff0c\u6b62\u635f\u5c06\u968f\u4ef7\u683c\u4e0b\u884c\u81ea\u52a8\u6536\u7d27\uff0c\u9501\u5b9a\u90e8\u5206\u5229\u6da6\u3002"
+              : "\u80a1\u4ef7\u6da8\u81f3\u6fc0\u6d3b\u4ef7\u540e\uff0c\u6b62\u635f\u5c06\u968f\u4ef7\u683c\u4e0a\u884c\u81ea\u52a8\u62ac\u5347\uff0c\u9501\u5b9a\u90e8\u5206\u5229\u6da6\u3002"}
+          </p>
+        </div>
+      )}
+      {item.position_rationale && (
+        <p className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-400">
+          <BarChart3 size={13} className="text-indigo-400" />
+          {"\u4ed3\u4f4d\u5efa\u8bae: "}{item.position_rationale}
+        </p>
+      )}
       <p className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-400">
         <Lightbulb size={13} className="text-amber-400" />
         {isShort
@@ -580,7 +623,10 @@ export default function RecCard({ item, rank }) {
             </span>
           )}
           {item.position_pct > 0 && (
-            <span className="text-sm font-semibold text-neutral-400">
+            <span className={`text-sm font-semibold ${
+              item.position_pct >= 6 ? "text-emerald-400" :
+              item.position_pct >= 4 ? "text-amber-400" : "text-rose-400"
+            }`}>
               {"\u4ed3\u4f4d"} {item.position_pct}%
             </span>
           )}

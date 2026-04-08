@@ -22,10 +22,17 @@ class ScreeningConfig:
     max_pe: float = 80.0
     min_pe: float = 0
     max_pb: float = 15.0
-    weight_volume: float = 0.25
-    weight_momentum: float = 0.30
-    weight_market_cap: float = 0.20
-    weight_volatility: float = 0.25
+    max_daily_change_pct: float = 10.0
+    # New factor weights (v4 — designed for short-term trading)
+    weight_acceleration: float = 0.30
+    weight_volume_anomaly: float = 0.25
+    weight_trend_setup: float = 0.30
+    weight_volatility_fit: float = 0.15
+    # Legacy compat (still read from config.yaml if present)
+    weight_momentum: float = 0.35
+    weight_trend: float = 0.25
+    weight_quality: float = 0.20
+    weight_volatility: float = 0.20
 
 
 @dataclass
@@ -44,29 +51,43 @@ class SynthesisConfig:
 @dataclass
 class ShortTermConfig:
     """Short-term strategy parameters."""
-    max_recommendations: int = 8
-    news_weight: float = 0.15
+    max_recommendations: int = 5
+    news_weight: float = 0.40
     tech_weight: float = 0.55
-    fundamental_weight: float = 0.30
-    default_stop_loss_pct: float = 0.95
-    default_take_profit_pct: float = 1.08
-    take_profit_2_pct: float = 1.12
+    fundamental_weight: float = 0.05
+    default_stop_loss_pct: float = 0.97
+    default_take_profit_pct: float = 1.05
+    take_profit_2_pct: float = 1.08
+    atr_sl_multiplier: float = 2.0
+    atr_tp_multiplier: float = 3.0
     default_holding_days: int = 3
     max_holding_days: int = 5
+    # Trailing stop & per-strategy SL bounds (v4.1)
+    trailing_activation_pct: float = 0.50
+    trailing_distance_pct: float = 0.40
+    sl_max_pct: float = 0.06
+    sl_min_pct: float = 0.015
 
 
 @dataclass
 class SwingConfig:
     """Swing / medium-term strategy parameters."""
-    max_recommendations: int = 8
+    max_recommendations: int = 5
     news_weight: float = 0.40
     tech_weight: float = 0.35
     fundamental_weight: float = 0.25
-    default_stop_loss_pct: float = 0.92
-    default_take_profit_pct: float = 1.15
-    take_profit_2_pct: float = 1.25
+    default_stop_loss_pct: float = 0.94
+    default_take_profit_pct: float = 1.12
+    take_profit_2_pct: float = 1.20
+    atr_sl_multiplier: float = 2.0
+    atr_tp_multiplier: float = 3.5
     default_holding_days: int = 10
     max_holding_days: int = 30
+    # Trailing stop & per-strategy SL bounds (v4.1)
+    trailing_activation_pct: float = 0.40
+    trailing_distance_pct: float = 0.35
+    sl_max_pct: float = 0.10
+    sl_min_pct: float = 0.015
 
 
 @dataclass

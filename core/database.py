@@ -32,6 +32,7 @@ class Database:
         self._migrate_market_isolation()
         self._migrate_win_rate_scores()
         self._migrate_recommendation_extra_cols()
+        self._migrate_trailing_position_cols()
 
     def close(self):
         try:
@@ -256,6 +257,27 @@ class Database:
                 created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(ticker, market)
             );
+
+            -- Skill outputs recording (for backtesting & optimization)
+            CREATE TABLE IF NOT EXISTS skill_outputs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_date        TEXT    NOT NULL,
+                market          TEXT    NOT NULL,
+                ticker          TEXT    NOT NULL,
+                skill_name      TEXT    NOT NULL,
+                input_hash      TEXT    NOT NULL DEFAULT '',
+                raw_output      TEXT    NOT NULL DEFAULT '{}',
+                scored_value    REAL,
+                actual_return_5d  REAL,
+                actual_return_10d REAL,
+                score_breakdown TEXT    DEFAULT '{}',
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_skill_outputs_date_market
+                ON skill_outputs(run_date, market);
+            CREATE INDEX IF NOT EXISTS idx_skill_outputs_ticker
+                ON skill_outputs(ticker, skill_name);
         """)
         self._conn.commit()
 
@@ -384,6 +406,28 @@ class Database:
             ("options_pc_ratio", "REAL"),
             ("options_unusual_activity", "INTEGER DEFAULT 0"),
             ("insider_signal", "TEXT DEFAULT ''"),
+        ]
+        for table in ("published_recommendation_items", "daily_recommendation_items"):
+            try:
+                existing = {
+                    row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for col_name, col_def in new_cols:
+                    if col_name not in existing:
+                        try:
+                            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        except Exception:
+                            pass
+                self._conn.commit()
+            except Exception:
+                pass
+
+    def _migrate_trailing_position_cols(self):
+        """v4.1: Add trailing stop + position rationale columns."""
+        new_cols = [
+            ("trailing_activation_price", "REAL DEFAULT 0"),
+            ("trailing_distance_pct", "REAL DEFAULT 0"),
+            ("position_rationale", "TEXT DEFAULT ''"),
         ]
         for table in ("published_recommendation_items", "daily_recommendation_items"):
             try:
@@ -643,6 +687,7 @@ class Database:
 
         total = sum(r["cnt"] for r in rows)
         wins = sum(r["cnt"] for r in rows if r["outcome"] == "win")
+        trailing_stops = sum(r["cnt"] for r in rows if r["outcome"] == "trailing_stop")
         partial_wins = sum(r["cnt"] for r in rows if r["outcome"] in ("partial", "partial_win"))
         losses = sum(r["cnt"] for r in rows if r["outcome"] == "loss")
         timeouts = sum(r["cnt"] for r in rows if r["outcome"] == "timeout")
@@ -653,10 +698,11 @@ class Database:
         avg_loss_return = 0.0
         if rows:
             avg_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in rows) / max(total, 1)
-        win_rows = [r for r in rows if r["outcome"] == "win"]
+        win_rows = [r for r in rows if r["outcome"] in ("win", "trailing_stop")]
         loss_rows = [r for r in rows if r["outcome"] == "loss"]
         if win_rows:
-            avg_win_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in win_rows) / max(wins, 1)
+            effective_wins = wins + trailing_stops
+            avg_win_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in win_rows) / max(effective_wins, 1)
         if loss_rows:
             avg_loss_return = sum((r["avg_ret"] or 0) * r["cnt"] for r in loss_rows) / max(losses, 1)
 
@@ -673,7 +719,7 @@ class Database:
             params[:-1] if days else params,  # reuse same where without LIMIT
         ).fetchall()
         sum_wins = sum(r["return_pct"] for r in all_rows
-                       if r["outcome"] in ("win",) and r["return_pct"] and r["return_pct"] > 0)
+                       if r["outcome"] in ("win", "trailing_stop") and r["return_pct"] and r["return_pct"] > 0)
         sum_losses = abs(sum(r["return_pct"] for r in all_rows
                              if r["outcome"] == "loss" and r["return_pct"] and r["return_pct"] < 0))
         if sum_losses > 0:
@@ -686,12 +732,13 @@ class Database:
             "total_evaluated": total,
             "pending": pending_cnt,
             "wins": wins,
+            "trailing_stops": trailing_stops,
             "partial_wins": partial_wins,
             "losses": losses,
             "timeouts": timeouts,
             "timeout_at_profit": timeout_at_profit,
             "timeout_at_loss": timeout_at_loss,
-            "win_rate": round(wins / max(total, 1) * 100, 1),
+            "win_rate": round((wins + trailing_stops) / max(total, 1) * 100, 1),
             "avg_return_pct": round(avg_return, 2),
             "avg_win_return_pct": round(avg_win_return, 2),
             "avg_loss_return_pct": round(avg_loss_return, 2),
@@ -889,9 +936,11 @@ class Database:
                      sector, position_pct, earnings_days_away, earnings_date_str,
                      show_trading_params, rsi, macd_histogram, bollinger_position,
                      obv_trend, options_signal, options_pc_ratio,
-                     options_unusual_activity, insider_signal)
+                     options_unusual_activity, insider_signal,
+                     trailing_activation_price, trailing_distance_pct,
+                     position_rationale)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                            ?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
                  item.get("direction", "buy"), item.get("action", "hold"),
@@ -923,7 +972,10 @@ class Database:
                  item.get("options_signal", ""),
                  item.get("options_pc_ratio"),
                  1 if item.get("options_unusual_activity") else 0,
-                 item.get("insider_signal", "")),
+                 item.get("insider_signal", ""),
+                 item.get("trailing_activation_price", 0),
+                 item.get("trailing_distance_pct", 0),
+                 item.get("position_rationale", "")),
             )
 
     # ------------------------------------------------------------------
@@ -951,3 +1003,114 @@ class Database:
         result = json.loads(row["data"])
         result["_cached_at"] = row["updated_at"]
         return result
+
+    # ------------------------------------------------------------------
+    # Skill Outputs (recording & retrieval for backtesting)
+    # ------------------------------------------------------------------
+
+    def save_skill_output(
+        self,
+        run_date: str,
+        market: str,
+        ticker: str,
+        skill_name: str,
+        raw_output: dict,
+        scored_value: float | None = None,
+        score_breakdown: dict | None = None,
+        input_hash: str = "",
+    ) -> int:
+        """Record a structured LLM skill output for future analysis."""
+        cur = self._conn.execute(
+            """INSERT INTO skill_outputs
+               (run_date, market, ticker, skill_name, input_hash,
+                raw_output, scored_value, score_breakdown)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                run_date, market, ticker, skill_name, input_hash,
+                json.dumps(raw_output, ensure_ascii=False),
+                scored_value,
+                json.dumps(score_breakdown or {}, ensure_ascii=False),
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def get_skill_outputs(
+        self,
+        skill_name: str | None = None,
+        market: str | None = None,
+        days: int | None = None,
+        ticker: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Retrieve recorded skill outputs for analysis/backtesting."""
+        conditions = []
+        params: list[Any] = []
+
+        if skill_name:
+            conditions.append("skill_name = ?")
+            params.append(skill_name)
+        if market:
+            conditions.append("market = ?")
+            params.append(market)
+        if ticker:
+            conditions.append("ticker = ?")
+            params.append(ticker)
+        if days:
+            conditions.append("run_date >= date('now', ?)")
+            params.append(f"-{days} days")
+
+        where = " AND ".join(conditions) if conditions else "1=1"
+        params.append(limit)
+
+        rows = self._conn.execute(
+            f"""SELECT id, run_date, market, ticker, skill_name,
+                       raw_output, scored_value,
+                       actual_return_5d, actual_return_10d,
+                       score_breakdown, created_at
+                FROM skill_outputs
+                WHERE {where}
+                ORDER BY run_date DESC, ticker
+                LIMIT ?""",
+            params,
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["raw_output"] = json.loads(d["raw_output"])
+            except (json.JSONDecodeError, TypeError):
+                d["raw_output"] = {}
+            try:
+                d["score_breakdown"] = json.loads(d["score_breakdown"])
+            except (json.JSONDecodeError, TypeError):
+                d["score_breakdown"] = {}
+            results.append(d)
+        return results
+
+    def backfill_skill_actual_returns(
+        self,
+        ticker: str,
+        run_date: str,
+        return_5d: float | None = None,
+        return_10d: float | None = None,
+    ) -> int:
+        """Update actual returns for recorded skill outputs (for validation)."""
+        sets = []
+        params: list[Any] = []
+        if return_5d is not None:
+            sets.append("actual_return_5d = ?")
+            params.append(return_5d)
+        if return_10d is not None:
+            sets.append("actual_return_10d = ?")
+            params.append(return_10d)
+        if not sets:
+            return 0
+        params.extend([ticker, run_date])
+        cur = self._conn.execute(
+            f"UPDATE skill_outputs SET {', '.join(sets)} WHERE ticker = ? AND run_date = ?",
+            params,
+        )
+        self._conn.commit()
+        return cur.rowcount
