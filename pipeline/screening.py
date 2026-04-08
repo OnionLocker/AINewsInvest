@@ -111,8 +111,34 @@ def _norm_series(values: list[float | None], higher_is_better: bool) -> list[flo
     return out
 
 
+def _fetch_benchmark_return(market: str, days: int = 60) -> float:
+    """Fetch benchmark index return over the lookback period.
+
+    US → SPY, HK → ^HSI.  Returns 0.0 on failure (graceful degradation).
+    """
+    try:
+        symbol = "SPY" if market == "us_stock" else "^HSI"
+        kdf = get_klines(symbol, market, days=days + 5)
+        if kdf is not None and not kdf.empty and len(kdf) >= 20:
+            closes = kdf["close"].tolist()
+            return (closes[-1] / closes[0]) - 1.0
+    except Exception as e:
+        logger.debug(f"Benchmark return fetch failed: {e}")
+    return 0.0
+
+
 def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
-    """Layer 1: Full stock pool -> ~top_n candidates via hard filters + ranking."""
+    """Layer 1: Full stock pool -> ~top_n candidates via two-stage screening.
+
+    v4 redesign for short-term trading:
+    - Stage A: Hard filters (market cap, volume, daily change) + MA proximity pre-rank
+    - Stage B: K-line fetch + quality gate (reject garbage, not score)
+    - Multi-factor ranking:
+      * Acceleration (30%): Is the stock gaining momentum? (10d vs 20d return ratio)
+      * Volume Anomaly (25%): Recent volume surge vs 20-day average
+      * Trend Setup (30%): MA structure + pullback quality (near MA20 in uptrend)
+      * Volatility Fit (15%): Optimal daily vol range for short-term trading (1-3%)
+    """
     cfg = get_config()
     sc = cfg.screening
 
@@ -122,6 +148,10 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
     if not pool:
         logger.warning(f"No stock pool for {market}")
         return []
+
+    # ------------------------------------------------------------------
+    # Stage A: Fast quote-based hard filter + MA proximity pre-rank
+    # ------------------------------------------------------------------
 
     import time as _time
     _BATCH = 5
@@ -153,26 +183,51 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
         change_pct = float(q.get("change_pct") or 0)
         volume = float(q.get("volume") or 0)
 
+        # --- Hard gates ---
         if mc < sc.min_market_cap:
             continue
         if volume < sc.min_avg_volume:
             continue
-        if abs(change_pct) > 20:
+        if abs(change_pct) > sc.max_daily_change_pct:
             continue
+        # Note: PE hard filter REMOVED — high-growth stocks (NVDA, TSLA)
+        # often have PE > 80. Quality gate in Stage B handles garbage.
 
-        pe = None
-        pb = None
-        fin = None
-        passed.append({**row, "quote": q, "financial": fin})
+        passed.append({**row, "quote": q, "financial": None})
 
-    logger.info(f"Layer 1 hard filter: {len(pool)} -> {len(passed)} passed (market={market})")
+    logger.info(f"Stage A hard filter: {len(pool)} -> {len(passed)} passed (market={market})")
 
     if not passed:
         return []
 
+    # Pre-rank: prefer stocks near MA20 (pullback entry), not at 52-week highs.
+    # We approximate with 52-week position: middle range (0.4-0.7) is ideal.
+    for r in passed:
+        q = r["quote"]
+        price = float(q["price"])
+        yh = float(q.get("year_high") or price)
+        yl = float(q.get("year_low") or price)
+        if yh > yl:
+            pos = (price - yl) / (yh - yl)
+            # Bell curve: peak at 0.55 (slightly above mid), penalize extremes
+            # 0.0 = 52-week low (battered), 1.0 = 52-week high (chasing)
+            r["_pre_rank"] = max(0, 1.0 - abs(pos - 0.55) * 2.0)
+        else:
+            r["_pre_rank"] = 0.5
+
+    passed.sort(key=lambda x: x["_pre_rank"], reverse=True)
+
+    _STAGE_B_SIZE = max(top_n * 3, 80)
+    shortlist = passed[:_STAGE_B_SIZE]
+    logger.info(f"Stage A pre-rank: top {len(shortlist)} of {len(passed)} sent to Stage B")
+
+    # ------------------------------------------------------------------
+    # Stage B: Financial data + K-line fetch + quality gate
+    # ------------------------------------------------------------------
+
     fin_rows: list[dict] = []
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futs = {ex.submit(get_financial_data, r["ticker"], r["market"]): r for r in passed}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(get_financial_data, r["ticker"], r["market"]): r for r in shortlist}
         for fut in as_completed(futs):
             r = futs[fut]
             try:
@@ -182,61 +237,251 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
             r["financial"] = fin
             fin_rows.append(r)
 
+    # Quality gate: reject garbage (not a scoring factor)
+    # - Negative earnings + negative FCF + negative revenue growth = likely dying company
+    # - PB > 15 = extreme valuation risk
+    # - PE is NOT a hard filter anymore; it's only a soft quality factor
     filtered: list[dict] = []
     for r in fin_rows:
         fin = r.get("financial")
-        pe = _safe_float(fin.get("pe_ttm")) if fin else None
-        pb = _safe_float(fin.get("pb")) if fin else None
-
-        if pe is not None and (pe < sc.min_pe or pe > sc.max_pe):
-            continue
-        if pb is not None and pb > sc.max_pb:
-            continue
+        if fin:
+            pb = _safe_float(fin.get("pb"))
+            if pb > 0 and pb > sc.max_pb:
+                continue
+            # Garbage gate: reject if ALL three are bad simultaneously
+            roe = fin.get("roe")
+            fcf = fin.get("free_cashflow") or fin.get("free_cash_flow")
+            rev_g = fin.get("revenue_growth")
+            if (roe is not None and roe < -0.10
+                    and fcf is not None and fcf < 0
+                    and rev_g is not None and rev_g < -0.10):
+                logger.debug(f"Quality gate reject {r['ticker']}: ROE={roe}, FCF<0, RevG={rev_g}")
+                continue
         filtered.append(r)
 
     if not filtered:
-        logger.info(f"No symbols passed financial filters for {market}")
+        logger.info(f"No symbols passed quality gate for {market}")
         return []
 
-    vols = [float(r["quote"].get("volume", 0)) for r in filtered]
-    moms: list[float] = []
-    mcs: list[float] = []
-    changes: list[float] = []
+    logger.info(f"Stage B quality gate: {len(shortlist)} -> {len(filtered)}")
+
+    # Fetch 80-day K-lines
+    kline_map = batch_fetch_klines(
+        [{"ticker": r["ticker"], "market": r["market"]} for r in filtered],
+        days=80,
+    )
+    global _layer1_kline_cache
+    _layer1_kline_cache = kline_map
+
+    bench_ret = _fetch_benchmark_return(market, days=60)
+    logger.info(f"Benchmark 60d return: {bench_ret:+.2%}")
+
+    # ------------------------------------------------------------------
+    # Trend pre-filter: reject confirmed deep downtrends
+    # (relaxed vs old: only reject if >10% below MA50, not 8%)
+    # ------------------------------------------------------------------
+    trend_filtered: list[dict] = []
     for r in filtered:
+        kdf = kline_map.get(r["ticker"], pd.DataFrame())
+        if kdf is not None and not kdf.empty and len(kdf) >= 20:
+            closes = kdf["close"].tolist()
+            price = float(r["quote"]["price"])
+            ma20 = sum(closes[-20:]) / 20
+            ma50 = sum(closes[-min(50, len(closes)):]) / min(50, len(closes))
+            if price < ma20 < ma50 and price < ma50 * 0.90:
+                logger.debug(
+                    f"Trend reject {r['ticker']}: "
+                    f"price={price:.2f} < MA20={ma20:.2f} < MA50={ma50:.2f} (>10% below)"
+                )
+                continue
+        trend_filtered.append(r)
+
+    logger.info(
+        f"Trend filter: {len(filtered)} -> {len(trend_filtered)} "
+        f"(rejected {len(filtered) - len(trend_filtered)} deep downtrends)"
+    )
+    if not trend_filtered:
+        logger.warning("Trend filter removed all candidates, falling back")
+        trend_filtered = filtered
+
+    # ------------------------------------------------------------------
+    # Multi-factor ranking (v4: short-term trading optimized)
+    # ------------------------------------------------------------------
+    # Factor 1: Acceleration (30%) — is momentum increasing?
+    # Factor 2: Volume Anomaly (25%) — unusual volume surge
+    # Factor 3: Trend Setup (30%) — MA structure + pullback quality
+    # Factor 4: Volatility Fit (15%) — optimal vol range for trading
+    # ------------------------------------------------------------------
+
+    raw_accel: list[float] = []
+    raw_volume: list[float] = []
+    raw_setup: list[float] = []
+    raw_volfit: list[float] = []
+    raw_fundamental: list[float] = []
+    raw_quality_bonus: list[float] = []
+
+    for r in trend_filtered:
         q = r["quote"]
         price = float(q["price"])
-        yh = float(q.get("year_high") or price)
-        yl = float(q.get("year_low") or price)
-        if yh > yl:
-            rel_pos = (price - yl) / (yh - yl)
-            if rel_pos > 0.85:
-                mom = 0.6 - (rel_pos - 0.85) * 2.0
-            elif rel_pos >= 0.35:
-                mom = 0.4 + (rel_pos - 0.35) * 0.4
+        kdf = kline_map.get(r["ticker"], pd.DataFrame())
+        fin = r.get("financial") or {}
+
+        if kdf is not None and not kdf.empty and len(kdf) >= 10:
+            closes = kdf["close"].tolist()
+            volumes = kdf["volume"].tolist() if "volume" in kdf.columns else []
+        else:
+            closes = []
+            volumes = []
+
+        # --- Factor 1: Acceleration (beta-adjusted, not absolute momentum) ---
+        if len(closes) >= 20:
+            ret_5d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
+            ret_20d = (price / closes[-20]) - 1.0 if closes[-20] > 0 else 0.0
+            # Normalize to same time period: 5d rate * 4 ≈ 20d rate
+            accel = (ret_5d * 4.0) - ret_20d  # positive = accelerating
+            # Beta-adjusted benchmark: implied beta from 20d returns
+            if abs(bench_ret) > 0.005:
+                implied_beta = ret_20d / bench_ret
+                implied_beta = max(0.5, min(2.5, implied_beta))
             else:
-                mom = rel_pos * 1.14
-            moms.append(max(0.0, min(1.0, mom)))
+                implied_beta = 1.0
+            accel -= implied_beta * bench_ret * (5 / 20)
+            accel = max(-0.5, min(0.5, accel))
+        elif len(closes) >= 5:
+            ret_5d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
+            accel = ret_5d - bench_ret * 0.1
+            accel = max(-0.3, min(0.3, accel))
         else:
-            moms.append(0.5)
-        mcs.append(max(np.log10(max(q.get("market_cap") or 1, 1)), 0))
-        chg = abs(float(q.get("change_pct") or 0))
-        if chg <= 3.0:
-            changes.append(chg / 3.0)
+            accel = 0.0
+        raw_accel.append(accel)
+
+        # --- Factor 2: Volume Anomaly ---
+        # How much is recent volume above the 20-day average?
+        if len(volumes) >= 20:
+            vol_5d_avg = sum(volumes[-5:]) / 5.0 if sum(volumes[-5:]) > 0 else 1.0
+            vol_20d_avg = sum(volumes[-20:]) / 20.0 if sum(volumes[-20:]) > 0 else 1.0
+            vol_ratio = vol_5d_avg / max(vol_20d_avg, 1.0)
+            # Also check today's volume vs average
+            today_vol = float(q.get("volume") or 0)
+            today_ratio = today_vol / max(vol_20d_avg, 1.0) if today_vol > 0 else 1.0
+            # Combine: 60% recent trend + 40% today spike
+            vol_anomaly = 0.6 * min(vol_ratio, 4.0) + 0.4 * min(today_ratio, 5.0)
+            # Normalize: 1.0 = normal, 2.0+ = interesting, 3.0+ = very unusual
+            vol_anomaly = max(0.0, (vol_anomaly - 0.8) / 3.0)  # maps [0.8, 3.8] -> [0, 1]
         else:
-            changes.append(max(0.0, 1.0 - (chg - 3.0) / 5.0))
+            vol_anomaly = 0.3  # neutral
+        raw_volume.append(vol_anomaly)
 
-    nv = _norm_series(vols, higher_is_better=True)
-    nm = _norm_series(moms, higher_is_better=True)
-    nc = _norm_series(mcs, higher_is_better=True)
-    nchg = _norm_series(changes, higher_is_better=True)
+        # --- Factor 3: Trend Setup (structure + pullback quality) ---
+        # Best setup: uptrend (MA aligned) + price pulled back to MA20 zone
+        # This finds "ready to bounce" not "already bounced"
+        if len(closes) >= 20:
+            ma5 = sum(closes[-5:]) / 5
+            ma10 = sum(closes[-10:]) / 10
+            ma20 = sum(closes[-20:]) / 20
+            ma50 = sum(closes[-min(50, len(closes)):]) / min(50, len(closes))
 
-    wv, wm, wc, wchg = sc.weight_volume, sc.weight_momentum, sc.weight_market_cap, sc.weight_volatility
+            setup = 0.0
+
+            # MA alignment (structure, not direction scoring)
+            if ma5 > ma10 > ma20:
+                setup += 0.25  # bullish alignment
+            elif ma5 > ma20:
+                setup += 0.15  # partial alignment
+            if ma20 > ma50:
+                setup += 0.15  # longer-term uptrend intact
+
+            # Pullback quality: how close is price to MA20?
+            # Best: within 2% of MA20 in uptrend (entry opportunity)
+            if ma20 > 0:
+                bias = (price - ma20) / ma20
+                if 0 <= bias <= 0.02:
+                    setup += 0.30  # sitting right on MA20 support = ideal
+                elif 0.02 < bias <= 0.05:
+                    setup += 0.20  # slightly above, still good
+                elif -0.03 <= bias < 0:
+                    setup += 0.25  # just pulled back below MA20 = buying opp
+                elif bias > 0.10:
+                    setup += 0.0   # too far above = extended, no bonus
+                elif bias < -0.05:
+                    setup -= 0.10  # too far below = trend may be breaking
+
+            # Support: price above MA50 = safety net
+            if price > ma50:
+                setup += 0.10
+
+            # Recent consolidation: low range in last 5 days = coiled spring
+            if len(closes) >= 5:
+                recent = closes[-5:]
+                hl_range = (max(recent) - min(recent)) / max(min(recent), 0.01)
+                if hl_range < 0.03:
+                    setup += 0.10  # tight consolidation = potential breakout
+
+            setup = max(0.0, min(1.0, setup))
+        else:
+            setup = 0.3
+        raw_setup.append(setup)
+
+        # --- Factor 4: Volatility Fit ---
+        # Short-term trading needs MODERATE volatility (1-3% daily).
+        # Too low (<0.5%): can't reach 8% TP in 3 days
+        # Too high (>4%): too likely to hit 5% SL
+        # Optimal: 1.5-2.5% daily average
+        if len(closes) >= 10:
+            daily_rets = []
+            for i in range(1, len(closes)):
+                if closes[i - 1] > 0:
+                    daily_rets.append(abs((closes[i] - closes[i - 1]) / closes[i - 1]))
+            avg_vol = sum(daily_rets) / len(daily_rets) if daily_rets else 0.02
+
+            # Bell curve: peak at blended optimal vol (short + swing)
+            optimal_vol = (sc.optimal_vol_short + sc.optimal_vol_swing) / 2
+            vol_width = sc.optimal_vol_width
+            vol_distance = abs(avg_vol - optimal_vol)
+            vol_fit = max(0.0, 1.0 - (vol_distance / vol_width))
+        else:
+            vol_fit = 0.5
+        raw_volfit.append(vol_fit)
+
+        # --- Factor 5: Fundamental quality ---
+        fund_score = _compute_fundamental_score(r) / 100.0
+        raw_fundamental.append(fund_score)
+
+        # --- Absolute quality bonus/penalty (not normalized) ---
+        quality_bonus = 0.0
+        if accel > 0.05:
+            quality_bonus += 5
+        if vol_anomaly > 0.5:
+            quality_bonus += 3
+        if setup > 0.6:
+            quality_bonus += 5
+        if vol_fit > 0.7:
+            quality_bonus += 2
+        if accel < -0.05:
+            quality_bonus -= 5
+        if setup < 0.2:
+            quality_bonus -= 5
+        raw_quality_bonus.append(quality_bonus)
+    n_accel = _norm_series(raw_accel, higher_is_better=True)
+    n_volume = _norm_series(raw_volume, higher_is_better=True)
+    n_setup = _norm_series(raw_setup, higher_is_better=True)
+    n_volfit = _norm_series(raw_volfit, higher_is_better=True)
+    n_fundamental = _norm_series(raw_fundamental, higher_is_better=True)
+
+    w_accel = sc.weight_acceleration
+    w_volume = sc.weight_volume_anomaly
+    w_setup = sc.weight_trend_setup
+    w_volfit = sc.weight_volatility_fit
+    w_fund = sc.weight_fundamental
 
     results: list[dict] = []
-    for i, r in enumerate(filtered):
+    for i, r in enumerate(trend_filtered):
         q = r["quote"]
         fin = r.get("financial") or {}
-        comp = (wv * nv[i] + wm * nm[i] + wc * nc[i] + wchg * nchg[i]) * 100.0
+        comp = (w_accel * n_accel[i] + w_volume * n_volume[i] +
+                w_setup * n_setup[i] + w_volfit * n_volfit[i] +
+                w_fund * n_fundamental[i]) * 100.0
+        comp += raw_quality_bonus[i]  # absolute bonus, not normalized
         results.append({
             "ticker": r["ticker"],
             "name": r.get("name", r["ticker"]),
@@ -251,16 +496,42 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
             "year_high": q.get("year_high"),
             "year_low": q.get("year_low"),
             "financial": fin,
+            # Factor breakdown for transparency
+            "factors": {
+                "acceleration": round(n_accel[i], 3),
+                "volume_anomaly": round(n_volume[i], 3),
+                "trend_setup": round(n_setup[i], 3),
+                "volatility_fit": round(n_volfit[i], 3),
+                "fundamental": round(n_fundamental[i], 3),
+                "quality_bonus": round(raw_quality_bonus[i], 1),
+            },
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
 
+    # Absolute quality gate: reject candidates below minimum score
+    # In weak markets, this means fewer or zero recommendations — by design
+    pre_gate_count = len(results)
+    results = [r for r in results if r["score"] >= sc.min_absolute_score]
+    if pre_gate_count > len(results):
+        logger.info(
+            f"Absolute score gate: {pre_gate_count} -> {len(results)} "
+            f"(rejected {pre_gate_count - len(results)} below {sc.min_absolute_score})"
+        )
+
+    # ------------------------------------------------------------------
+    # Sector diversification — sector -> industry fallback
+    # ------------------------------------------------------------------
     max_per_sector = max(top_n // 3, 5)
     sector_count: dict[str, int] = {}
     diversified: list[dict] = []
     overflow: list[dict] = []
     for r in results:
-        sec = (r.get("financial") or {}).get("sector", "") or "Unknown"
+        fin_data = r.get("financial") or {}
+        sec = fin_data.get("sector", "") or fin_data.get("industry", "") or ""
+        sec = sec.strip()
+        if not sec:
+            sec = "_Unclassified"
         if sector_count.get(sec, 0) < max_per_sector:
             diversified.append(r)
             sector_count[sec] = sector_count.get(sec, 0) + 1
@@ -275,10 +546,14 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
                 break
 
     logger.info(
-        f"Layer 1 ranking: {len(filtered)} -> {len(diversified)} candidates "
+        f"Layer 1 final: {len(trend_filtered)} -> {len(diversified)} candidates "
         f"(sectors: {len(sector_count)}, max/sector: {max_per_sector})"
     )
     return diversified
+
+
+# Module-level cache for Layer 1 K-line data (reused by Layer 2)
+_layer1_kline_cache: dict[str, pd.DataFrame] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -509,128 +784,113 @@ def _check_earnings_proximity(ticker: str, market: str) -> dict:
         return {"days_away": None, "date_str": None, "imminent": False}
 
 
+def _continuous_score(value: float | None, breakpoints: list[float], scores: list[float]) -> float:
+    """Piecewise linear interpolation for continuous scoring.
+
+    Maps a value to a score using linear interpolation between breakpoints.
+    Example: _continuous_score(0.18, [-0.10, 0, 0.15, 0.40], [-15, 0, 8, 18]) → ~9.6
+    """
+    if value is None:
+        return 0.0
+    if len(breakpoints) != len(scores) or len(breakpoints) < 2:
+        return 0.0
+    if value <= breakpoints[0]:
+        return scores[0]
+    if value >= breakpoints[-1]:
+        return scores[-1]
+    for i in range(len(breakpoints) - 1):
+        if breakpoints[i] <= value <= breakpoints[i + 1]:
+            t = (value - breakpoints[i]) / (breakpoints[i + 1] - breakpoints[i])
+            return scores[i] + t * (scores[i + 1] - scores[i])
+    return scores[-1]
+
+
 def _compute_fundamental_score(candidate: dict) -> float:
-    """Lightweight fundamental scoring from available financial data.
+    """Continuous fundamental scoring — magnitude-aware, not step functions.
 
     Returns 0-100 score. 50 = neutral baseline.
+    Uses piecewise linear interpolation so ROE 40% scores higher than ROE 21%.
     """
     score = 50.0
     fin = candidate.get("financial") or {}
 
+    # ROE: negative penalized, high rewarded proportionally
     roe = fin.get("roe")
-    if roe is not None:
-        if roe > 0.20:
-            score += 12
-        elif roe > 0.15:
-            score += 8
-        elif roe > 0.08:
-            score += 3
-        elif roe < 0:
-            score -= 15
+    score += _continuous_score(roe,
+        [-0.10, -0.02, 0, 0.08, 0.15, 0.20, 0.40],
+        [-15,   -5,    0, 3,    8,    12,   18])
 
+    # Revenue growth: contraction penalized, high growth rewarded
     rev_growth = fin.get("revenue_growth")
-    if rev_growth is not None:
-        if rev_growth > 0.20:
-            score += 10
-        elif rev_growth > 0.10:
-            score += 6
-        elif rev_growth > 0:
-            score += 2
-        elif rev_growth < -0.10:
-            score -= 10
+    score += _continuous_score(rev_growth,
+        [-0.20, -0.10, 0, 0.10, 0.20, 0.50],
+        [-12,   -8,    0, 4,    8,    14])
 
+    # Debt to equity: high leverage penalized
     de = fin.get("debt_to_equity")
-    if de is not None:
-        if de > 3.0:
-            score -= 12
-        elif de > 2.0:
-            score -= 6
-        elif de < 0.5:
-            score += 5
+    score += _continuous_score(de,
+        [0, 0.3, 0.5, 1.0, 2.0, 3.0, 5.0],
+        [6, 5,   3,   0,   -4,  -8,  -14])
 
+    # Current ratio: below 1.0 is dangerous
     cr = fin.get("current_ratio")
-    if cr is not None:
-        if cr > 2.0:
-            score += 5
-        elif cr > 1.5:
-            score += 3
-        elif cr < 1.0:
-            score -= 8
+    score += _continuous_score(cr,
+        [0.5, 1.0, 1.5, 2.0, 3.0],
+        [-10, -4,  0,   4,   5])
 
+    # Profit margin: negative = burning cash
     margin = fin.get("profit_margins") or fin.get("profit_margin")
-    if margin is not None:
-        if margin > 0.20:
-            score += 8
-        elif margin > 0.10:
-            score += 4
-        elif margin < 0:
-            score -= 10
+    score += _continuous_score(margin,
+        [-0.10, 0, 0.05, 0.10, 0.20, 0.35],
+        [-12,   -3, 0,   3,    6,    10])
 
+    # Free cash flow — binary signal but scaled by FCF yield
     fcf = fin.get("free_cash_flow") or fin.get("free_cashflow")
-    if fcf is not None:
-        if fcf > 0:
-            score += 5
-        else:
-            score -= 8
-
-    # FCF yield: free cash flow / market cap
     market_cap_val = (candidate.get("quote") or {}).get("market_cap") or candidate.get("market_cap") or 0
     if fcf is not None and market_cap_val and market_cap_val > 0:
         fcf_yield = fcf / market_cap_val
-        if fcf_yield > 0.08:
-            score += 8
-        elif fcf_yield > 0.05:
-            score += 5
-        elif fcf_yield > 0.02:
-            score += 2
-        elif fcf_yield < -0.02:
-            score -= 5
+        score += _continuous_score(fcf_yield,
+            [-0.05, -0.02, 0, 0.02, 0.05, 0.08, 0.12],
+            [-8,    -4,    0, 2,    5,    8,    10])
+    elif fcf is not None:
+        score += 4 if fcf > 0 else -6
 
-    # PEG ratio: PE / earnings growth rate
+    # PEG ratio
     pe_val = fin.get("pe_ttm")
     eg = fin.get("earnings_growth")
     if pe_val is not None and eg is not None and eg > 0:
         peg = pe_val / (eg * 100) if eg < 1 else pe_val / eg
-        if peg < 1.0:
-            score += 8
-        elif peg < 1.5:
-            score += 4
-        elif peg > 3.0:
-            score -= 5
-        elif peg > 2.0:
-            score -= 2
+        score += _continuous_score(peg,
+            [0.5, 1.0, 1.5, 2.0, 3.0, 5.0],
+            [10,  8,   4,   0,   -3,  -6])
 
-    # Revenue acceleration: compare revenue_growth with earnings_growth as proxy
-    rev_g = fin.get("revenue_growth")
+    # Revenue acceleration: earnings growing faster than revenue = operating leverage
     earn_g = fin.get("earnings_growth")
-    if rev_g is not None and earn_g is not None:
-        if rev_g > 0.10 and earn_g > rev_g:
+    if rev_growth is not None and earn_g is not None:
+        if rev_growth > 0.10 and earn_g > rev_growth:
             score += 6
-        elif rev_g > 0.10 and earn_g > 0:
+        elif rev_growth > 0.10 and earn_g > 0:
             score += 3
-        elif rev_g < 0 and earn_g < 0:
+        elif rev_growth < 0 and earn_g < 0:
             score -= 6
 
+    # Short interest
     short_pct = fin.get("short_pct_of_float")
-    if short_pct is not None:
-        if short_pct > 0.20:
-            score -= 5
-        elif short_pct > 0.10:
-            score -= 2
+    score += _continuous_score(short_pct,
+        [0, 0.05, 0.10, 0.20, 0.30],
+        [0, 0,    -2,   -5,   -8])
 
+    # Insider ownership (alignment of interests)
     insider_pct = fin.get("held_pct_insiders")
-    if insider_pct is not None:
-        if insider_pct > 0.30:
-            score += 5
-        elif insider_pct > 0.10:
-            score += 3
+    score += _continuous_score(insider_pct,
+        [0, 0.05, 0.10, 0.30, 0.50],
+        [0, 1,    3,    5,    6])
 
+    # Institutional ownership
     inst_pct = fin.get("held_pct_institutions")
-    if inst_pct is not None:
-        if inst_pct > 0.80:
-            score += 3
-        elif inst_pct < 0.30:
-            score -= 3
+    score += _continuous_score(inst_pct,
+        [0.10, 0.30, 0.50, 0.80, 0.95],
+        [-4,   -1,   1,    3,    2])
 
     # Insider trading activity signal
     insider_trades = candidate.get("insider_trades")

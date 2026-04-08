@@ -23,11 +23,18 @@ class ScreeningConfig:
     min_pe: float = 0
     max_pb: float = 15.0
     max_daily_change_pct: float = 10.0
-    # New factor weights (v4 — designed for short-term trading)
-    weight_acceleration: float = 0.30
-    weight_volume_anomaly: float = 0.25
+    # v5: 5-factor model weights (must sum to 1.0)
+    weight_acceleration: float = 0.25
+    weight_volume_anomaly: float = 0.20
     weight_trend_setup: float = 0.30
-    weight_volatility_fit: float = 0.15
+    weight_volatility_fit: float = 0.10
+    weight_fundamental: float = 0.15
+    # Absolute quality gate
+    min_absolute_score: float = 35.0
+    # Volatility fit — strategy-aware optimal range
+    optimal_vol_short: float = 0.025
+    optimal_vol_swing: float = 0.018
+    optimal_vol_width: float = 0.025
     # Legacy compat (still read from config.yaml if present)
     weight_momentum: float = 0.35
     weight_trend: float = 0.25

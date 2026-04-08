@@ -70,15 +70,18 @@ pipeline:
     min_avg_volume: 500000
     max_pb: 15.0
     max_daily_change_pct: 10.0
-    # v4 factors (short-term trading optimized)
-    # acceleration: 涨幅加速度 (10d vs 20d return acceleration)
-    # volume_anomaly: 成交量异常 (recent vs historical)
-    # trend_setup: MA结构+回踩质量 (not just direction)
-    # volatility_fit: 适度波动 (too low = can't reach TP, too high = SL hit)
-    weight_acceleration: 0.30
-    weight_volume_anomaly: 0.25
+    # v5: 5-factor model (sum = 1.0)
+    weight_acceleration: 0.25
+    weight_volume_anomaly: 0.20
     weight_trend_setup: 0.30
-    weight_volatility_fit: 0.15
+    weight_volatility_fit: 0.10
+    weight_fundamental: 0.15
+    # Absolute quality gate — below this score, don't recommend at all
+    min_absolute_score: 35.0
+    # Volatility fit — strategy-aware optimal daily volatility
+    optimal_vol_short: 0.025
+    optimal_vol_swing: 0.018
+    optimal_vol_width: 0.025
 
   synthesis:
     news_weight: 0.15
