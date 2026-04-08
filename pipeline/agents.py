@@ -492,7 +492,12 @@ def fallback_technical_scores(
             score += 3.0 * regime_bull_mult
 
         if daily_bullish and weekly_trend == "bearish":
-            score -= 4.0
+            # In normal/risk_on regime, daily bullish reversing weekly bearish
+            # is a potential trend reversal — flag it but penalize mildly
+            if regime_level in ("normal", "cautious"):
+                score -= 2.0  # mild penalty: reversal signal, not contradiction
+            else:
+                score -= 4.0  # bearish/crisis: weekly trend dominates
             risk_flags.append("\u65e5\u5468\u8d8b\u52bf\u77db\u76fe")
         elif daily_bearish and weekly_trend == "bullish":
             score += 2.0

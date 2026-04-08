@@ -87,10 +87,10 @@ pipeline:
     news_weight: 0.15
     tech_weight: 0.55
     fundamental_weight: 0.30
-    min_confidence: 65
-    quality_threshold: 60
+    min_confidence: 58
+    quality_threshold: 55
     adaptive_threshold_drop: 15
-    adaptive_threshold_floor: 55
+    adaptive_threshold_floor: 50
     cross_fill_factor: 0.3
 
   short_term:
