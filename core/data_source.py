@@ -11,6 +11,21 @@ import pandas as pd
 import yfinance as yf
 from loguru import logger
 
+_WIKI_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+}
+
+
+def _read_html_wiki(url: str) -> list[pd.DataFrame]:
+    """Fetch HTML tables from Wikipedia with browser-like headers."""
+    import io
+    import httpx
+    resp = httpx.get(url, headers=_WIKI_HEADERS, timeout=20, follow_redirects=True)
+    resp.raise_for_status()
+    return pd.read_html(io.StringIO(resp.text))
+
 
 def to_yf_ticker(ticker: str, market: str) -> str:
     if market == "hk_stock":
@@ -344,7 +359,7 @@ def _get_sp500_components() -> list[dict]:
     """Fetch S&P 500 components from Wikipedia."""
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        tables = pd.read_html(url)
+        tables = _read_html_wiki(url)
         df = tables[0]
         results = []
         for _, row in df.iterrows():
@@ -362,7 +377,7 @@ def _get_nasdaq100_components() -> list[dict]:
     """Fetch Nasdaq-100 components from Wikipedia."""
     try:
         url = "https://en.wikipedia.org/wiki/Nasdaq-100"
-        tables = pd.read_html(url)
+        tables = _read_html_wiki(url)
         # Find the table that has a 'Ticker' or 'Symbol' column
         for table in tables:
             cols_lower = {str(c).lower(): c for c in table.columns}
@@ -395,7 +410,7 @@ def _get_hsi_components() -> list[dict]:
     """Fetch Hang Seng Index components."""
     try:
         url = "https://en.wikipedia.org/wiki/Hang_Seng_Index"
-        tables = pd.read_html(url)
+        tables = _read_html_wiki(url)
         results = []
         for table in tables:
             cols = [str(c).lower() for c in table.columns]
@@ -429,7 +444,7 @@ def _get_hstech_components() -> list[dict]:
     """Fetch Hang Seng TECH Index components."""
     try:
         url = "https://en.wikipedia.org/wiki/Hang_Seng_TECH_Index"
-        tables = pd.read_html(url)
+        tables = _read_html_wiki(url)
         results = []
         for table in tables:
             ticker_col = None
