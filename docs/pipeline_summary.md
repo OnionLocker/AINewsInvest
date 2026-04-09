@@ -57,6 +57,7 @@
 |------|------|
 | 调度跑批 | UTC `11:30` 对应美东 07:30 EDT，`us_stock` 跑完全程 → **0 条推荐**（合成门槛 + 矛盾/内幕等）；当日日志含部分 **LLM timeout**。 |
 | 手动 `run --force` | 同日后续手动重跑：LLM 批次均 **success**，仍 **0 条推荐**（阈值与过滤逻辑同上）；详见 [`pipeline_digest_2026-04-09.md`](pipeline_digest_2026-04-09.md)。 |
+| **v7 部署 + 再跑** | 拉取 `59a3640`、重建前端并重启服务后，`run --force` → **5 条推荐**；问题清单与评审见 [`pipeline_digest_2026-04-09_engineering_review.md`](pipeline_digest_2026-04-09_engineering_review.md)。 |
 
 ---
 
