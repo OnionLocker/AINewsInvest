@@ -309,6 +309,12 @@ const RISK_FLAG_CN = {
   "\u9ad8\u6ce2\u52a8": "\u9ad8\u6ce2\u52a8",
   "\u65e5\u5468\u8d8b\u52bf\u77db\u76fe": "\u65e5\u5468\u8d8b\u52bf\u77db\u76fe",
   "\u4e34\u8fd1\u8d22\u62a5": "\u4e34\u8fd1\u8d22\u62a5",
+  // v6: new data source risk flags
+  "PCR\u53cd\u8f6c\u4fe1\u53f7": "PCR\u53cd\u8f6c\u4fe1\u53f7",
+  "\u9ad8\u7ba1\u5927\u5e45\u51cf\u6301": "\u9ad8\u7ba1\u5927\u5e45\u51cf\u6301",
+  yield_curve_inversion: "\u6536\u76ca\u7387\u66f2\u7ebf\u5012\u6302",
+  yield_inversion_plus_vix: "\u5012\u6302+\u9ad8VIX",
+  deep_yield_inversion: "\u6df1\u5ea6\u5012\u6302",
 };
 
 const RISK_PHRASE_CN = {

@@ -105,6 +105,9 @@ def get_financial_data(ticker: str, market: str) -> dict[str, Any] | None:
             v = info.get(key, default)
             return v
 
+        pe_val = _get("trailingPE")
+        pb_val = _get("priceToBook")
+
         result = {
             "roe": _get("returnOnEquity"),
             "gross_margins": _get("grossMargins"),
@@ -120,10 +123,12 @@ def get_financial_data(ticker: str, market: str) -> dict[str, Any] | None:
             "ebitda": _get("ebitda"),
             "total_debt": _get("totalDebt"),
             "total_cash": _get("totalCash"),
-            "pe_trailing": _get("trailingPE"),
+            "pe_trailing": pe_val,
+            "pe_ttm": pe_val,
             "pe_forward": _get("forwardPE"),
             "peg_ratio": _get("pegRatio"),
-            "price_to_book": _get("priceToBook"),
+            "price_to_book": pb_val,
+            "pb": pb_val,
             "short_pct_of_float": _get("shortPercentOfFloat"),
             "held_pct_insiders": _get("heldPercentInsiders"),
             "held_pct_institutions": _get("heldPercentInstitutions"),
@@ -171,7 +176,10 @@ def _build_financial_indicators(t: Any, info: dict) -> list[dict] | None:
 # -- Insider trades --
 
 def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
-    """Fetch recent insider trading activity from yfinance."""
+    """Fetch recent insider trading activity from yfinance.
+
+    v6: Added executive role detection and net flow calculation.
+    """
     if market != "us_stock":
         return None
     symbol = to_yf_ticker(ticker, market)
@@ -181,20 +189,32 @@ def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
         if insiders is None or insiders.empty:
             return None
 
-        recent = insiders.head(20)
+        recent = insiders.head(30)  # v6: expanded from 20 to 30
         buys = 0
         sells = 0
         buy_value = 0.0
         sell_value = 0.0
+        executive_buys = 0
+        executive_buy_value = 0.0
+
+        _EXEC_TITLES = ("ceo", "cfo", "coo", "cto", "president", "chief",
+                        "director", "officer", "vp", "evp", "svp")
 
         for _, row in recent.iterrows():
             text = str(row.get("Text", "")).lower()
             shares = abs(float(row.get("Shares", 0) or 0))
             value = abs(float(row.get("Value", 0) or 0))
 
+            # v6: Detect executive role
+            insider_name = str(row.get("Insider Trading", "") or row.get("Insider", "")).lower()
+            is_exec = any(t in insider_name for t in _EXEC_TITLES)
+
             if "purchase" in text or "buy" in text:
                 buys += 1
                 buy_value += value
+                if is_exec:
+                    executive_buys += 1
+                    executive_buy_value += value
             elif "sale" in text or "sell" in text:
                 sells += 1
                 sell_value += value
@@ -202,7 +222,9 @@ def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
         total = buys + sells
         if total == 0:
             return {"signal_strength": "neutral", "buys": 0, "sells": 0,
-                    "buy_value": 0, "sell_value": 0, "transactions": total}
+                    "buy_value": 0, "sell_value": 0, "transactions": total,
+                    "has_executive_buying": False, "executive_buy_value": 0,
+                    "net_insider_flow": 0}
 
         buy_ratio = buys / total
         if buy_ratio >= 0.7 and buy_value > 100_000:
@@ -222,6 +244,10 @@ def get_insider_trades(ticker: str, market: str) -> dict[str, Any] | None:
             "buy_value": round(buy_value, 2),
             "sell_value": round(sell_value, 2),
             "transactions": total,
+            # v6: Executive role + net flow
+            "has_executive_buying": executive_buys > 0,
+            "executive_buy_value": round(executive_buy_value, 2),
+            "net_insider_flow": round(buy_value - sell_value, 2),
         }
     except Exception as e:
         logger.warning(f"Insider trades failed {symbol}: {e}")
@@ -258,6 +284,12 @@ def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
         pc_ratio = round(put_oi / max(call_oi, 1), 2)
         vol_pc_ratio = round(put_vol / max(call_vol, 1), 2)
 
+        # v6: Unusual activity detection — vol/OI ratio as proxy
+        call_vol_ratio = round(call_vol / max(call_oi, 1), 2)
+        put_vol_ratio = round(put_vol / max(put_oi, 1), 2)
+        unusual_call = call_vol_ratio > 0.5   # Day vol > 50% of open interest
+        unusual_put = put_vol_ratio > 0.5
+
         if pc_ratio < 0.5:
             signal = "bullish"
         elif pc_ratio > 1.5:
@@ -273,6 +305,11 @@ def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
             "put_oi": put_oi,
             "total_oi": total_oi,
             "expiration": nearest,
+            # v6: Unusual activity fields
+            "unusual_call_activity": unusual_call,
+            "unusual_put_activity": unusual_put,
+            "call_vol_ratio": call_vol_ratio,
+            "put_vol_ratio": put_vol_ratio,
         }
     except Exception as e:
         logger.warning(f"Options signal failed {symbol}: {e}")

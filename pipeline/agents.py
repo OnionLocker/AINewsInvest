@@ -557,6 +557,28 @@ def fallback_technical_scores(
                 elif obv_trend == "bearish":
                     score -= 3.0 * regime_bear_mult
 
+        # --- v6: Options signal scoring ---
+        options = c.get("options_data") or {}
+        pc_ratio = options.get("put_call_ratio")
+        unusual_call = options.get("unusual_call_activity", False)
+        unusual_put = options.get("unusual_put_activity", False)
+
+        if pc_ratio is not None:
+            # PCR extreme + near support → contrarian reversal signal
+            if pc_ratio > 1.5 and signals.get("near_support"):
+                score += 8.0 * regime_bull_mult
+                risk_flags.append("PCR\u53cd\u8f6c\u4fe1\u53f7")
+            # PCR very low (crowded longs) + overbought → warning
+            elif pc_ratio < 0.5 and ma20_bias > 10:
+                score -= 5.0
+
+        # Unusual call volume → smart money accumulation
+        if unusual_call:
+            score += 6.0 * regime_bull_mult
+        # Unusual put volume without unusual call → hedging/bearish
+        if unusual_put and not unusual_call:
+            score -= 4.0 * regime_bear_mult
+
         score = max(0, min(100, int(round(score))))
 
         # Action thresholds (regime-adjusted)
@@ -929,6 +951,7 @@ def _compute_short_trade_params(
 def _compute_confidence(
     ns: int, ts: int, news: dict, tech: dict,
     fundamental_score: int = 50,
+    insider_data: dict | None = None,
 ) -> int:
     """Compute confidence — how much agreement and conviction across signals.
 
@@ -1014,6 +1037,20 @@ def _compute_confidence(
     # If analysis text is the fallback boilerplate, slightly less confident
     if "v2:" in str(tech.get("analysis", "")) or not tech.get("analysis"):
         confidence -= 2.0  # fallback-only scoring
+
+    # --- 7. Insider trading signal (v6) ---
+    _ins = insider_data or {}
+    _ins_signal = _ins.get("signal_strength", "neutral")
+    if _ins_signal == "strong_buy":
+        confidence += 12.0
+        if _ins.get("has_executive_buying"):
+            confidence += 3.0  # CEO/CFO personally buying
+    elif _ins_signal == "moderate_buy":
+        confidence += 5.0
+    elif _ins_signal == "strong_sell":
+        confidence -= 15.0
+    elif _ins_signal == "moderate_sell":
+        confidence -= 6.0
 
     return max(10, min(95, int(round(confidence))))
 
@@ -1151,9 +1188,13 @@ def synthesize_agent_results(
         elif _has_news and not _has_tech:
             ts = int(NEUTRAL + (ns - NEUTRAL) * BLEND)
 
-        # --- FIX 1: Real confidence (agent agreement + fundamentals) ---
+        # --- FIX 1: Real confidence (agent agreement + fundamentals + insider) ---
         fs = _safe_int(c.get("fundamental_score", 50))
-        confidence = _compute_confidence(ns, ts, news, tech, fundamental_score=fs)
+        confidence = _compute_confidence(
+            ns, ts, news, tech,
+            fundamental_score=fs,
+            insider_data=c.get("insider_trades"),
+        )
 
         # v6: Penalize confidence when one signal source is missing/synthetic
         if not _has_news:
@@ -1258,6 +1299,13 @@ def synthesize_agent_results(
             all_risk_flags.append("\u4e34\u8fd1\u8d22\u62a5")
             if earnings_days < holding_days_final:
                 holding_days_final = max(1, earnings_days - 1)
+
+        # --- v6: Insider selling penalty / one-vote-veto ---
+        _insider = c.get("insider_trades") or {}
+        if _insider.get("signal_strength") == "strong_sell":
+            all_risk_flags.append("\u9ad8\u7ba1\u5927\u5e45\u51cf\u6301")
+            combined = max(0, combined - 15)
+            logger.warning(f"{ticker}: Heavy insider selling → score -{15} (now {combined})")
 
         news_analysis = str(news.get("analysis", ""))
         tech_analysis = str(tech.get("analysis", ""))
@@ -1558,6 +1606,7 @@ def _batched_news_agent(
     market: str,
     max_retries: int,
     progress_cb: Callable[[dict], None] | None = None,
+    regime: dict | None = None,
 ) -> list[dict]:
     """Call NewsSkill in small batches, then score with deterministic scorer.
 
@@ -1578,6 +1627,14 @@ def _batched_news_agent(
         logger.info(f"NewsSkill batch {batch_num}/{total_batches}: {len(batch)} stocks")
 
         skill_input = build_news_skill_input(batch, market)
+        # v6: Inject macro context for LLM awareness
+        if regime:
+            skill_input["macro_context"] = {
+                "yield_spread": (regime.get("details") or {}).get("yield_spread"),
+                "vix": (regime.get("details") or {}).get("vix"),
+                "macro_risk": (regime.get("details") or {}).get("macro_risk"),
+                "regime_level": regime.get("level", "normal"),
+            }
         response = call_news_skill(skill_input, max_retries=max_retries)
 
         if response.market_regime != "neutral":
@@ -1659,6 +1716,14 @@ def _batched_tech_agent(
     for i in range(0, total, LLM_BATCH_SIZE):
         batch = llm_candidates[i : i + LLM_BATCH_SIZE]
         skill_input = build_tech_skill_input(batch, market)
+        # v6: Inject macro context for LLM awareness
+        if regime:
+            skill_input["macro_context"] = {
+                "yield_spread": (regime.get("details") or {}).get("yield_spread"),
+                "vix": (regime.get("details") or {}).get("vix"),
+                "macro_risk": (regime.get("details") or {}).get("macro_risk"),
+                "regime_level": regime.get("level", "normal"),
+            }
         response = call_tech_skill(skill_input, max_retries=max_retries)
 
         for so in response.results:
@@ -1746,7 +1811,7 @@ def run_agent_pipeline(
 
     # Layer 3: NewsSkill (batched)
     _progress(35.0, f"Layer 3: NewsSkill analyzing {len(candidates)} candidates")
-    news_results = _batched_news_agent(candidates, market, max_retries, progress_cb)
+    news_results = _batched_news_agent(candidates, market, max_retries, progress_cb, regime=regime)
 
     if not news_results:
         logger.warning("NewsSkill returned no results, sending all to TechSkill")

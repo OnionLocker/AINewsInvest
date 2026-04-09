@@ -34,6 +34,7 @@ class Database:
         self._migrate_recommendation_extra_cols()
         self._migrate_trailing_position_cols()
         self._migrate_conviction_score_col()
+        self._migrate_macro_options_insider_cols()
 
     def close(self):
         try:
@@ -469,6 +470,31 @@ class Database:
                         f"ALTER TABLE {table} ADD COLUMN conviction_score REAL DEFAULT 0"
                     )
                     self._conn.commit()
+            except Exception:
+                pass
+
+    def _migrate_macro_options_insider_cols(self):
+        """v6: Add macro, options, and insider enrichment columns."""
+        new_cols = [
+            ("options_call_vol_ratio", "REAL"),
+            ("options_put_vol_ratio", "REAL"),
+            ("insider_net_flow", "REAL"),
+            ("insider_executive_buying", "INTEGER DEFAULT 0"),
+            ("macro_yield_spread", "REAL"),
+            ("macro_risk_level", "TEXT DEFAULT ''"),
+        ]
+        for table in ("published_recommendation_items", "daily_recommendation_items"):
+            try:
+                existing = {
+                    row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for col_name, col_def in new_cols:
+                    if col_name not in existing:
+                        try:
+                            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                        except Exception:
+                            pass
+                self._conn.commit()
             except Exception:
                 pass
 

@@ -54,6 +54,16 @@ class RecommendationItem:
     safety_margin: float | None = None
     risk_flags: list[str] = field(default_factory=list)
 
+    # Options & insider signals
+    options_pc_ratio: float | None = None
+    options_unusual_activity: bool = False
+    insider_signal: str = ""
+    insider_net_flow: float = 0.0
+
+    # Macro snapshot
+    macro_yield_spread: float | None = None
+    macro_risk_level: str = ""
+
     price: float = 0.0
     change_pct: float = 0.0
 

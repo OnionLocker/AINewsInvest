@@ -38,6 +38,9 @@ def _check_market_regime(market: str) -> dict:
     """Check market-level conditions. Returns regime dict with level and flags.
 
     Levels: normal, cautious, bearish, crisis
+
+    v6: Now includes macro yield curve data (US only) from core/macro_data.
+    Yield curve inversion + elevated VIX → escalate to bearish.
     """
     try:
         if market == "us_stock":
@@ -87,15 +90,45 @@ def _check_market_regime(market: str) -> dict:
             flags.append("elevated_vix")
             level = max(level, "cautious", key=["normal", "cautious", "bearish", "crisis"].index)
 
+        # --- v6: Macro yield curve integration (US only) ---
+        macro_data: dict = {}
+        if market == "us_stock":
+            try:
+                from core.macro_data import get_macro_indicators
+                macro_data = get_macro_indicators()
+                if macro_data.get("_fetched"):
+                    spread = macro_data.get("yield_spread_10y5y")
+                    if spread is not None:
+                        if spread < -0.5:
+                            flags.append("deep_yield_inversion")
+                            level = max(level, "bearish", key=["normal", "cautious", "bearish", "crisis"].index)
+                        elif spread < -0.2:
+                            flags.append("yield_curve_inversion")
+                            level = max(level, "cautious", key=["normal", "cautious", "bearish", "crisis"].index)
+
+                        # Inversion + elevated VIX = compounding risk
+                        if spread < -0.3 and vix_val > 25:
+                            flags.append("yield_inversion_plus_vix")
+                            level = max(level, "bearish", key=["normal", "cautious", "bearish", "crisis"].index)
+            except Exception as e:
+                logger.debug(f"Macro indicators skipped: {e}")
+
         details = {
             "daily_change_pct": round(daily_change, 2),
             "five_day_change_pct": round(five_day_change, 2),
             "vix": round(vix_val, 1) if vix_val > 0 else None,
+            # Macro fields (None if HK or fetch failed)
+            "yield_10y": macro_data.get("yield_10y"),
+            "yield_spread": macro_data.get("yield_spread_10y5y"),
+            "macro_risk": macro_data.get("macro_risk_level"),
+            "spread_trend": macro_data.get("spread_trend"),
         }
 
         logger.info(
             f"Market regime {market}: {level} | "
             f"1d={daily_change:+.1f}% 5d={five_day_change:+.1f}% VIX={vix_val:.0f} "
+            f"spread={macro_data.get('yield_spread_10y5y', 'N/A')} "
+            f"macro_risk={macro_data.get('macro_risk_level', 'N/A')} "
             f"flags={flags}"
         )
         return {"level": level, "flags": flags, "details": details}

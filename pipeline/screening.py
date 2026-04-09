@@ -1042,7 +1042,7 @@ def build_enriched_candidates(
         opt_info = options_map.get(ticker)
         if opt_info:
             options_signal_str = opt_info.get("signal", "unavailable")
-            options_pc_ratio_val = opt_info.get("pc_ratio_volume")
+            options_pc_ratio_val = opt_info.get("vol_put_call_ratio")  # v6: fixed key mismatch
             options_unusual = bool(
                 opt_info.get("unusual_call_activity") or opt_info.get("unusual_put_activity")
             )
@@ -1100,6 +1100,7 @@ def build_enriched_candidates(
             "options_signal": options_signal_str,
             "options_pc_ratio": options_pc_ratio_val,
             "options_unusual_activity": options_unusual,
+            "options_data": opt_info,  # v6: full options dict for Layer 4 scoring
         })
 
     logger.info(f"Layer 2 enrichment: {len(enriched)} candidates with technical data")
