@@ -29,10 +29,14 @@ function StatItem({ label, value, color }) {
 export default function MarketSentimentPanel({ data, market }) {
   if (!data) return null;
 
-  const { sentiment, breadth, breadth_scope, fear_greed: fg, headlines, analysis } = data;
+  const { sentiment, breadth, breadth_scope, fear_greed: fg, headlines, analysis, vix } = data;
   const fgValue = fg?.value != null ? Math.round(fg.value) : null;
   const fgLabel = fg?.label || (fgValue >= 75 ? "极度贪婪" : fgValue >= 60 ? "贪婪" : fgValue >= 40 ? "中性" : fgValue >= 25 ? "恐惧" : "极度恐惧");
   const fgColor = fgValue >= 60 ? "#16A34A" : fgValue >= 40 ? "#8B7E74" : "#DC2626";
+
+  const vixValue = vix != null ? Number(vix) : null;
+  const vixColor = vixValue >= 30 ? "#DC2626" : vixValue >= 20 ? "#D97706" : "#16A34A";
+  const vixLabel = vixValue >= 30 ? "恐慌" : vixValue >= 20 ? "谨慎" : "平静";
 
   const advN = breadth?.advance ?? 0;
   const decN = breadth?.decline ?? 0;
@@ -51,6 +55,12 @@ export default function MarketSentimentPanel({ data, market }) {
 
   if (sentiment?.positive > sentiment?.negative) bullPoints.push("正面新闻多于负面，情绪偏暖");
   else if (sentiment?.negative > sentiment?.positive) bearPoints.push("负面新闻多于正面，情绪偏冷");
+
+  if (vixValue != null) {
+    if (vixValue < 20) bullPoints.push(`VIX恐慌指数${vixValue}，市场平静`);
+    else if (vixValue >= 30) bearPoints.push(`VIX恐慌指数${vixValue}，市场恐慌`);
+    else bearPoints.push(`VIX恐慌指数${vixValue}，市场偏谨慎`);
+  }
 
   if ((headlines || []).length > 0) {
     bullPoints.push("有" + headlines.length + "条相关新闻，市场关注度高");
@@ -84,6 +94,9 @@ export default function MarketSentimentPanel({ data, market }) {
             <StatItem label={"上涨家数"} value={advN} color="#16A34A" />
             <StatItem label={"下跌家数"} value={decN} color="#DC2626" />
             {unchN > 0 && <StatItem label={"平盘家数"} value={unchN} />}
+            {vixValue != null && (
+              <StatItem label={"VIX恐慌指数"} value={`${vixValue} (${vixLabel})`} color={vixColor} />
+            )}
           </div>
         </div>
         {fgValue != null && (

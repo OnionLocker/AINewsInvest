@@ -465,7 +465,17 @@ def _cache_market_sentiment(db: Database, market: str):
         "breadth_scope": scope_label,
         "fear_greed": fear_greed,
         "headlines": top_headlines,
+        "vix": None,
     }
+
+    # VIX (US only)
+    if market == "us_stock":
+        try:
+            vix_data = yf.Ticker("^VIX").history(period="1d")
+            if vix_data is not None and not vix_data.empty:
+                result["vix"] = round(float(vix_data["Close"].iloc[-1]), 1)
+        except Exception as e:
+            logger.debug(f"VIX fetch for sentiment cache failed: {e}")
 
     db.save_market_sentiment(market, result)
     logger.info(f"Market sentiment cached for {market}: fg={fear_greed['value']}, breadth={total}")

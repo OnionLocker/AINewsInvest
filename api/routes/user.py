@@ -86,8 +86,14 @@ async def watchlist_quotes(user: User = Depends(get_current_user)):
 
 @router.get("/market-sentiment/{market}")
 async def market_sentiment(market: str, user: User = Depends(get_current_user)):
-    """Read market sentiment from DB cache (written by pipeline).
-    Falls back to lightweight calculation if no cache exists."""
+    """Read market sentiment with smart cache.
+
+    Cache strategy (US market, ET timezone):
+    - Cache is valid until next trading day 07:30 ET.
+    - First request after 07:30 ET triggers a live refresh.
+    - Within the same trading window, all reads hit cache.
+    HK market uses 07:30 HKT as boundary.
+    """
     if market not in ("us", "hk"):
         raise HTTPException(400, "\u5e02\u573a\u53c2\u6570\u5fc5\u987b\u4e3a us \u6216 hk")
     mkt = f"{market}_stock"
@@ -96,23 +102,70 @@ async def market_sentiment(market: str, user: User = Depends(get_current_user)):
         db = Database(SYSTEM_DB_PATH)
         try:
             cached = db.get_market_sentiment(mkt)
-            if cached:
+            if cached and not _sentiment_cache_expired(cached, market):
                 cached.pop("_cached_at", None)
                 return cached
         finally:
             db.close()
 
-        return _compute_sentiment_live(market, mkt)
+        # Cache missing or expired — compute live and save
+        result = _compute_sentiment_live(market, mkt)
+        db2 = Database(SYSTEM_DB_PATH)
+        try:
+            db2.save_market_sentiment(mkt, result)
+        finally:
+            db2.close()
+        return result
 
     return await run_in_threadpool(_work)
 
 
+def _sentiment_cache_expired(cached: dict, market: str) -> bool:
+    """Check if sentiment cache has crossed the 07:30 local boundary."""
+    from datetime import datetime, time as dtime
+    try:
+        import zoneinfo
+    except ImportError:
+        from backports import zoneinfo  # type: ignore[no-redef]
+
+    cached_at_str = cached.get("_cached_at")
+    if not cached_at_str:
+        return True  # no timestamp → treat as expired
+
+    try:
+        # SQLite CURRENT_TIMESTAMP is UTC
+        cached_utc = datetime.fromisoformat(str(cached_at_str).replace("Z", "+00:00"))
+        if cached_utc.tzinfo is None:
+            cached_utc = cached_utc.replace(tzinfo=zoneinfo.ZoneInfo("UTC"))
+    except Exception:
+        return True
+
+    tz = zoneinfo.ZoneInfo("America/New_York" if market == "us" else "Asia/Hong_Kong")
+    now_local = datetime.now(tz)
+    cached_local = cached_utc.astimezone(tz)
+
+    # Boundary: 07:30 local time today
+    boundary = now_local.replace(hour=7, minute=30, second=0, microsecond=0)
+
+    # If now is past today's 07:30 and cache is from before 07:30 → expired
+    if now_local >= boundary and cached_local < boundary:
+        return True
+
+    # If cache is from a previous calendar day (local) → expired
+    if cached_local.date() < now_local.date() and now_local >= boundary:
+        return True
+
+    return False
+
+
 def _compute_sentiment_live(market: str, mkt: str) -> dict:
-    """Lightweight fallback when no pipeline cache exists yet."""
+    """Compute market sentiment live (used when cache is missing or expired)."""
     from analysis.news_fetcher import fetch_market_news, analyze_sentiment
+    from core.data_source import _get_market_breadth
 
     news = fetch_market_news(market=mkt, limit=15)
     sentiment = analyze_sentiment(news)
+    breadth = _get_market_breadth(mkt)
 
     top_headlines = []
     for n in news[:6]:
@@ -124,7 +177,8 @@ def _compute_sentiment_live(market: str, mkt: str) -> dict:
         })
 
     s = sentiment.get("score", 0.0)
-    raw = (s + 1) / 2 * 100
+    adv = breadth.get("advance_pct", 50.0)
+    raw = (s + 1) / 2 * 50 + adv / 100 * 50
     raw = max(0, min(100, raw))
     if raw >= 75:
         label = "\u6781\u5ea6\u8d2a\u5a6a"
@@ -138,15 +192,31 @@ def _compute_sentiment_live(market: str, mkt: str) -> dict:
         label = "\u6781\u5ea6\u6050\u60e7"
     fear_greed = {"value": round(raw, 1), "label": label}
 
-    scope_label = "\u6682\u65e0\u5e02\u573a\u5e7f\u5ea6\u6570\u636e(\u7b49\u5f85\u7b5b\u80a1\u6d41\u7a0b\u8ba1\u7b97)"
+    # VIX (US only)
+    vix = None
+    if market == "us":
+        try:
+            import yfinance as yf
+            vix_data = yf.Ticker("^VIX").history(period="1d")
+            if vix_data is not None and not vix_data.empty:
+                vix = round(float(vix_data["Close"].iloc[-1]), 1)
+        except Exception:
+            pass
+
+    total = breadth.get("total", 0)
+    if market == "us":
+        scope_label = f"\u6807\u666e500\u6210\u5206\u80a1({total}\u53ea)"
+    else:
+        scope_label = f"\u6052\u6307+\u6052\u751f\u79d1\u6280\u6210\u5206\u80a1({total}\u53ea)"
 
     return {
         "market": mkt,
         "sentiment": sentiment,
-        "breadth": {"advance": 0, "decline": 0, "unchanged": 0, "advance_pct": 50.0, "total": 0},
+        "breadth": breadth,
         "breadth_scope": scope_label,
         "fear_greed": fear_greed,
         "headlines": top_headlines,
+        "vix": vix,
     }
 
 
