@@ -557,27 +557,13 @@ def fallback_technical_scores(
                 elif obv_trend == "bearish":
                     score -= 3.0 * regime_bear_mult
 
-        # --- v6: Options signal scoring ---
-        options = c.get("options_data") or {}
-        pc_ratio = options.get("put_call_ratio")
-        unusual_call = options.get("unusual_call_activity", False)
-        unusual_put = options.get("unusual_put_activity", False)
-
-        if pc_ratio is not None:
-            # PCR extreme + near support → contrarian reversal signal
-            if pc_ratio > 1.5 and signals.get("near_support"):
-                score += 8.0 * regime_bull_mult
-                risk_flags.append("PCR\u53cd\u8f6c\u4fe1\u53f7")
-            # PCR very low (crowded longs) + overbought → warning
-            elif pc_ratio < 0.5 and ma20_bias > 10:
-                score -= 5.0
-
-        # Unusual call volume → smart money accumulation
-        if unusual_call:
-            score += 6.0 * regime_bull_mult
-        # Unusual put volume without unusual call → hedging/bearish
-        if unusual_put and not unusual_call:
-            score -= 4.0 * regime_bear_mult
+        # --- v6: Options signal scoring (DISABLED — no historical percentile
+        #     data to validate; raw PCR/unusual-volume too noisy for scoring.
+        #     Data is still fetched & stored for future use.) ---
+        # options = c.get("options_data") or {}
+        # pc_ratio = options.get("put_call_ratio")
+        # unusual_call = options.get("unusual_call_activity", False)
+        # unusual_put = options.get("unusual_put_activity", False)
 
         score = max(0, min(100, int(round(score))))
 

@@ -1,100 +1,168 @@
-# Alpha Vault Frontend Audit Report
+# Frontend/Backend Field Audit Report
+**Date:** 2026-04-08
+**Scope:** Verification of new recommendation fields in database, API, and frontend components
 
-**Date:** April 7, 2026  
-**Scope:** Frontend React SPA vs Backend API Data Coverage  
-**Status:** Comprehensive audit completed
+---
 
 ## Executive Summary
 
-This audit compares backend API data returns versus frontend UI display across all pages and components. Three character encoding issues were identified and fixed. Approximately 50+ API fields are returned but not displayed, with RecCard component achieving ~95% coverage as the best-practice example.
+✅ **GOOD NEWS:** All four new fields are properly implemented throughout the stack.
 
-## Character Encoding Issues - FIXED
+⚠️ **FINDINGS:** 
+1. `position_note` exists but is NOT displayed (intentional - superseded by position_rationale)
+2. Documentation could be enhanced
+3. No blocking issues found
 
-### AnalysisPage.jsx ✓
-- Line 88: "深度分析" (Deep Analysis) title
-- Line 93: "股票代码" (Stock Code) label
-- Line 102: "市场" (Market) label
-- Frames 108-109: "美股"/"港股" options
-- Line 125: "分析进度" section
-- Line 135: "处理中..." status
-- Line 149: "技术指标" section
-- Lines 176, 201, 219, 250: Other section titles
+---
 
-### AdminPage.jsx ✓
-- Line 41: "用户管理" title
-- Line 47: "管理员" badge
-- Line 48: "已禁用" status
-- Line 123: "推荐生成" title
-- Fixes to form labels and button text
+## NEW FIELDS STATUS
 
-### DashboardPage.jsx ✓
-- Line 113: "AI 投研与情绪分析系统" description
-- Line 238: "近30日推荐胜率" title
-- Line 283: "AI Agent 状态" title
-- Multiple other labels restored
+| Field | DB | Backend | API | Frontend | Status |
+|-------|----|---------|----|----------|--------|
+| `trailing_activation_price` | ✅ | ✅ | ✅ | ✅ | PASS |
+| `trailing_distance_pct` | ✅ | ✅ | ✅ | ✅ | PASS |
+| `position_rationale` | ✅ | ✅ | ✅ | ✅ | PASS |
+| `position_pct` | ✅ | ✅ | ✅ | ✅ | PASS |
 
-## Data Coverage Analysis
+---
 
-### WatchlistPage.jsx
-**Displayed:** ticker, name, market, price, change_pct, volume
-**Missing:** note (design gap - accepted but never shown), added_at, last_updated
+## DETAILED FINDINGS
 
-### ScreeningPage.jsx
-**Displayed:** ticker, name, market, price, change_pct, score, rank
-**Missing:** tech_score, news_score, fundamental_score, RSI, MACD, Bollinger, OBV, risk_flags, themes, direction, holding_days, position_pct, confidence
+### 1. DATABASE SCHEMA ✅
 
-### WinRatePage.jsx
-**Displayed:** All summary and detail fields
-**Missing:** Per-trade metadata (max profit/loss, holding duration), trending analysis, sector breakdown
+**Migration Status:** `core/database.py` lines 425-445
+- `trailing_activation_price` → REAL DEFAULT 0
+- `trailing_distance_pct` → REAL DEFAULT 0  
+- `position_rationale` → TEXT DEFAULT ''
+- Both `daily_recommendation_items` and `published_recommendation_items` tables updated
 
-### RecommendationsPage.jsx (via RecCard)
-**Displayed:** 95% of fields including all trading parameters, technical indicators, risk flags, scores, sentiment
-**Missing:** None significant
+**Schema Initialization:** `_init_tables()` includes all fields
+**Data Insertion:** `_insert_recommendation_items()` (lines 914-976) properly parameterizes all fields
 
-### AnalysisPage.jsx
-**Displayed:** Technical, fundamental, valuation scalars, news (first 5), LLM analysis
-**Missing:** Nested indicator details, full news list, signal confidence, valuation breakdown
+### 2. BACKEND GENERATION ✅
 
-### AdminPage.jsx
-**Displayed:** Users, task status, table comparison
-**Missing:** User creation form, task history, rollback capability
+**Location:** `pipeline/agents.py` (Layer 5 Synthesis, lines 1080-1149)
 
-### DashboardPage.jsx
-**Displayed:** Indices, sentiment gauge, win rate, recommendations (first 8)
-**Missing:** Sentiment trend, full headlines, full recommendation list
+**trailing_activation_price & trailing_distance_pct:**
+- Lines 1114-1115: Extracted from trade object if is_quality=True
+- Assigned from strategy configuration
 
-## Key Opportunities
+**position_pct & position_rationale:**
+- Lines 1085-1093: Called via `_suggest_position_pct()` function
+- Lines 1128-1129: Stored in recommendation dict
 
-1. **Watchlist Notes** - Input accepted but never displayed
-2. **Screening Detail Cards** - Expand to show score breakdown and indicators
-3. **Sentiment Details** - Show analysis text, full headlines, trends
-4. **Win Rate Filtering** - Filter by outcome, date range, market
-5. **Recommendation Analytics** - Comparison tools, trend analysis
+**Multi-factor Model (_suggest_position_pct(), lines 1181-1256):**
+- Base allocation by score (3-8%)
+- Confidence multiplier (0.70x - 1.20x)
+- Volatility adjustment (0.70x - 1.10x)
+- Risk flags impact (0.60x - 0.80x per flag count)
+- R:R ratio multiplier (0.85x - 1.15x)
+- Strategy type adjustment (0.90x for swing)
+- Market regime multiplier (0.50x - 1.00x)
+- Final clamping: max(2%, min(10%))
+- Chinese rationale string built with all factors
 
-## Best Practice Pattern: RecCard.jsx
+### 3. API ENDPOINTS ✅
 
-RecCard demonstrates excellent data presentation with:
-- Collapsed summary view (7 key fields)
-- Expandable detailed view (30+ fields)
-- Visual components (price bar, confidence meter)
-- Semantic translations (70+ risk flags)
-- Context-aware guidance
+**All recommendation endpoints use:** `SELECT * FROM [table]`
+- `GET /api/recommendations/today`
+- `GET /api/recommendations/{ref_date}`
+- `GET /api/recommendations/{market}/today`
+- `GET /api/recommendations/{market}/{ref_date}`
 
-This pattern should be replicated in other detail views.
+**No field filtering:** Items returned as `dict(i)` with all columns
 
-## Resolution Summary
+### 4. DATABASE PUBLISHING ✅
 
-- ✓ All 3 character encoding issues fixed
-- ✓ 50+ unused API fields catalogued
-- ✓ Missing UI features documented
-- ✓ Best practice pattern identified
-- ✓ Implementation priorities defined
+**publish_recommendations()** (lines 550-577):
+- Calls same `_insert_recommendation_items()` method
+- All new fields properly copied from daily to published table
+- No field stripping or filtering
 
-## Recommendations
+### 5. FRONTEND DISPLAY ✅
 
-**High Priority:** Watchlist notes, screening cards, sentiment details
-**Medium Priority:** Win rate filtering, detail views
-**Low Priority:** Admin features, trends
+**RecCard.jsx Component:**
 
-See full audit report for detailed findings on all components.
+**Trailing Stop Section (lines 171-207):**
+- ✅ Displays `trailing_activation_price` in portfolio currency
+- ✅ Displays `trailing_distance_pct` as percentage
+- ✅ Shows profit % reached (handles SHORT case correctly)
+- ✅ Only shows if both values > 0
+
+**Position Rationale (lines 208-213):**
+- ✅ Displays `position_rationale` Chinese string
+- ✅ Conditional display (only if exists)
+- ✅ Proper styling with icon
+
+**Position Percentage (lines 625-632):**
+- ✅ Displays `position_pct`
+- ✅ Color-coded: emerald (>=6%), amber (4-5%), rose (<4%)
+- ✅ Shown in header row
+
+### 6. SHORT POSITION HANDLING ✅
+
+**Trailing Stop Profit Calc (lines 183-188):**
+```
+SHORT: (entry - activation) / (entry - tp) * 100
+LONG:  (activation - entry) / (tp - entry) * 100
+```
+✅ Mathematically correct for both directions
+
+### 7. PAGE LEVEL INTEGRATION ✅
+
+**RecommendationsPage.jsx:**
+- Passes full item object to RecCard
+- No filtering of fields
+
+**DashboardPage.jsx:**
+- Compact preview shows essential fields
+- Full details available via link to RecCard
+
+---
+
+## ISSUES & NOTES
+
+### position_note Field
+- **Status:** In database (not removed, preserved for audit)
+- **Display:** Not shown in frontend (intentional)
+- **Reason:** Superseded by position_rationale (better content)
+- **Assessment:** ✅ Correct design decision
+
+### Documentation
+- `API_FIELDS_MAPPING.md` exists but incomplete
+- Missing the 4 new fields in mapping
+- **Recommendation:** Update documentation
+
+---
+
+## VERIFICATION CHECKLIST
+
+- ✅ Trailing activation price displays in correct currency ($, HK$)
+- ✅ Trailing distance shown as percentage (value * 100)
+- ✅ Position rationale shows Chinese explanation
+- ✅ Position pct color-coded correctly
+- ✅ All fields stored in daily_recommendation_items
+- ✅ All fields copied to published_recommendation_items
+- ✅ API returns all fields without filtering
+- ✅ Frontend receives all fields
+- ✅ Frontend displays all relevant fields
+- ✅ SHORT position calculations verified
+- ✅ No data loss in publishing pipeline
+- ✅ Migration handles existing databases
+
+---
+
+## CONCLUSION
+
+🟢 **AUDIT RESULT: PASS**
+
+All four new backend fields are correctly implemented across:
+- Database schema (with migrations)
+- Backend generation (multi-factor model)
+- Data storage (both daily and published tables)
+- API transport (no filtering)
+- Frontend display (with appropriate styling)
+- Special cases (SHORT positions, currencies)
+
+**No blocking issues. System is production-ready.**
 

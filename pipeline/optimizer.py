@@ -18,10 +18,10 @@ from pipeline.config import get_config
 
 
 _WEIGHT_GRID = {
-    "weight_volume": [0.20, 0.25, 0.30],
-    "weight_momentum": [0.20, 0.25, 0.30, 0.35],
-    "weight_market_cap": [0.15, 0.20, 0.25],
-    "weight_volatility": [0.20, 0.25, 0.30],
+    "weight_momentum": [0.25, 0.30, 0.35, 0.40],
+    "weight_trend": [0.15, 0.20, 0.25, 0.30],
+    "weight_quality": [0.15, 0.20, 0.25],
+    "weight_volatility": [0.15, 0.20, 0.25],
 }
 
 _THRESHOLD_GRID = {
