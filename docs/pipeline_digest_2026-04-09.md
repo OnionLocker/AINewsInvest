@@ -1,6 +1,7 @@
 # Pipeline 摘要 · 2026-04-09（us_stock）
 
-> 来源：`logs/serve.log` 中当日调度一次完整跑批。供工程侧复盘。
+> 来源：`logs/serve.log` 中当日调度一次完整跑批。供工程侧复盘。  
+> **完整六层流程说明**见同目录 [`pipeline_summary.md`](pipeline_summary.md)。
 
 ## 调度与时间
 
