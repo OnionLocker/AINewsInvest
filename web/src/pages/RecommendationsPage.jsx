@@ -263,6 +263,26 @@ export default function RecommendationsPage({ market = "us" }) {
           <span className="text-xs text-secondary">
             {items.length} {"\u53ea"}
           </span>
+          {items.length > 0 && (() => {
+            const h = items.filter(i => i.quality_tier === "high").length;
+            const m = items.filter(i => i.quality_tier === "medium").length;
+            const l = items.filter(i => i.quality_tier === "low").length;
+            const parts = [];
+            if (h) parts.push(`${h} \u9ad8\u4fe1\u5fc3`);
+            if (m) parts.push(`${m} \u4e2d\u7b49`);
+            if (l) parts.push(`${l} \u89c2\u671b`);
+            return parts.length > 0 ? (
+              <span className="text-xs text-secondary">({parts.join(" / ")})</span>
+            ) : null;
+          })()}
+          {items.length > 0 && (() => {
+            const st = items.filter(i => i.strategy !== "swing").length;
+            const sw = items.filter(i => i.strategy === "swing").length;
+            if (st && sw) {
+              return <span className="text-xs text-secondary">{"\u00b7"} {"\u77ed\u7ebf"} {st} / {"\u6ce2\u6bb5"} {sw}</span>;
+            }
+            return null;
+          })()}
         </div>
 
         {loading ? (

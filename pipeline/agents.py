@@ -12,6 +12,7 @@ LLM always participates - no separate rule-based path.
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pandas as pd
@@ -152,67 +153,6 @@ def _call_news_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
     normalized = _normalize_news_results(results)
     logger.info(f"News Agent returned {len(normalized)} results")
     return normalized
-
-
-def _check_tech_bypass(c: dict) -> bool:
-    """Tech Bypass: allow candidate through even if news_score is low.
-
-    Bypassed if ALL conditions are met:
-    1. MA bullish alignment (ma5 >= ma10 >= ma20)
-    2. Volume expansion (5d/20d ratio > 1.3)
-    3. Not overbought (ma20 bias < 15%)
-    4. No volume-price divergence
-    """
-    signals = c.get("signals", {})
-    return (
-        signals.get("ma_bullish_align", False)
-        and signals.get("volume_expansion", False)
-        and not signals.get("overbought_bias", False)
-        and not signals.get("volume_price_divergence", False)
-    )
-
-
-def run_news_filter(
-    enriched: list[dict],
-    news_results: list[dict],
-    top_n: int = 20,
-) -> list[dict]:
-    """Layer 3 filter: keep top news_score candidates + tech-bypassed ones.
-
-    Returns the subset of enriched candidates that pass to Layer 4.
-    """
-    news_map = {r["ticker"]: r for r in news_results}
-
-    scored = []
-    for c in enriched:
-        ticker = c["ticker"]
-        nr = news_map.get(ticker)
-        ns = nr["news_score"] if nr else 50
-        scored.append((ns, c))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    passed_tickers: set[str] = set()
-    passed: list[dict] = []
-
-    for ns, c in scored[:top_n]:
-        passed_tickers.add(c["ticker"])
-        passed.append(c)
-
-    bypass_count = 0
-    MAX_BYPASS = 5  # Cap to prevent runaway candidate lists
-    for ns, c in scored[top_n:]:
-        if bypass_count >= MAX_BYPASS:
-            break
-        if c["ticker"] not in passed_tickers and _check_tech_bypass(c):
-            passed.append(c)
-            passed_tickers.add(c["ticker"])
-            bypass_count += 1
-
-    if bypass_count:
-        logger.info(f"Layer 3 Tech Bypass: {bypass_count} additional candidates passed")
-    logger.info(f"Layer 3 news filter: {len(enriched)} -> {len(passed)} candidates")
-    return passed
 
 
 # ---------------------------------------------------------------------------
@@ -1127,18 +1067,7 @@ def synthesize_agent_results(
     else:
         logger.info(f"Adaptive weights disabled in {regime_level} regime")
 
-    min_score = syn.min_confidence  # v6: renamed semantically — this is a score threshold
     quality_threshold = max(syn.quality_threshold, 55)  # v6: safety floor — never show trades for <55
-
-    regime_level = (regime or {}).get("level", "normal")
-    if regime_level == "bearish":
-        min_score = min(95, min_score + 10)
-        quality_threshold = min(90, quality_threshold + 5)
-        logger.info(f"Bearish regime: min_score raised to {min_score}")
-    elif regime_level == "crisis":
-        min_score = min(95, min_score + 20)
-        quality_threshold = min(90, quality_threshold + 10)
-        logger.info(f"Crisis regime: min_score raised to {min_score}")
 
     if max_count is None:
         max_count = cfg.max_recommendations
@@ -1150,9 +1079,9 @@ def synthesize_agent_results(
     BLEND = syn.cross_fill_factor
 
     all_scored: list[dict] = []
-    skipped_hold = 0
-    skipped_contradiction = 0
-    skipped_rr = 0
+    noted_hold = 0
+    noted_contradiction = 0
+    noted_rr = 0
 
     for c in enriched:
         ticker = c["ticker"]
@@ -1192,21 +1121,20 @@ def synthesize_agent_results(
         news_action = _classify_action(str(news.get("action", "hold")))
         tech_action = _classify_action(str(tech.get("action", "hold")))
 
-        # Skip if both agents say "hold" — no conviction either way
-        if news_action == "hold" and tech_action == "hold":
-            skipped_hold += 1
-            continue
-
-        # Skip if agents directly contradict (one buy, one avoid/short)
+        # v7: Both-hold and contradiction are no longer hard-skips.
+        # Confidence formula already penalizes these (-5 for both-hold, -28 for
+        # contradiction).  Stocks will rank low naturally via conviction_score.
         buy_actions = ("buy", "strong_buy")
         bear_actions = ("avoid", "short")
-        if (news_action in buy_actions and tech_action in bear_actions) or \
-           (tech_action in buy_actions and news_action in bear_actions):
-            skipped_contradiction += 1
+        if news_action == "hold" and tech_action == "hold":
+            noted_hold += 1
+        elif (news_action in buy_actions and tech_action in bear_actions) or \
+             (tech_action in buy_actions and news_action in bear_actions):
+            noted_contradiction += 1
             logger.debug(
-                f"Signal contradiction {ticker}: news={news_action} tech={tech_action}, skipping"
+                f"Signal contradiction {ticker}: news={news_action} tech={tech_action}, "
+                f"confidence already penalized -28"
             )
-            continue
 
         # --- Combined score (no sector_bonus inflation) ---
         # fs already computed above for confidence calculation
@@ -1229,10 +1157,9 @@ def synthesize_agent_results(
         action_bucket = _classify_action(action_str)
         market_str = c.get("market", "")
 
-        # FIX 2b: Skip direction="hold" — don't recommend stocks without conviction
+        # v7: hold action no longer skipped — will rank low via conviction_score
         if action_bucket == "hold":
-            skipped_hold += 1
-            continue
+            noted_hold += 1
 
         is_short = (
             action_bucket == "short"
@@ -1263,15 +1190,15 @@ def synthesize_agent_results(
             )
             direction = "buy"
 
-        # --- FIX 5: R:R reject — if trade params are invalid, skip ---
-        if trade.get("_rejected"):
-            logger.warning(
-                f"R:R reject {ticker}: insufficient reward-to-risk, skipping recommendation"
+        # v7: R:R reject no longer eliminates — mark as watch-only instead
+        _rr_rejected = trade.get("_rejected", False)
+        if _rr_rejected:
+            noted_rr += 1
+            logger.info(
+                f"R:R insufficient {ticker}: marking as watch-only"
             )
-            skipped_rr += 1
-            continue
 
-        is_quality = combined >= quality_threshold and confidence >= 50
+        is_quality = (not _rr_rejected) and combined >= quality_threshold and confidence >= 50
 
         all_risk_flags = list(set(
             list(news.get("risk_flags") or []) +
@@ -1347,6 +1274,7 @@ def synthesize_agent_results(
             "trailing_activation_price": trade.get("trailing_activation_price", 0) if is_quality else 0,
             "trailing_distance_pct": trade.get("trailing_distance_pct", 0) if is_quality else 0,
             "show_trading_params": is_quality,
+            "_rr_rejected": _rr_rejected,
             "holding_days": holding_days_final,
             "tech_reason": tech_analysis,
             "news_reason": news_analysis,
@@ -1380,15 +1308,14 @@ def synthesize_agent_results(
             "_tech_skill_output": tech.get("_skill_output"),
         })
 
-    if skipped_hold or skipped_contradiction or skipped_rr:
+    if noted_hold or noted_contradiction or noted_rr:
         logger.info(
-            f"Synthesis filter: skipped {skipped_hold} hold + "
-            f"{skipped_contradiction} contradictions + {skipped_rr} R:R rejects"
+            f"Synthesis notes: {noted_hold} hold + "
+            f"{noted_contradiction} contradictions + {noted_rr} R:R insufficient"
         )
 
     # v6: conviction_score = score × (confidence/100)^0.7
     # The exponent 0.7 means confidence matters but doesn't dominate.
-    # A 75-score / 80-confidence stock beats a 70-score / 90-confidence stock.
     for s in all_scored:
         s["conviction_score"] = round(
             s["combined_score"] * (s["confidence"] / 100.0) ** 0.7, 2
@@ -1396,25 +1323,76 @@ def synthesize_agent_results(
 
     all_scored.sort(key=lambda x: x["conviction_score"], reverse=True)
 
-    # v6: Dual filter — score AND confidence must pass thresholds
-    min_conf_threshold = 50  # absolute confidence floor
-    filtered = [
-        s for s in all_scored
-        if s["combined_score"] >= min_score and s["confidence"] >= min_conf_threshold
-    ]
+    # --- v7: Quality tier assignment (replaces dual hard-filter) ---
+    for s in all_scored:
+        cv = s["conviction_score"]
+        if cv >= syn.high_min_conviction:
+            s["quality_tier"] = "high"
+        elif cv >= syn.medium_min_conviction:
+            s["quality_tier"] = "medium"
+        elif cv >= syn.low_min_conviction:
+            s["quality_tier"] = "low"
+        else:
+            s["quality_tier"] = "excluded"
 
-    if not filtered:
-        top_score = all_scored[0]["combined_score"] if all_scored else 0
-        top_conf = all_scored[0]["confidence"] if all_scored else 0
-        logger.info(
-            f"No stocks passed min_score={min_score} & min_conf={min_conf_threshold} "
-            f"(top: score={top_score}, conf={top_conf}). Sit out today."
-        )
+    # Filter out excluded tier (garbage-in protection)
+    all_scored = [s for s in all_scored if s["quality_tier"] != "excluded"]
+
+    # Low tier and R:R rejected → hide trading params
+    for s in all_scored:
+        if s["quality_tier"] == "low" or s.get("_rr_rejected"):
+            s["show_trading_params"] = False
+            s["entry_price"] = None
+            s["entry_2"] = None
+            s["stop_loss"] = None
+            s["take_profit"] = None
+            s["take_profit_2"] = None
+            s["take_profit_3"] = None
+            s["trailing_activation_price"] = 0
+            s["trailing_distance_pct"] = 0
+
+    # Determine top-N based on regime and strategy
+    if regime_level == "crisis":
+        logger.info("Crisis regime: returning 0 recommendations")
         return []
 
-    filtered = _limit_sector_concentration(filtered, max_ratio=0.4)
+    if strategy_type == "swing":
+        swing_cfg = cfg.swing
+        if regime_level == "bearish":
+            top_n = swing_cfg.top_n_bearish
+            all_scored = [s for s in all_scored if s["quality_tier"] == "high"]
+            logger.info(f"Bearish regime (swing): only high-tier, {len(all_scored)} candidates")
+        elif regime_level == "cautious":
+            top_n = swing_cfg.top_n_cautious
+        else:
+            top_n = swing_cfg.top_n_normal
+    else:
+        if regime_level == "bearish":
+            top_n = syn.top_n_bearish
+            all_scored = [s for s in all_scored if s["quality_tier"] == "high"]
+            logger.info(f"Bearish regime: only high-tier, {len(all_scored)} candidates")
+        elif regime_level == "cautious":
+            top_n = syn.top_n_cautious
+        else:
+            top_n = syn.top_n_normal
+
+    if max_count is not None:
+        top_n = min(top_n, max_count)
+
+    # Log tier distribution
+    tier_counts: dict[str, int] = {}
+    for s in all_scored:
+        t = s.get("quality_tier", "?")
+        tier_counts[t] = tier_counts.get(t, 0) + 1
+    logger.info(f"Quality tier distribution: {tier_counts}")
+
+    if not all_scored:
+        logger.info("No stocks above minimum conviction floor. Sit out today.")
+        return []
+
+    filtered = _limit_sector_concentration(all_scored, max_ratio=0.4)
     filtered = _check_pairwise_correlation(filtered)
-    return filtered[:max_count]
+    return filtered[:top_n]
 
 
 def _suggest_position_pct(
@@ -1768,16 +1746,12 @@ def run_agent_pipeline(
     progress_cb: Callable[[dict], None] | None = None,
     regime: dict | None = None,
 ) -> list[dict]:
-    """Run the full 6-layer agent pipeline on enriched candidates.
+    """Run the full agent pipeline on enriched candidates.
 
-    Expects output from screening.build_enriched_candidates().
-
-    Layer 3: News Agent + filter + Tech Bypass
-    Layer 4: Technical Agent (fallback if LLM fails)
-    Layer 5: Score synthesis
-    Layer 6: Trade params are code-enforced inside synthesis
-
-    Returns ranked list of recommendation dicts.
+    v7 changes:
+    - NewsSkill and TechSkill run in PARALLEL (both process all candidates)
+    - news_filter removed (no longer gates TechSkill input)
+    - strategy_type="dual" runs short + swing synthesis and merges results
     """
     cfg = get_config()
     max_retries = cfg.agent.max_retries
@@ -1795,26 +1769,24 @@ def run_agent_pipeline(
 
     candidates = enriched[:batch_size]
 
-    # Layer 3: NewsSkill (batched)
-    _progress(35.0, f"Layer 3: NewsSkill analyzing {len(candidates)} candidates")
-    news_results = _batched_news_agent(candidates, market, max_retries, progress_cb, regime=regime)
-
-    if not news_results:
-        logger.warning("NewsSkill returned no results, sending all to TechSkill")
-        tech_candidates = candidates
-    else:
-        tech_candidates = run_news_filter(candidates, news_results, top_n=batch_size // 2)
-
-    # Layer 4: TechSkill (batched, hybrid deterministic + LLM)
-    _progress(55.0, f"Layer 4: TechSkill analyzing {len(tech_candidates)} candidates")
-    tech_results = _batched_tech_agent(
-        tech_candidates, market, max_retries, progress_cb,
-        regime=regime, strategy_type=strategy_type,
-    )
+    # v7: NewsSkill + TechSkill run in PARALLEL on all candidates
+    _progress(35.0, f"Layers 3-4: News + Tech agents analyzing {len(candidates)} candidates (parallel)")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        news_future = executor.submit(
+            _batched_news_agent, candidates, market, max_retries,
+            progress_cb=progress_cb, regime=regime,
+        )
+        tech_future = executor.submit(
+            _batched_tech_agent, candidates, market, max_retries,
+            progress_cb=progress_cb, regime=regime,
+            strategy_type=strategy_type if strategy_type != "dual" else "short",
+        )
+        news_results = news_future.result()
+        tech_results = tech_future.result()
 
     if not tech_results:
         logger.warning("TechSkill returned no results, using fallback scoring")
-        tech_results = fallback_technical_scores(tech_candidates, regime=regime)
+        tech_results = fallback_technical_scores(candidates, regime=regime)
 
     # Consistency check between agents
     if news_results and tech_results:
@@ -1822,13 +1794,23 @@ def run_agent_pipeline(
 
     # Layer 5 + 6: Synthesis with code-enforced trade params
     _progress(70.0, "Layer 5-6: Synthesis and risk control")
-    recommendations = synthesize_agent_results(
-        tech_candidates,
-        news_results,
-        tech_results,
-        strategy_type=strategy_type,
-        regime=regime,
-    )
+
+    if strategy_type == "dual":
+        short_recs = synthesize_agent_results(
+            candidates, news_results, tech_results,
+            strategy_type="short", regime=regime,
+        )
+        swing_recs = synthesize_agent_results(
+            candidates, news_results, tech_results,
+            strategy_type="swing", regime=regime,
+        )
+        recommendations = short_recs + swing_recs
+        recommendations.sort(key=lambda x: x["conviction_score"], reverse=True)
+    else:
+        recommendations = synthesize_agent_results(
+            candidates, news_results, tech_results,
+            strategy_type=strategy_type, regime=regime,
+        )
 
     _progress(78.0, f"Pipeline complete: {len(recommendations)} recommendations")
     return recommendations

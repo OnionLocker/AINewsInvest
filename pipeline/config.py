@@ -53,6 +53,14 @@ class SynthesisConfig:
     adaptive_threshold_drop: int = 20
     adaptive_threshold_floor: int = 30
     cross_fill_factor: float = 0.3
+    # v7: Quality tier boundaries (conviction_score)
+    high_min_conviction: float = 42.0
+    medium_min_conviction: float = 28.0
+    low_min_conviction: float = 15.0
+    # v7: Top-N output per regime
+    top_n_normal: int = 5
+    top_n_cautious: int = 5
+    top_n_bearish: int = 3
 
 
 @dataclass
@@ -95,6 +103,10 @@ class SwingConfig:
     trailing_distance_pct: float = 0.35
     sl_max_pct: float = 0.10
     sl_min_pct: float = 0.015
+    # v7: Top-N output per regime
+    top_n_normal: int = 3
+    top_n_cautious: int = 3
+    top_n_bearish: int = 2
 
 
 @dataclass

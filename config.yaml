@@ -35,7 +35,7 @@ agent:
   news_version: "news-sentiment-v2"
   tech_version: "technical-v2"
   max_retries: 2
-  batch_size: 30
+  batch_size: 60
 
   fallback:
     base_score: 50
@@ -62,7 +62,7 @@ scheduler:
 
 # Pipeline parameters
 pipeline:
-  max_candidates: 40
+  max_candidates: 60
   max_recommendations: 5
 
   screening:
@@ -92,6 +92,14 @@ pipeline:
     adaptive_threshold_drop: 15
     adaptive_threshold_floor: 50
     cross_fill_factor: 0.3
+    # v7: Quality tier boundaries (conviction_score = combined × (conf/100)^0.7)
+    high_min_conviction: 42       # Full recommendation with trading params
+    medium_min_conviction: 28     # Recommendation with caution label
+    low_min_conviction: 15        # Watch-only, no trading params
+    # v7: Top-N output per regime
+    top_n_normal: 5
+    top_n_cautious: 5
+    top_n_bearish: 3
 
   short_term:
     max_recommendations: 5
@@ -130,6 +138,10 @@ pipeline:
     trailing_distance_pct: 0.35
     sl_max_pct: 0.10
     sl_min_pct: 0.015
+    # v7: Top-N output per regime
+    top_n_normal: 3
+    top_n_cautious: 3
+    top_n_bearish: 2
 
   win_rate:
     short_retention_days: 21

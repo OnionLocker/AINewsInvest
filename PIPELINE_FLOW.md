@@ -1,354 +1,313 @@
-# Alpha Vault Pipeline Flow — 6 层管线全景图
+# Alpha Vault v7 Pipeline Flow
 
 ```
-                    ╔══════════════════════════════════════════╗
-                    ║     07:30 ET 调度器自动触发 / 手动触发     ║
-                    ╚══════════════════════════════════════════╝
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │          市场体制检测 (Regime)             │
-                    │   VIX + 日涨跌 + 5日涨跌 → 4级判定         │
-                    │   normal / cautious / bearish / crisis    │
-                    └──────────────────────────────────────────┘
-                                       │
-            ┌──────────────────────────┼──────────────────────────┐
-            │ crisis → 直接返回空推荐    │ normal/cautious/bearish   │
-            └──────────────────────────┘        继续 ↓              │
-                                                                   │
-═══════════════════════════════════════════════════════════════════════
- LAYER 1: 量化初筛 (screening.py)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │         股票池构建 (~500只)                │
-                    │   S&P 500 + Nasdaq 100 成分股              │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      Stage A: 硬过滤 (500 → ~230)        │
-                    │                                          │
-                    │  ✗ 市值 < 10亿                            │
-                    │  ✗ 日均成交量 < 50万                       │
-                    │  ✗ 单日涨跌幅 > 10%                       │
-                    │  ✗ P/B > 15                              │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      Pre-rank: 52周位置排序               │
-                    │   钟形曲线: 0.55位置最优 → top 120        │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-═══════════════════════════════════════════════════════════════════════
- LAYER 2: 数据丰富 (screening.py → build_enriched_candidates)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │      Stage B: 财务数据 + K线获取          │
-                    │                                          │
-                    │  获取: 80天K线, 财务报表, 内幕交易          │
-                    │  计算: MA5/10/20/60, ATR, 波动率           │
-                    │        支撑/阻力位, 成交量分布              │
-                    │        RSI, MACD, 布林带, OBV              │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      Quality Gate (120 → ~116)           │
-                    │  ✗ ROE < -10% AND FCF < 0 AND 营收增长<-10% │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      Trend Filter (116 → ~110)           │
-                    │  ✗ 价格 < MA20 < MA50 且 价格 < MA50×0.9  │
-                    │    (深度下跌趋势，不抄底)                  │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │   5因子评分 + 绝对门槛 (110 → ~98)        │
-                    │                                          │
-                    │  加速度     25% ─┐                        │
-                    │  量能异常   20% ─┤                        │
-                    │  趋势结构   30% ─┼→ 综合分(0-100)         │
-                    │  波动率适配 10% ─┤                        │
-                    │  基本面     15% ─┘                        │
-                    │                                          │
-                    │  ✗ 综合分 < 35 → 剔除                     │
-                    │  + 绝对质量加减分(非归一化)                 │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │   行业均衡 (98 → 40 candidates)           │
-                    │   每行业最多 top_n/3 只, 保证分散化         │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-═══════════════════════════════════════════════════════════════════════
- LAYER 3: 新闻情感分析 (agents.py → NewsSkill)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │         多源新闻采集 (每只12条)            │
-                    │                                          │
-                    │  ① Yahoo Finance (免费)     credibility 0.70 │
-                    │  ② Finnhub (API key)       credibility 0.80-1.0│
-                    │  ③ MarketAux (API key)     credibility 0.70-0.85│
-                    │  ④ Google News RSS (免费)   credibility 0.55-0.80│
-                    │  ⑤ SEC EDGAR (US官方)      credibility 1.0  │
-                    │                                          │
-                    │  去重 → 按可信度排序 → top 12              │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │    NewsSkill LLM 分析 (批量10只/次)       │
-                    │                                          │
-                    │  输入: ticker + 12条新闻 + 市场宏观新闻    │
-                    │  输出: news_score(0-100), sentiment,      │
-                    │        action, risk_flags, themes          │
-                    │                                          │
-                    │  确定性评分: score_news_output()           │
-                    │  (催化剂×权重×可信度×时间窗口)              │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │     新闻过滤 (40 → ~20)                   │
-                    │                                          │
-                    │  保留: top N 按 news_score 排序            │
-                    │                                          │
-                    │  Tech Bypass (最多+5只):                  │
-                    │  即使新闻分低，如果技术面完美也放行          │
-                    │  条件: MA多头 + 放量 + 未超买 + 无背离      │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-═══════════════════════════════════════════════════════════════════════
- LAYER 4: 技术分析 (agents.py → TechSkill Hybrid)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │  Step 1: 全量确定性评分 (fallback v2)      │
-                    │                                          │
-                    │  base=50 + 连续函数评分:                   │
-                    │  ├─ MA排列: 多头+12×体制系数, 空头-10×体制 │
-                    │  ├─ 成交量: 连续(0.5→-4, 1.5→+8, 3.0→+10)│
-                    │  ├─ 超买偏离: 连续(5%→0, 15%→-10, 30%→-20)│
-                    │  ├─ RSI(Wilder): 连续(15→+10, 50→0, 85→-12)│
-                    │  ├─ 布林带: 连续(0→+6, 0.5→0, 1.0→-7)    │
-                    │  ├─ MACD: 柱状图/价格比例 → ±5            │
-                    │  ├─ OBV趋势: 看涨+3, 看跌-3              │
-                    │  ├─ 周线趋势: 看跌-8, 看涨+3              │
-                    │  ├─ 日周矛盾: -2(正常) / -4(危机)        │
-                    │  └─ 波动率: 连续(1%→+2, 4%→-6, 6%→-10)   │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │  Step 2: LLM 验证 (40-65分 + >70分)      │
-                    │                                          │
-                    │  送 TechSkill LLM:                        │
-                    │  ├─ K线数据 + 指标 + 信号                  │
-                    │  └─ 返回: 形态/趋势/量价/质量/风险         │
-                    │                                          │
-                    │  混合评分 = 硬指标×65% + LLM判断×35%       │
-                    │  (短线65/35, 波段50/50)                    │
-                    │                                          │
-                    │  一致性钳位:                               │
-                    │  setup=avoid → 封顶45                     │
-                    │  setup=excellent → 地板55                  │
-                    └──────────────────────────────────────────┘
-                                       │
-                    每只输出: technical_score(0-100), action,
-                             risk_flags, analysis
-                                       │
-                                       ▼
-═══════════════════════════════════════════════════════════════════════
- LAYER 5: 综合评分 (agents.py → synthesize_agent_results)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │      信号矛盾过滤                         │
-                    │                                          │
-                    │  ✗ 新闻=buy + 技术=avoid → 跳过           │
-                    │  ✗ 新闻=hold + 技术=hold → 跳过           │
-                    │  ✗ action=hold → 跳过                     │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      综合分 = 加权平均                     │
-                    │                                          │
-                    │  短线: 新闻15% + 技术55% + 基本面30%       │
-                    │  波段: 新闻40% + 技术35% + 基本面25%       │
-                    │                                          │
-                    │  (无新闻API时自动降权: news×0.5)           │
-                    │  (crisis时禁用adaptive weight)            │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      置信度计算 (多维度)                    │
-                    │                                          │
-                    │  基准 50 +                                │
-                    │  ├─ 方向一致: 双看涨+20~+28, 矛盾-28      │
-                    │  ├─ 分数收敛: gap=0→+15, gap=40→-12       │
-                    │  ├─ 基本面对齐: 看涨+差基本面→-8           │
-                    │  ├─ 风险标记: 连续惩罚(1个-2, 5个-12)      │
-                    │  ├─ 数据来源: LLM验证+3, 纯fallback-2      │
-                    │  └─ 缺失信号: 无新闻-12, 无技术-15         │
-                    │                                          │
-                    │  范围: [10, 95]                           │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │   conviction = score × (conf/100)^0.7    │
-                    │   按 conviction 降序排列                   │
-                    │                                          │
-                    │   ✗ combined_score < 58 → 不推荐          │
-                    │   ✗ confidence < 50 → 不推荐              │
-                    │   (bearish +10, crisis +20 到阈值)        │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-═══════════════════════════════════════════════════════════════════════
- LAYER 6: 风控 + 交易参数 (agents.py → _compute_trade_params)
-═══════════════════════════════════════════════════════════════════════
-                                       │
-                    ┌──────────────────────────────────────────┐
-                    │      入场价计算                            │
-                    │                                          │
-                    │  突破型: price×1.002 (追高0.2%)            │
-                    │  回调型: 支撑位×1.01 或 MA20×1.005        │
-                    │  备选入场: 再低1-3.5%                      │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      止损计算 (ATR-based)                  │
-                    │                                          │
-                    │  SL = entry - ATR×2.0                     │
-                    │  钳位: [entry×(1-6%), entry×(1-1.5%)]     │
-                    │  突破型更紧: ATR×0.67                      │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      止盈计算 (ATR-based)                  │
-                    │                                          │
-                    │  TP1 = entry + ATR×3.0                    │
-                    │  TP2 = 阻力位2 或 TP1×1.03               │
-                    │  TP3 = TP2×1.05                           │
-                    │  追踪止盈: 达TP距离50%后激活               │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │    ★ R:R 验证 ★                           │
-                    │                                          │
-                    │  R:R = (TP - Entry) / (Entry - SL)        │
-                    │                                          │
-                    │  R:R < 1.5 → ★ 拒绝整个交易 ★             │
-                    │  (不调整参数凑, 直接不推荐)                 │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      仓位建议 (7因子模型)                  │
-                    │                                          │
-                    │  基础(评分) × 置信度 × 波动率              │
-                    │  × 风险标记 × R:R × 策略 × 市场体制        │
-                    │                                          │
-                    │  范围: [2%, 10%]                          │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────────────┐
-                    │      最终过滤                              │
-                    │                                          │
-                    │  行业集中度: 单行业不超过40%                │
-                    │  相关性过滤: 30日相关性>0.7的只留高分那只   │
-                    │  数量限制: 最多5只推荐                      │
-                    └──────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ╔══════════════════════════════════════════╗
-                    ║          最终推荐 (3-5只)                ║
-                    ║                                          ║
-                    ║  每只包含:                                ║
-                    ║  • ticker, name, sector                  ║
-                    ║  • combined_score, confidence, conviction ║
-                    ║  • entry_price, entry_2 (备选)            ║
-                    ║  • stop_loss, take_profit 1/2/3          ║
-                    ║  • trailing_activation + distance         ║
-                    ║  • position_pct (仓位%) + rationale       ║
-                    ║  • holding_days                           ║
-                    ║  • risk_flags, risk_note                  ║
-                    ║  • news_reason, tech_reason               ║
-                    ╚══════════════════════════════════════════╝
-                                       │
-                         ┌─────────────┼─────────────┐
-                         ▼             ▼             ▼
-                    ┌─────────┐  ┌─────────┐  ┌─────────┐
-                    │ 存数据库 │  │ 前端展示 │  │ 胜率追踪 │
-                    │system.db│  │ RecCard  │  │evaluator│
-                    └─────────┘  └─────────┘  └─────────┘
-                                                    │
-                                                    ▼
-                                        ┌───────────────────┐
-                                        │  每日自动评估       │
-                                        │                   │
-                                        │  Phase 1: 入场检测  │
-                                        │  (价格触及entry?)   │
-                                        │         │         │
-                                        │         ▼         │
-                                        │  Phase 2: 结果追踪  │
-                                        │  ├─ 触及TP → win   │
-                                        │  ├─ 触及SL → loss  │
-                                        │  ├─ 追踪止盈触发    │
-                                        │  ├─ 持有到期 → exit │
-                                        │  └─ 未入场 → skip  │
-                                        └───────────────────┘
-```
+ ╔═══════════════════════════════════════════════════════════════════════════╗
+ ║                   TRIGGER (scheduler / CLI)                              ║
+ ║  US: 07:30 ET (19:30 Beijing)    HK: 07:30 HKT (if enabled)            ║
+ ║  python main.py run --market us_stock [--force]                         ║
+ ╚═══════════════════════════════════════════════════════════════╦═══════════╝
+                                                                ▼
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │                     PRE-FLIGHT: MARKET REGIME                           │
+ │                                                                         │
+ │  SPY/VIX/yield curve → regime level:                                    │
+ │    normal    1d > -2%, VIX < 25                                         │
+ │    cautious  VIX 25-35 or yield inversion                               │
+ │    bearish   1d -2~-3% or 5d -3~-5% or VIX > 35                        │
+ │    crisis    1d < -3% or 5d < -5%                                       │
+ │                                                                         │
+ │  crisis → US: 0 recs (pipeline still runs for logging)                  │
+ │           HK: skip entire pipeline                                      │
+ └──────────────────────────────────────────────────────────────────────────┘
+                                    │
+ ═══════════════════════════════════╪═══════════════════════════════════════
+  LAYER 1: QUANTITATIVE SCREENING  │  ~20 sec
+ ═══════════════════════════════════╪═══════════════════════════════════════
+                                    ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  STOCK POOL                                                        │
+ │  US: S&P 500 (~500) + Nasdaq 100 (~100) → deduplicated ~570       │
+ │  HK: HSI (~80) + HSTECH (~30) → deduplicated ~100                 │
+ │  Source: Wikipedia (cached in data/stock_pool.json)                │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  STAGE A: HARD FILTER + PRE-RANK                   ~570 → ~180    │
+ │                                                                     │
+ │  Hard gates (any fail = reject):                                    │
+ │    ├─ market cap ≥ $1B          (cfg: min_market_cap)               │
+ │    ├─ avg volume ≥ 500K shares  (cfg: min_avg_volume)               │
+ │    └─ |daily change| ≤ 10%     (cfg: max_daily_change_pct)         │
+ │                                                                     │
+ │  Pre-rank: 52-week position bell curve                              │
+ │    sweet zone 40-70% from low → highest rank                        │
+ │    0% (beaten) or 100% (overextended) → lowest rank                 │
+ │                                                                     │
+ │  Output: top max(top_n×3, 80) = top 180                            │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  STAGE B: FINANCIAL DATA + QUALITY GATE             ~180 → ~120   │
+ │                                                                     │
+ │  Fetch: ROE, revenue growth, FCF, debt ratio, margins, PEG...      │
+ │                                                                     │
+ │  Quality gate (reject if ALL three):                                │
+ │    ├─ ROE < -10%                                                    │
+ │    ├─ FCF < 0                                                       │
+ │    └─ Revenue growth < -10%                                         │
+ │  Also reject: PB > 15                                               │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  STAGE C: TREND FILTER + 5-FACTOR RANKING           ~120 → ~60    │
+ │                                                                     │
+ │  Trend reject: price < MA20 < MA50 AND price < MA50×0.90           │
+ │  (confirmed deep downtrend only)                                    │
+ │                                                                     │
+ │  5-Factor Model (normalized [0,1], weighted sum):                   │
+ │  ┌────────────────────────┬────────┬──────────────────────────────┐ │
+ │  │ Factor                 │ Weight │ What it measures             │ │
+ │  ├────────────────────────┼────────┼──────────────────────────────┤ │
+ │  │ Trend Setup            │  30%   │ MA alignment + pullback      │ │
+ │  │ Acceleration           │  25%   │ Momentum increasing?         │ │
+ │  │ Volume Anomaly         │  20%   │ Recent volume surge          │ │
+ │  │ Fundamental             │  15%   │ ROE, growth, FCF, PEG       │ │
+ │  │ Volatility Fit         │  10%   │ Optimal 1.5-2.5% daily vol  │ │
+ │  └────────────────────────┴────────┴──────────────────────────────┘ │
+ │                                                                     │
+ │  Absolute quality gate: score ≥ 35 (cfg: min_absolute_score)       │
+ │  Sector diversification: max 20 per sector (top_n/3)               │
+ │                                                                     │
+ │  Output: top 60 candidates (cfg: max_candidates = 60)              │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  LAYER 2: TECHNICAL DATA ENRICHMENT                   │  ~15 sec
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  ENRICHMENT (parallel fetch)                        60 → 60       │
+ │                                                                     │
+ │  Per candidate, compute/fetch:                                      │
+ │    ├─ K-line 80 days (cached from L1)                              │
+ │    ├─ MA5, MA10, MA20, MA60                                        │
+ │    ├─ ATR 20d (for SL/TP sizing)                                   │
+ │    ├─ RSI 14, MACD, Bollinger Bands, OBV                          │
+ │    ├─ Volume profile → support/resistance levels                   │
+ │    ├─ Weekly trend (4w vs 8w MA)                                   │
+ │    ├─ Volatility class (high/medium/low)                           │
+ │    ├─ Binary signals: ma_bullish, volume_expansion, near_support.. │
+ │    ├─ Earnings proximity (next 5 trading days)                     │
+ │    ├─ Insider trading activity (buy/sell patterns)                 │
+ │    └─ Options signal (P/C ratio, unusual activity)                 │
+ │                                                                     │
+ │  fundamental_score computed (0-100, base 50)                       │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  LAYER 3: NEWS SENTIMENT AGENT                        │  ~40 sec
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  NewsSkill (LLM, batched ×10)                       60 → ~25      │
+ │                                                                     │
+ │  Input per stock:                                                   │
+ │    12 recent news items + market context + macro data               │
+ │                                                                     │
+ │  LLM → catalysts, risks, event flags, sector sentiment             │
+ │                                                                     │
+ │  Deterministic post-processing:                                     │
+ │    base 50 + catalyst impact (±24 ea) + risk severity (−15 ea)    │
+ │    + event flags (FDA +10, guidance ±8, insider −4)                │
+ │    + sector sentiment (±3) + regime adjustment (±5)                │
+ │    → news_score [0, 100]   action: buy/hold/avoid                  │
+ │                                                                     │
+ │  News filter: top 15-20 by news_score                              │
+ │  Tech bypass: +5 stocks with strong technicals but low news        │
+ │    (ma_bullish + volume_expansion + !overbought + !divergence)     │
+ │                                                                     │
+ │  Output: ~20-25 candidates with news_score + action                │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  LAYER 4: TECHNICAL ANALYSIS AGENT                    │  ~60 sec
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  TechSkill (Hybrid: deterministic + LLM)            ~25 → ~25     │
+ │                                                                     │
+ │  STEP 1: Deterministic score for ALL candidates                    │
+ │    base 50, regime-aware multipliers                                │
+ │    + MA alignment (±12)                                             │
+ │    + volume ratio continuous (−4 to +10)                           │
+ │    + overbought penalty (0 to −20)                                 │
+ │    + RSI 14-period (−12 to +10)                                    │
+ │    + Bollinger position (−7 to +6)                                 │
+ │    + MACD histogram (−5 to +5)                                     │
+ │    + OBV trend (±3)                                                │
+ │    + weekly trend (−8 to +3)                                       │
+ │    + volatility penalty (−10 to +2)                                │
+ │    + divergence penalty (−12)                                      │
+ │    → deterministic tech_score [0, 100]                             │
+ │                                                                     │
+ │  STEP 2: LLM call for BORDERLINE (40-65) and HIGH (>70) only      │
+ │    LLM → pattern recognition, setup quality, trend assessment      │
+ │    Hybrid blend: 60% deterministic + 40% LLM pattern               │
+ │    Setup quality clamps: avoid→max 45, excellent→min 55            │
+ │                                                                     │
+ │  STEP 3: Consistency check                                          │
+ │    action outside expected score range → blend 60/40 with midpoint │
+ │                                                                     │
+ │  Output: tech_score [0, 100] + action for all candidates           │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  LAYER 5: SYNTHESIS + QUALITY TIERS (v7)              │  ~10 sec
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  CROSS-FILL: Missing signal → diluted estimate + confidence penalty│
+ │    no news → news_score = 50 + (tech-50)×0.3, confidence −12      │
+ │    no tech → tech_score = 50 + (news-50)×0.3, confidence −15      │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │  CONFIDENCE (multi-factor, base 50):                               │
+ │    direction agreement ±28  (both buy=+28, contradiction=−28)      │
+ │    score convergence   ±18  (gap 0→+15, gap 50→−18)               │
+ │    fundamental align   ±8   (mismatch penalty)                      │
+ │    strength alignment  ±8   (both >70→+8)                          │
+ │    risk flags          −18  (8+ flags→−18)                         │
+ │    insider signal      ±15  (strong_buy→+12, strong_sell→−15)      │
+ │    source quality      ±5   (LLM→+3, fallback→−2)                 │
+ │    → confidence [10, 95]                                            │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │  COMBINED SCORE:                                                    │
+ │    = (news×0.15 + tech×0.55 + fund×0.30) / 1.0                    │
+ │    (weights: short_term default, adaptive adjustment if data)       │
+ │    + insider selling penalty (strong_sell → −15)                   │
+ │    → combined_score [0, 100]                                        │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │  CONVICTION SCORE:                                                  │
+ │    = combined × (confidence / 100) ^ 0.7                            │
+ │    Exponent 0.7: confidence matters but doesn't dominate            │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │                                                                     │
+ │  v7 QUALITY TIER (replaces v6 dual hard-filter):                   │
+ │                                                                     │
+ │    conviction ≥ 42 ──→  HIGH     full trade params shown           │
+ │                         ┃        green badge "高信心"               │
+ │    conviction ≥ 28 ──→  MEDIUM   trade params + caution banner     │
+ │                         ┃        blue badge "中等"                  │
+ │    conviction ≥ 15 ──→  LOW      NO trade params (watch-only)      │
+ │                         ┃        orange badge "观望"                │
+ │    conviction < 15 ──→  EXCLUDED not shown at all                   │
+ │                                                                     │
+ │  R:R rejected → forced to LOW (watch-only)                         │
+ │                                                                     │
+ │  Regime top-N:                                                      │
+ │    crisis   → 0 (sit out)                                          │
+ │    bearish  → top 3, HIGH tier only                                │
+ │    cautious → top 5                                                │
+ │    normal   → top 5                                                │
+ │                                                                     │
+ │  Post-filter:                                                       │
+ │    sector concentration ≤ 40%                                      │
+ │    pairwise correlation ≤ 0.7 (drop lower-ranked duplicate)        │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  LAYER 6: TRADE PARAMETERS (code-only, no LLM)       │  ~5 sec
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  For each HIGH / MEDIUM tier recommendation:                       │
+ │                                                                     │
+ │  ENTRY:                                                             │
+ │    breakout (broke 20d high + vol expansion):                      │
+ │      entry = price × 1.002 (chase)                                 │
+ │    pullback:                                                        │
+ │      entry = support × 1.01 or MA20 × 1.005 (limit order)         │
+ │    entry_2 = entry × 0.985 (backup fill)                           │
+ │                                                                     │
+ │  STOP LOSS (ATR-based, bounded):                                   │
+ │    SL = entry − ATR × 2.0 (atr_sl_multiplier)                     │
+ │    breakout: SL = entry − ATR × 1.34 (tighter)                    │
+ │    bounds: [entry × 0.94, entry × 0.985] (1.5% ~ 6%)              │
+ │                                                                     │
+ │  TAKE PROFIT (ATR-based):                                          │
+ │    TP = entry + ATR × 3.0 (atr_tp_multiplier)                     │
+ │    or resistance × 0.99 (natural target)                           │
+ │    TP2 = resistance_2 or entry × 1.08                              │
+ │    TP3 = entry + ATR × 3 or TP2 × 1.04                            │
+ │    minimum: TP ≥ entry × 1.025                                     │
+ │                                                                     │
+ │  R:R CHECK (hard rule):                                             │
+ │    reward / risk ≥ 1.5 → OK, show params                          │
+ │    reward / risk < 1.5 → mark watch-only (no trade params)        │
+ │                                                                     │
+ │  TRAILING STOP:                                                     │
+ │    activate at 50% of TP distance                                  │
+ │    trail by 40% of activation distance                             │
+ │                                                                     │
+ │  HOLDING: 3 days (short_term), 10 days (swing)                    │
+ │  POSITION: 2-10% of portfolio (score/conf/vol/regime adjusted)     │
+ └─────────────────────────────────────────────────────┬───────────────┘
+                                                       │
+ ═══════════════════════════════════════════════════════╪═══════════════
+  OUTPUT & STORAGE                                     │
+ ═══════════════════════════════════════════════════════╪═══════════════
+                                                       ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │  SAVE & PUBLISH                                                     │
+ │                                                                     │
+ │  system.db:                                                         │
+ │    daily_recommendation_runs     (admin internal)                   │
+ │    daily_recommendation_items    (per stock detail)                 │
+ │    published_recommendation_runs (user-facing)                      │
+ │    published_recommendation_items                                   │
+ │    win_rate_records (only HIGH/MEDIUM with trade params)            │
+ │                                                                     │
+ │  API → Frontend:                                                    │
+ │    GET /api/recommendations/{market}/today                         │
+ │    Sorted by conviction_score DESC                                  │
+ │                                                                     │
+ │  Frontend display:                                                  │
+ │    推荐列表 5 只 (2 高信心 / 2 中等 / 1 观望)                      │
+ │    ┌──────────────────────────────────┐                             │
+ │    │ NVDA  [高信心]  Technology       │                             │
+ │    │ $875 ↑2.3%  →买入  置信度 82%   │                             │
+ │    │ Entry $873  SL $865  TP $899    │                             │
+ │    ├──────────────────────────────────┤                             │
+ │    │ AAPL  [中等]    Technology       │                             │
+ │    │ $198 ↑1.1%  →买入  置信度 58%   │                             │
+ │    │ ⚠ 信号中等强度 - 控制仓位      │                             │
+ │    ├──────────────────────────────────┤                             │
+ │    │ META  [观望]    Communication    │                             │
+ │    │ $520 ↑0.8%  →买入  置信度 35%   │                             │
+ │    │ 仅供参考 - 暂不提供交易参数     │                             │
+ │    └──────────────────────────────────┘                             │
+ └─────────────────────────────────────────────────────────────────────┘
 
-## 典型数据量流转
 
-```
-500只 ──Stage A──→ 230只 ──Pre-rank──→ 120只
-  │                                      │
-  │    Stage B + Quality Gate + Trend     │
-  │                                      ▼
-  │                                   ~100只
-  │                                      │
-  │         5因子评分 + 绝对门槛(35分)     │
-  │                                      ▼
-  │                                   ~98只
-  │                                      │
-  │              行业均衡                  │
-  │                                      ▼
-  │                                   40只 ← Layer 1-2 输出
-  │                                      │
-  │         Layer 3 新闻 + 过滤            │
-  │                                      ▼
-  │                                   ~20只
-  │                                      │
-  │         Layer 4 技术评分               │
-  │                                      ▼
-  │                                   ~20只 (全部评分)
-  │                                      │
-  │    Layer 5 矛盾过滤 + 门槛             │
-  │                                      ▼
-  │                                   5-12只
-  │                                      │
-  │    Layer 6 R:R验证 + 行业/相关性       │
-  │                                      ▼
-  │                                  ★ 3-5只 ★
-  └────────────────────────────────────────
+ ═══════════════════════════════════════════════════════════════════════
+  CANDIDATE COUNT SUMMARY
+ ═══════════════════════════════════════════════════════════════════════
+
+  Stock Pool          ~570    S&P 500 + Nasdaq 100 (deduplicated)
+      ↓ Stage A       ~180    hard gates + 52-week pre-rank
+      ↓ Stage B       ~120    financial quality gate
+      ↓ Trend+Score    ~60    trend filter + 5-factor ≥ 35 + sector cap
+  ─── Layer 1 out ──── 60    cfg.max_candidates
+      ↓ Enrichment     60    + technical indicators + earnings/insider/options
+  ─── Layer 2 out ──── 60
+      ↓ News Agent    ~25    top by news_score + tech bypass
+  ─── Layer 3 out ─── ~25
+      ↓ Tech Agent    ~25    deterministic + LLM hybrid scoring
+  ─── Layer 4 out ─── ~25
+      ↓ Synthesis       5    quality tier + regime cap + sector/corr filter
+  ─── Layer 5 out ───── 5    (3-5 depending on regime)
+      ↓ Trade params    5    entry/SL/TP for HIGH+MEDIUM; watch-only for LOW
+  ─── Layer 6 out ───── 5    FINAL OUTPUT
+                              (normal: 5, bearish: 0-3, crisis: 0)
+
+  Total time: ~2.5 minutes per market
 ```

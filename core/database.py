@@ -35,6 +35,7 @@ class Database:
         self._migrate_trailing_position_cols()
         self._migrate_conviction_score_col()
         self._migrate_macro_options_insider_cols()
+        self._migrate_quality_tier_col()
 
     def close(self):
         try:
@@ -528,6 +529,21 @@ class Database:
                         except Exception:
                             pass
                 self._conn.commit()
+            except Exception:
+                pass
+
+    def _migrate_quality_tier_col(self):
+        """v7: Add quality_tier column for ranking-based output."""
+        for table in ("published_recommendation_items", "daily_recommendation_items"):
+            try:
+                existing = {
+                    row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                if "quality_tier" not in existing:
+                    self._conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN quality_tier TEXT DEFAULT ''"
+                    )
+                    self._conn.commit()
             except Exception:
                 pass
 
@@ -1098,9 +1114,10 @@ class Database:
                      obv_trend, options_signal, options_pc_ratio,
                      options_unusual_activity, insider_signal,
                      trailing_activation_price, trailing_distance_pct,
-                     position_rationale, conviction_score)
+                     position_rationale, conviction_score,
+                     quality_tier)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
                  item.get("direction", "buy"), item.get("action", "hold"),
@@ -1136,7 +1153,8 @@ class Database:
                  item.get("trailing_activation_price", 0),
                  item.get("trailing_distance_pct", 0),
                  item.get("position_rationale", ""),
-                 item.get("conviction_score", 0)),
+                 item.get("conviction_score", 0),
+                 item.get("quality_tier", "")),
             )
 
     # ------------------------------------------------------------------

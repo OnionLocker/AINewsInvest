@@ -289,9 +289,7 @@ def run_daily_pipeline(
         if regime["level"] == "crisis":
             max_recs = 0
             logger.warning(f"Market CRISIS mode - skipping all long recs for {market}")
-        elif regime["level"] == "bearish":
-            max_recs = max(3, max_recs // 2)
-            logger.info(f"Market bearish - reducing max_recs to {max_recs}")
+        # v7: bearish/cautious/normal handled by synthesis quality tier logic
 
         if regime["level"] == "crisis" and market == "hk_stock":
             _progress(progress_cb, 100.0, "Market crisis - no recommendations")
@@ -309,7 +307,7 @@ def run_daily_pipeline(
         analyzed = run_agent_pipeline(
             enriched,
             market=market,
-            strategy_type="short",
+            strategy_type="dual",
             progress_cb=progress_cb,
             regime=regime,
         )

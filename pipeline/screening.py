@@ -999,11 +999,11 @@ def build_enriched_candidates(
             )
             high_20d_volume_ratio = compute_volume_at_high(kdf)
 
-            recent_20 = kdf.tail(20)
-            n_recent = len(recent_20)
-            split_point = max(n_recent - 10, 0)
-            part1_df = recent_20.iloc[:split_point]
-            part2_df = recent_20.iloc[split_point:]
+            recent_klines = kdf.tail(60)
+            n_recent = len(recent_klines)
+            split_point = max(n_recent - 30, 0)
+            part1_df = recent_klines.iloc[:split_point]
+            part2_df = recent_klines.iloc[split_point:]
 
             def _kline_to_dict(kr):
                 return {

@@ -44,6 +44,24 @@ function ActionArrow({ action, direction }) {
   );
 }
 
+function QualityTierBadge({ tier }) {
+  const map = {
+    high:   { label: "\u9ad8\u4fe1\u5fc3", color: "#16A34A", bg: "rgba(22,163,74,0.07)" },
+    medium: { label: "\u4e2d\u7b49",     color: "#2563EB", bg: "rgba(37,99,235,0.07)" },
+    low:    { label: "\u89c2\u671b",     color: "#D97706", bg: "rgba(217,119,6,0.07)" },
+  };
+  const info = map[tier];
+  if (!info) return null;
+  return (
+    <span
+      className="rounded-full px-3 py-1 text-sm font-bold"
+      style={{ color: info.color, background: info.bg }}
+    >
+      {info.label}
+    </span>
+  );
+}
+
 function ThemeTag({ text }) {
   return (
     <span className="inline-flex items-center gap-1 text-sm font-medium text-secondary">
@@ -593,6 +611,16 @@ export default function RecCard({ item, rank }) {
               SHORT
             </span>
           )}
+          <QualityTierBadge tier={item.quality_tier} />
+          {item.strategy === "swing" ? (
+            <span className="rounded-full border border-brand/20 bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
+              {"\u6ce2\u6bb5"} {item.holding_days}{"\u5929"}
+            </span>
+          ) : (
+            <span className="rounded-full border border-up/20 bg-up/10 px-2.5 py-0.5 text-xs font-bold text-up">
+              {"\u77ed\u7ebf"} {item.holding_days}{"\u5929"}
+            </span>
+          )}
           <span className="text-xl font-light text-primary">{displayName}</span>
           {item.sector && item.sector !== "" && (
             <span className="rounded-full border border-brand/20 bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
@@ -669,9 +697,17 @@ export default function RecCard({ item, rank }) {
           {activeTab === 0 && (
             <div>
               {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
+              {showTrading && item.quality_tier === "medium" && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#2563EB]/20 bg-[#2563EB]/10 px-4 py-2 text-sm font-medium text-[#2563EB]">
+                  <AlertTriangle size={14} />
+                  {"\u4fe1\u53f7\u4e2d\u7b49\u5f3a\u5ea6 \u2014 \u5efa\u8bae\u63a7\u5236\u4ed3\u4f4d\uff0c\u4e25\u683c\u6267\u884c\u6b62\u635f"}
+                </div>
+              )}
               {!showTrading && (
-                <div className="mt-4 rounded-xl border border-border bg-white p-4 text-base font-medium text-secondary">
-                  {"\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
+                <div className="mt-4 rounded-xl border border-[#D97706]/20 bg-[#D97706]/10 p-4 text-base font-medium text-[#D97706]">
+                  {item.quality_tier === "low"
+                    ? "\u4ec5\u4f9b\u53c2\u8003 \u2014 \u4fe1\u53f7\u8f83\u5f31\uff0c\u5efa\u8bae\u89c2\u671b\uff0c\u6682\u4e0d\u63d0\u4f9b\u4ea4\u6613\u53c2\u6570"
+                    : "\u7efc\u5408\u8bc4\u5206\u8f83\u4f4e\uff0c\u6682\u4e0d\u5c55\u793a\u4ea4\u6613\u53c2\u6570"}
                 </div>
               )}
               {/* Position suggestion */}

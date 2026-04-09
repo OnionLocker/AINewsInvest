@@ -326,6 +326,8 @@ def get_index_components(index_symbol: str) -> list[dict]:
     try:
         if index_symbol == "^GSPC":
             return _get_sp500_components()
+        elif index_symbol == "^NDX":
+            return _get_nasdaq100_components()
         elif index_symbol == "^HSI":
             return _get_hsi_components()
         elif index_symbol == "^HSTECH":
@@ -353,6 +355,39 @@ def _get_sp500_components() -> list[dict]:
         return results
     except Exception as e:
         logger.warning(f"S&P 500 fetch failed: {e}")
+        return []
+
+
+def _get_nasdaq100_components() -> list[dict]:
+    """Fetch Nasdaq-100 components from Wikipedia."""
+    try:
+        url = "https://en.wikipedia.org/wiki/Nasdaq-100"
+        tables = pd.read_html(url)
+        # Find the table that has a 'Ticker' or 'Symbol' column
+        for table in tables:
+            cols_lower = {str(c).lower(): c for c in table.columns}
+            ticker_col = None
+            name_col = None
+            for lc, orig in cols_lower.items():
+                if "ticker" in lc or "symbol" in lc:
+                    ticker_col = orig
+                if "company" in lc or "security" in lc or "name" in lc:
+                    name_col = orig
+            if ticker_col is None:
+                continue
+            results = []
+            for _, row in table.iterrows():
+                ticker = str(row[ticker_col]).strip()
+                name = str(row[name_col]).strip() if name_col else ticker
+                if ticker and ticker != "nan":
+                    results.append({"ticker": ticker, "market": "us_stock", "name": name})
+            if results:
+                logger.info(f"Nasdaq-100: fetched {len(results)} components")
+                return results
+        logger.warning("Nasdaq-100: no suitable table found on Wikipedia")
+        return []
+    except Exception as e:
+        logger.warning(f"Nasdaq-100 fetch failed: {e}")
         return []
 
 
