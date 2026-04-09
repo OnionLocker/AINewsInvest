@@ -819,7 +819,7 @@ class Database:
         profit_factor = 0.0
         all_rows = self._conn.execute(
             f"SELECT outcome, return_pct FROM win_rate_records {where}",
-            params[:-1] if days else params,  # reuse same where without LIMIT
+            params,
         ).fetchall()
         sum_wins = sum(r["return_pct"] for r in all_rows
                        if r["outcome"] in ("win", "trailing_stop") and r["return_pct"] and r["return_pct"] > 0)
