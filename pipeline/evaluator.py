@@ -124,28 +124,42 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
         for idx, (_, row) in enumerate(hist.iterrows()):
             high = float(row["High"])
             low = float(row["Low"])
+            rng = max(high - low, 1e-9)
 
             if is_short:
-                if high >= entry:
-                    entry_filled = True
-                    fill_idx = idx
-                    break
+                # Short: limit near/above market (high>=entry) or stop when price drops (low<=entry)
+                filled = (high >= entry) or (low <= entry)
             else:
-                if low <= entry:
-                    entry_filled = True
-                    fill_idx = idx
-                    break
+                # Long: strict intraday touch; buy-stop / breakout (high>=entry); limit buy when
+                # session low is at/below limit (low<=entry) with guard so absurd entry above
+                # the bar (data error) does not auto-fill via low<=entry alone.
+                touched = low <= entry <= high
+                buy_stop = high >= entry
+                limit_buy = (low <= entry) and (
+                    entry <= high
+                    or (
+                        entry > high
+                        and (entry - high) <= rng
+                    )
+                )
+                filled = touched or buy_stop or limit_buy
+
+            if filled:
+                entry_filled = True
+                fill_idx = idx
+                break
 
         if not entry_filled:
             if holding_expired:
                 return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
             return None
 
-        # Post-fill rows start from the NEXT bar after entry fill day
-        # (entry day's high/low happened before/during fill — not tradeable)
-        post_fill_rows = list(hist.iloc[fill_idx + 1:].iterrows())
-        if not post_fill_rows and not holding_expired:
-            return None  # filled today, wait for next bar
+        # Bars from the fill day onward (including fill bar) — needed so TP/SL can
+        # resolve when the only fill happens on the latest daily bar; "next bar only"
+        # would otherwise leave those trades stuck in pending forever.
+        post_fill_rows = list(hist.iloc[fill_idx:].iterrows())
+        if not post_fill_rows:
+            return None
 
         # --- Phase 2: evaluate TP / SL / trailing on post-fill bars ---
         # Derive trailing stop parameters from config
