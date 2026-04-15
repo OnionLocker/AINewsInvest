@@ -59,6 +59,12 @@
 | 手动 `run --force` | 同日后续手动重跑：LLM 批次均 **success**，仍 **0 条推荐**（阈值与过滤逻辑同上）；详见 [`pipeline_digest_2026-04-09.md`](pipeline_digest_2026-04-09.md)。 |
 | **v7 部署 + 再跑** | 拉取 `59a3640`、重建前端并重启服务后，`run --force` → **5 条推荐**；问题清单与评审见 [`pipeline_digest_2026-04-09_engineering_review.md`](pipeline_digest_2026-04-09_engineering_review.md)。 |
 
+## 附录：2026-04-15 调度跑批
+
+| 事件 | 说明 |
+|------|------|
+| 定时美股管线 | **5 条推荐**，约 25 分钟；含 LLM 超时/JSON 解析、SEC 500 等；详见 [`pipeline_digest_2026-04-15.md`](pipeline_digest_2026-04-15.md)。 |
+
 ---
 
 *本文档随仓库版本迭代；业务阈值以 `config.yaml` 与代码为准。*
