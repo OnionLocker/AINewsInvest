@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import ErrorBoundary from "./ErrorBoundary";
 import {
   LayoutDashboard,
   DollarSign,
@@ -13,6 +14,7 @@ import {
   X,
   Trophy,
   Activity,
+  BookOpen,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -24,6 +26,7 @@ const navItems = [
   { to: "/screening", icon: Search, label: "选股筛选" },
   { to: "/analysis", icon: BarChart3, label: "深度分析" },
   { to: "/watchlist", icon: Heart, label: "自选股" },
+  { to: "/help", icon: BookOpen, label: "使用指南" },
 ];
 
 function SideLink({ to, icon: Icon, label, onClick }) {
@@ -132,7 +135,7 @@ export default function Layout() {
           </span>
         </header>
         <main className="flex-1 overflow-y-auto p-8 scrollbar-thin">
-          <Outlet />
+          <ErrorBoundary><Outlet /></ErrorBoundary>
         </main>
       </div>
     </div>

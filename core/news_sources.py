@@ -191,7 +191,28 @@ class FinnhubNews:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
-                logger.warning("Finnhub rate limited, skipping")
+                logger.warning("Finnhub rate limited, waiting 5s and retrying once")
+                time.sleep(5)
+                try:
+                    with httpx.Client(timeout=10) as client2:
+                        r2 = client2.get(url, params=params)
+                        r2.raise_for_status()
+                        data2 = r2.json()
+                    if isinstance(data2, list):
+                        items2 = []
+                        for n in data2[:limit]:
+                            item2 = {
+                                "title": n.get("headline", ""),
+                                "publisher": n.get("source", ""),
+                                "link": n.get("url", ""),
+                                "published": n.get("datetime", 0),
+                                "summary": (n.get("summary") or "")[:300],
+                            }
+                            items2.append(_tag_item(item2, "finnhub"))
+                        return items2
+                except Exception:
+                    pass
+                return []
             else:
                 logger.debug(f"Finnhub news failed {symbol}: {e}")
             return []
@@ -295,7 +316,28 @@ class MarketAuxNews:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
-                logger.warning("MarketAux rate limited, skipping")
+                logger.warning("MarketAux rate limited, waiting 3s and retrying once")
+                time.sleep(3)
+                try:
+                    with httpx.Client(timeout=10) as client2:
+                        r2 = client2.get(self.base_url, params=params)
+                        r2.raise_for_status()
+                        data2 = r2.json()
+                    articles2 = data2.get("data") or []
+                    items2 = []
+                    for a in articles2[:limit]:
+                        item2 = {
+                            "title": a.get("title", ""),
+                            "publisher": a.get("source", ""),
+                            "link": a.get("url", ""),
+                            "published": a.get("published_at", ""),
+                            "summary": (a.get("description") or "")[:300],
+                        }
+                        items2.append(_tag_item(item2, "marketaux"))
+                    return items2
+                except Exception:
+                    pass
+                return []
             elif e.response.status_code == 402:
                 logger.debug("MarketAux free quota exhausted")
             else:

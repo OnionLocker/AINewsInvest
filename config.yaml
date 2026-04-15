@@ -68,6 +68,9 @@ pipeline:
   screening:
     min_market_cap: 1.0e9
     min_avg_volume: 500000
+    min_dollar_volume: 1.0e8       # $100M snapshot — Stage A fast pre-filter
+    min_avg_dollar_volume_20d: 2.0e8  # $200M 20-day avg — Stage B precise filter
+    min_turnover_ratio: 0.003    # 0.3% daily turnover — reject "dead money"
     max_pb: 15.0
     max_daily_change_pct: 10.0
     # v5: 5-factor model (sum = 1.0)

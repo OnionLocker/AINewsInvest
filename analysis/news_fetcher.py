@@ -20,6 +20,7 @@ gets the most trustworthy signals at the top.
 from __future__ import annotations
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -144,6 +145,24 @@ def _warn_once(key: str, msg: str) -> None:
         _source_warned.add(key)
 
 
+def _fetch_with_retry(src, name: str, ticker: str, market: str, limit: int, max_retries: int = 1) -> list[dict]:
+    """Fetch news from a single source with retry on failure."""
+    for attempt in range(1 + max_retries):
+        try:
+            items = src.fetch(ticker, market, limit)
+            if items:
+                return items
+            return []
+        except Exception as e:
+            if attempt < max_retries:
+                wait = 2 ** (attempt + 1)
+                logger.debug(f"News {name} attempt {attempt + 1} failed for {ticker}: {e}, retrying in {wait}s")
+                time.sleep(wait)
+            else:
+                logger.warning(f"News {name} all attempts failed for {ticker}: {e}")
+    return []
+
+
 def fetch_news(ticker: str, market: str, limit: int = 15) -> list[dict]:
     """Fetch and aggregate news from all configured sources.
 
@@ -158,7 +177,7 @@ def fetch_news(ticker: str, market: str, limit: int = 15) -> list[dict]:
         futs = {}
         for name, src in sources:
             per_source = 10 if name in ("finnhub", "marketaux") else 8
-            futs[ex.submit(src.fetch, ticker, market, per_source)] = name
+            futs[ex.submit(_fetch_with_retry, src, name, ticker, market, per_source)] = name
 
         for fut in as_completed(futs):
             name = futs[fut]

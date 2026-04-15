@@ -19,6 +19,9 @@ class ScreeningConfig:
     """Pre-screening thresholds and ranking weights."""
     min_market_cap: float = 1.0e9
     min_avg_volume: int = 500_000
+    min_dollar_volume: float = 1.0e8  # $100M snapshot (Stage A fast filter)
+    min_avg_dollar_volume_20d: float = 2.0e8  # $200M 20-day avg (Stage B precise)
+    min_turnover_ratio: float = 0.003  # 0.3% daily turnover
     max_pe: float = 80.0
     min_pe: float = 0
     max_pb: float = 15.0

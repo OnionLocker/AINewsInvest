@@ -190,10 +190,29 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
             continue
         if abs(change_pct) > sc.max_daily_change_pct:
             continue
+
+        # --- Liquidity gates (avoid "dead money" large-caps like BEN) ---
+        # Dollar volume: shares * price — filters low-price large-cap with no trading
+        dollar_volume = volume * price
+        if dollar_volume < sc.min_dollar_volume:
+            logger.debug(
+                f"Liquidity reject {t}: dollar_vol=${dollar_volume/1e6:.0f}M "
+                f"< ${sc.min_dollar_volume/1e6:.0f}M (vol={volume:.0f}, price={price:.2f})"
+            )
+            continue
+        # Turnover ratio: dollar_volume / market_cap — filters stale stocks
+        if mc > 0:
+            turnover = dollar_volume / mc
+            if turnover < sc.min_turnover_ratio:
+                logger.debug(
+                    f"Turnover reject {t}: turnover={turnover:.4f} "
+                    f"< {sc.min_turnover_ratio} (dv=${dollar_volume/1e6:.0f}M, mc=${mc/1e9:.1f}B)"
+                )
+                continue
         # Note: PE hard filter REMOVED — high-growth stocks (NVDA, TSLA)
         # often have PE > 80. Quality gate in Stage B handles garbage.
 
-        passed.append({**row, "quote": q, "financial": None})
+        passed.append({**row, "quote": q, "financial": None, "dollar_volume": dollar_volume})
 
     logger.info(f"Stage A hard filter: {len(pool)} -> {len(passed)} passed (market={market})")
 
@@ -275,6 +294,32 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
 
     bench_ret = _fetch_benchmark_return(market, days=60)
     logger.info(f"Benchmark 60d return: {bench_ret:+.2%}")
+
+    # ------------------------------------------------------------------
+    # 20-day average dollar volume filter (precise, uses K-line history)
+    # Stage A used a snapshot; this uses 20-day average for stability.
+    # ------------------------------------------------------------------
+    liquidity_filtered: list[dict] = []
+    for r in filtered:
+        kdf = kline_map.get(r["ticker"], pd.DataFrame())
+        if kdf is not None and not kdf.empty and len(kdf) >= 20 and "volume" in kdf.columns:
+            avg_vol_20 = float(kdf["volume"].tail(20).mean())
+            price = float(r["quote"]["price"])
+            avg_dv_20 = avg_vol_20 * price
+            if avg_dv_20 < sc.min_avg_dollar_volume_20d:
+                logger.debug(
+                    f"20d liquidity reject {r['ticker']}: "
+                    f"avg_dv=${avg_dv_20/1e6:.0f}M < ${sc.min_avg_dollar_volume_20d/1e6:.0f}M"
+                )
+                continue
+        liquidity_filtered.append(r)
+
+    if len(liquidity_filtered) < len(filtered):
+        logger.info(
+            f"20d liquidity filter: {len(filtered)} -> {len(liquidity_filtered)} "
+            f"(rejected {len(filtered) - len(liquidity_filtered)} illiquid stocks)"
+        )
+    filtered = liquidity_filtered
 
     # ------------------------------------------------------------------
     # Trend pre-filter: reject confirmed deep downtrends

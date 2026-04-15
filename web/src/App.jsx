@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import PrivateRoute from "./components/PrivateRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import ScreeningPage from "./pages/ScreeningPage";
@@ -10,6 +11,7 @@ import WatchlistPage from "./pages/WatchlistPage";
 import AdminPage from "./pages/AdminPage";
 import WinRatePage from "./pages/WinRatePage";
 import DashboardPage from "./pages/DashboardPage";
+import HelpPage from "./pages/HelpPage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -23,6 +25,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route element={<PrivateRoute />}>
@@ -35,10 +38,12 @@ export default function App() {
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="watchlist" element={<WatchlistPage />} />
           <Route path="win-rate" element={<WinRatePage />} />
+          <Route path="help" element={<HelpPage />} />
           {user?.is_admin && <Route path="admin" element={<AdminPage />} />}
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
+    </ErrorBoundary>
   );
 }

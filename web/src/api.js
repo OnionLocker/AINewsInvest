@@ -25,7 +25,10 @@ async function request(method, path, body = null, opts = {}) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || JSON.stringify(err));
+    const message = err.detail || JSON.stringify(err);
+    // Dispatch error event for global Toast handling
+    window.dispatchEvent(new CustomEvent("api-error", { detail: { message, status: res.status } }));
+    throw new Error(message);
   }
   if (opts.raw) return res;
   return res.json();

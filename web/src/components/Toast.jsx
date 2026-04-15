@@ -68,6 +68,21 @@ export function ToastProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  useEffect(() => {
+    const handler = (e) => {
+      const { message, status } = e.detail || {};
+      // Don't toast 401s (handled by redirect)
+      if (status === 401) return;
+      toast({
+        type: "error",
+        message: message || "请求失败，请稍后重试",
+        duration: 4000,
+      });
+    };
+    window.addEventListener("api-error", handler);
+    return () => window.removeEventListener("api-error", handler);
+  }, [toast]);
+
   return (
     <ToastContext.Provider value={toast}>
       {children}

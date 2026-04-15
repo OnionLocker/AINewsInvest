@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -34,11 +35,21 @@ def _headers() -> dict[str, str]:
     return h
 
 
+# Retryable network / server errors
+_RETRYABLE_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.TimeoutException,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+)
+
+
 def chat_completion(messages: list[dict[str, Any]], **kwargs: Any) -> str | None:
     if not _is_enabled():
         logger.debug("chat_completion: LLM disabled or misconfigured")
         return None
     cfg = get_config()
+    max_retries = int(kwargs.pop("max_retries", 2))
     body: dict[str, Any] = {
         "model": cfg.llm.model,
         "messages": messages,
@@ -48,25 +59,48 @@ def chat_completion(messages: list[dict[str, Any]], **kwargs: Any) -> str | None
     for k in ("top_p", "frequency_penalty", "presence_penalty", "stream"):
         if k in kwargs:
             body[k] = kwargs[k]
-    try:
-        with httpx.Client(timeout=cfg.llm.timeout) as client:
-            r = client.post(_chat_url(), headers=_headers(), json=body)
-        r.raise_for_status()
-        data = r.json()
-        choices = data.get("choices") or []
-        if not choices:
+
+    for attempt in range(1 + max_retries):
+        try:
+            with httpx.Client(timeout=cfg.llm.timeout) as client:
+                r = client.post(_chat_url(), headers=_headers(), json=body)
+            r.raise_for_status()
+            data = r.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return None
+            msg = choices[0].get("message") or {}
+            content = msg.get("content")
+            if content is None:
+                return None
+            return str(content).strip() or None
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if 500 <= status < 600 and attempt < max_retries:
+                wait = 2 ** (attempt + 1)
+                logger.warning(
+                    f"LLM HTTP {status} (attempt {attempt + 1}/{1 + max_retries}), "
+                    f"retrying in {wait}s: {e.response.text[:200]}"
+                )
+                time.sleep(wait)
+                continue
+            logger.warning(f"LLM HTTP {status}: {e.response.text[:500]}")
             return None
-        msg = choices[0].get("message") or {}
-        content = msg.get("content")
-        if content is None:
+        except _RETRYABLE_EXCEPTIONS as e:
+            if attempt < max_retries:
+                wait = 2 ** (attempt + 1)
+                logger.warning(
+                    f"LLM network error (attempt {attempt + 1}/{1 + max_retries}), "
+                    f"retrying in {wait}s: {e}"
+                )
+                time.sleep(wait)
+                continue
+            logger.warning(f"LLM request failed after {1 + max_retries} attempts: {e}")
             return None
-        return str(content).strip() or None
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"LLM HTTP {e.response.status_code}: {e.response.text[:500]}")
-        return None
-    except Exception as e:
-        logger.warning(f"LLM request failed: {e}")
-        return None
+        except Exception as e:
+            logger.warning(f"LLM request failed: {e}")
+            return None
+    return None
 
 
 def llm_health_check() -> dict[str, Any]:
