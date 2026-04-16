@@ -80,6 +80,10 @@ class ShortTermConfig:
     atr_tp_multiplier: float = 3.0
     default_holding_days: int = 3
     max_holding_days: int = 5
+    # v3.x: Defensive multipliers for cautious/bearish regime
+    atr_sl_multiplier_defensive: float = 1.5
+    atr_tp_multiplier_defensive: float = 2.0
+    min_rr_defensive: float = 1.2
     # Trailing stop & per-strategy SL bounds (v4.1)
     trailing_activation_pct: float = 0.50
     trailing_distance_pct: float = 0.40
@@ -101,6 +105,10 @@ class SwingConfig:
     atr_tp_multiplier: float = 3.5
     default_holding_days: int = 10
     max_holding_days: int = 30
+    # v3.x: Defensive multipliers for cautious/bearish regime
+    atr_sl_multiplier_defensive: float = 1.5
+    atr_tp_multiplier_defensive: float = 2.5
+    min_rr_defensive: float = 1.3
     # Trailing stop & per-strategy SL bounds (v4.1)
     trailing_activation_pct: float = 0.40
     trailing_distance_pct: float = 0.35

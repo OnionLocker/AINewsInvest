@@ -328,6 +328,19 @@ class Database:
                 ON win_rate_records(ticker, market);
             CREATE INDEX IF NOT EXISTS idx_win_rate_created_at
                 ON win_rate_records(created_at);
+
+            -- Cooldown registry: prevent re-recommending recent picks
+            CREATE TABLE IF NOT EXISTS active_positions_cooldown (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker          TEXT NOT NULL,
+                market          TEXT NOT NULL,
+                strategy_type   TEXT NOT NULL,
+                direction       TEXT NOT NULL DEFAULT 'buy',
+                added_date      TEXT NOT NULL,
+                expire_date     TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_cooldown_market_expire
+                ON active_positions_cooldown (market, expire_date);
         """)
         self._conn.commit()
 
@@ -1298,3 +1311,38 @@ class Database:
         )
         self._conn.commit()
         return cur.rowcount
+
+    # ------------------------------------------------------------------
+    # Cooldown registry
+    # ------------------------------------------------------------------
+
+    def add_to_cooldown(
+        self, ticker: str, market: str, strategy_type: str,
+        direction: str, added_date: str, expire_date: str,
+    ) -> None:
+        """Write a ticker into cooldown after being recommended."""
+        self._conn.execute(
+            "INSERT INTO active_positions_cooldown "
+            "(ticker, market, strategy_type, direction, added_date, expire_date) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ticker, market, strategy_type, direction, added_date, expire_date),
+        )
+        self._conn.commit()
+
+    def get_active_cooldown_tickers(self, market: str, ref_date: str) -> set[str]:
+        """Return tickers currently in cooldown for the given market."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT ticker FROM active_positions_cooldown "
+            "WHERE market = ? AND expire_date >= ?",
+            (market, ref_date),
+        ).fetchall()
+        return {r[0] for r in rows}
+
+    def cleanup_expired_cooldowns(self, ref_date: str) -> int:
+        """Remove expired cooldown entries."""
+        cursor = self._conn.execute(
+            "DELETE FROM active_positions_cooldown WHERE expire_date < ?",
+            (ref_date,),
+        )
+        self._conn.commit()
+        return cursor.rowcount

@@ -601,6 +601,7 @@ def _compute_trade_params(
     action: str,
     strategy_type: str = "short",
     is_breakout: bool = False,
+    regime_level: str = "normal",
 ) -> dict[str, Any]:
     """Compute entry/SL/TP purely from code. Never trust LLM prices.
 
@@ -611,6 +612,12 @@ def _compute_trade_params(
     """
     cfg = get_config()
     strat = cfg.swing if strategy_type == "swing" else cfg.short_term
+
+    # v3.x: Regime-aware ATR multipliers and R:R threshold
+    is_defensive = regime_level in ("cautious", "bearish")
+    sl_mult = strat.atr_sl_multiplier_defensive if is_defensive else strat.atr_sl_multiplier
+    tp_mult = strat.atr_tp_multiplier_defensive if is_defensive else strat.atr_tp_multiplier
+    min_rr = strat.min_rr_defensive if is_defensive else 1.5
 
     _rejected_result = {
         "entry_price": 0, "entry_2": 0,
@@ -692,13 +699,13 @@ def _compute_trade_params(
         if is_breakout:
             # Breakout SL: tighter — if it falls back below breakout level, thesis is wrong
             # Use 1.0 × ATR (tighter than normal 1.5×)
-            sl_atr = entry_price - atr_20d * (strat.atr_sl_multiplier * 0.67)
+            sl_atr = entry_price - atr_20d * (sl_mult * 0.67)
             # Also: don't let SL go below the old resistance (now support)
             old_resist = resist_1 if resist_1 < entry_price else support_1
             sl_atr = max(sl_atr, old_resist * 0.99)
         else:
-            # Pullback SL: standard 1.5 × ATR
-            sl_atr = entry_price - atr_20d * strat.atr_sl_multiplier
+            # Pullback SL: standard ATR-based
+            sl_atr = entry_price - atr_20d * sl_mult
             sl_support = support_1 - price * stop_buffer_pct if support_1 < entry_price else sl_atr
             sl_atr = max(sl_atr, sl_support)
         # Bound: 1.5% to 6% from entry
@@ -712,7 +719,7 @@ def _compute_trade_params(
 
     # --- Take Profit: ATR-based primary, resistance as reference ---
     if atr_20d > 0:
-        tp_atr = entry_price + atr_20d * strat.atr_tp_multiplier
+        tp_atr = entry_price + atr_20d * tp_mult
         if is_breakout:
             # Breakout: resistance already broken, use full ATR target
             # Old resistance is now support — upside is open
@@ -732,8 +739,19 @@ def _compute_trade_params(
         take_profit = round(max(resist_1 * 0.98, entry_price * strat.default_take_profit_pct), 2)
         take_profit = max(take_profit, round(entry_price * 1.025, 2))
 
+    # --- v3.x: Near-resistance trap detection (Module B) ---
+    _near_resistance_trap = False
+    if is_breakout and atr_20d > 0 and resist_1 > entry_price:
+        distance_in_atr = (resist_1 - entry_price) / atr_20d
+        if distance_in_atr < 1.0:
+            _near_resistance_trap = True
+            logger.debug(
+                f"Near-resistance trap: resist={resist_1:.2f} entry={entry_price:.2f} "
+                f"dist={distance_in_atr:.2f} ATR"
+            )
+
     # --- FIX 5: R:R reject — don't force-adjust, just reject ---
-    MIN_RR = 1.5
+    MIN_RR = min_rr
     risk = entry_price - stop_loss
     reward = take_profit - entry_price
     if risk <= 0 or reward <= 0:
@@ -780,6 +798,7 @@ def _compute_trade_params(
         ),
         "trailing_distance_pct": strat.trailing_distance_pct,
         "_rejected": _is_rejected,
+        "_near_resistance_trap": _near_resistance_trap,
     }
 
 
@@ -787,10 +806,15 @@ def _compute_short_trade_params(
     price: float,
     enriched: dict,
     strategy_type: str = "short",
+    regime_level: str = "normal",
 ) -> dict[str, Any]:
     """Compute SHORT (sell) trade parameters. TP below price, SL above price."""
     cfg = get_config()
     strat = cfg.swing if strategy_type == "swing" else cfg.short_term
+
+    # v3.x: Regime-aware multipliers
+    is_defensive = regime_level in ("cautious", "bearish")
+    min_rr = strat.min_rr_defensive if is_defensive else 1.5
 
     if price <= 0:
         return {
@@ -836,7 +860,6 @@ def _compute_short_trade_params(
     stop_loss = max(stop_loss, round(entry_price * 1.015, 2))
 
     risk = stop_loss - entry_price
-    min_rr = 1.5
     take_profit = round(min(support_1, entry_price * (1 - strat.default_stop_loss_pct + 1)), 2)
     take_profit = round(min(take_profit, entry_price - risk * min_rr), 2)
     take_profit = min(take_profit, round(entry_price * 0.97, 2))
@@ -1015,6 +1038,16 @@ def synthesize_agent_results(
     syn = cfg.synthesis
     regime_level = (regime or {}).get("level", "normal")
 
+    # --- v3.x Module D: Load underperforming sectors for penalty ---
+    _penalty_sectors: set[str] = set()
+    try:
+        from pipeline.evaluator import get_underperforming_sectors
+        _penalty_sectors = set(get_underperforming_sectors())
+        if _penalty_sectors:
+            logger.info(f"Sector penalty active: {_penalty_sectors}")
+    except Exception as e:
+        logger.debug(f"Sector penalty load skipped: {e}")
+
     if strategy_type == "swing":
         news_weight = cfg.swing.news_weight
         tech_weight = cfg.swing.tech_weight
@@ -1189,6 +1222,7 @@ def synthesize_agent_results(
                 price=price,
                 enriched=c,
                 strategy_type=strategy_type,
+                regime_level=regime_level,
             )
             direction = "short"
         else:
@@ -1198,6 +1232,7 @@ def synthesize_agent_results(
                 action=action_str,
                 strategy_type=strategy_type,
                 is_breakout=is_breakout,
+                regime_level=regime_level,
             )
             direction = "buy"
 
@@ -1231,11 +1266,24 @@ def synthesize_agent_results(
             combined = max(0, combined - 15)
             logger.warning(f"{ticker}: Heavy insider selling → score -{15} (now {combined})")
 
+        # --- v3.x Module B: Near-resistance trap confidence penalty ---
+        if trade.get("_near_resistance_trap"):
+            confidence = max(10, confidence - 10)
+            all_risk_flags.append("突破近阻力位")
+            logger.debug(f"{ticker}: near-resistance trap, confidence → {confidence}")
+
         news_analysis = str(news.get("analysis", ""))
         tech_analysis = str(tech.get("analysis", ""))
 
         fin = c.get("financial") or {}
         sector = fin.get("sector", "") or ""
+
+        # --- v3.x Module D: Sector win-rate feedback penalty ---
+        if sector and sector in _penalty_sectors:
+            confidence = max(10, confidence - 8)
+            all_risk_flags.append("行业近期胜率偏低")
+            logger.debug(f"{ticker}: sector penalty ({sector}), confidence → {confidence}")
+
         insider_trades_data = c.get("insider_trades")
         insider_signal = ""
         if insider_trades_data and isinstance(insider_trades_data, dict):

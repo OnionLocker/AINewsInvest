@@ -47,9 +47,10 @@ def cmd_screen(args):
 
 def cmd_run(args):
     from pipeline.runner import run_daily_pipeline
-    print(f"Running pipeline for {args.market}...")
+    print(f"Running pipeline for {args.market} (strategy={args.strategy})...")
     result = run_daily_pipeline(
         market=args.market,
+        strategy_mode=args.strategy,
         force=args.force,
         trigger_source="cli_manual",
     )
@@ -91,6 +92,24 @@ def cmd_build_pool(args):
     print(f"Saved {len(unique)} stocks to {out_path}")
 
 
+def cmd_build_short_pool(args):
+    """Build short-term trading pool (Russell 1000 increment)."""
+    from core.data_source import build_short_term_pool
+    import json, os
+
+    print("Building short-term pool (Russell 1000 - S&P500/NDX100)...")
+    pool = build_short_term_pool(top_n=args.top_n)
+    if not pool:
+        print("Failed: no stocks in pool")
+        return
+
+    os.makedirs("data", exist_ok=True)
+    out_path = "data/short_term_pool.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(pool, f, ensure_ascii=False, indent=2)
+    print(f"Saved {len(pool)} stocks to {out_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Alpha Vault CLI")
     sub = parser.add_subparsers(dest="command")
@@ -111,8 +130,15 @@ def main():
     p_run = sub.add_parser("run", help="Run daily pipeline for a single market")
     p_run.add_argument("--market", required=True, choices=["us_stock", "hk_stock"])
     p_run.add_argument("--force", action="store_true", help="Force re-run even if already ran today")
+    p_run.add_argument("--strategy", default="dual",
+                       choices=["dual", "short_term_only"],
+                       help="Pipeline mode: dual (default) or short_term_only (R1000 pool)")
 
     p_pool = sub.add_parser("build-pool", help="Build stock pool from index components")
+
+    p_short_pool = sub.add_parser("build-short-pool",
+                                   help="Build short-term pool from Russell 1000 increment")
+    p_short_pool.add_argument("--top-n", type=int, default=300)
 
     args = parser.parse_args()
     if not args.command:
@@ -125,6 +151,7 @@ def main():
         "screen": cmd_screen,
         "run": cmd_run,
         "build-pool": cmd_build_pool,
+        "build-short-pool": cmd_build_short_pool,
     }
     cmds[args.command](args)
 

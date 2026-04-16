@@ -47,11 +47,17 @@ def _package_root() -> Path:
 # Stock pool loading
 # ---------------------------------------------------------------------------
 
-def _load_pool_file(market: str) -> list[dict] | None:
-    candidates = [
-        _package_root() / "data" / "stock_pool.json",
-        Path.cwd() / "data" / "stock_pool.json",
-    ]
+def _load_pool_file(market: str, pool_type: str = "default") -> list[dict] | None:
+    if pool_type == "short_term":
+        candidates = [
+            _package_root() / "data" / "short_term_pool.json",
+            Path.cwd() / "data" / "short_term_pool.json",
+        ]
+    else:
+        candidates = [
+            _package_root() / "data" / "stock_pool.json",
+            Path.cwd() / "data" / "stock_pool.json",
+        ]
     for path in candidates:
         if not path.is_file():
             continue
@@ -127,7 +133,7 @@ def _fetch_benchmark_return(market: str, days: int = 60) -> float:
     return 0.0
 
 
-def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
+def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "default") -> list[dict]:
     """Layer 1: Full stock pool -> ~top_n candidates via two-stage screening.
 
     v4 redesign for short-term trading:
@@ -142,12 +148,29 @@ def run_screening(market: str = "us_stock", top_n: int = 40) -> list[dict]:
     cfg = get_config()
     sc = cfg.screening
 
-    pool = _load_pool_file(market)
+    pool = _load_pool_file(market, pool_type=pool_type)
     if not pool:
         pool = _pool_from_indices(market)
     if not pool:
         logger.warning(f"No stock pool for {market}")
         return []
+
+    # --- v3.x Cooldown filter: remove tickers still in cooldown ---
+    try:
+        from core.database import Database
+        from core.user import SYSTEM_DB_PATH
+        from datetime import datetime as _dt
+        _today = _dt.now().strftime("%Y%m%d")
+        _cd_db = Database(SYSTEM_DB_PATH)
+        cooldown_set = _cd_db.get_active_cooldown_tickers(market, _today)
+        _cd_db.close()
+        if cooldown_set:
+            _before = len(pool)
+            pool = [r for r in pool if r["ticker"] not in cooldown_set]
+            logger.info(f"Cooldown filter: {_before} → {len(pool)} "
+                        f"(removed {_before - len(pool)} in cooldown)")
+    except Exception as e:
+        logger.debug(f"Cooldown filter skipped: {e}")
 
     # ------------------------------------------------------------------
     # Stage A: Fast quote-based hard filter + MA proximity pre-rank

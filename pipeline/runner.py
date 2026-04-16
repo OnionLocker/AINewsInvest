@@ -202,6 +202,7 @@ def _record_skill_outputs(db: "Database", ref_date: str, market: str, analyzed: 
 
 def run_daily_pipeline(
     market: str = "us_stock",
+    strategy_mode: str = "dual",
     force: bool = False,
     trigger_source: str = "system_auto",
     trigger_note: str = "",
@@ -246,7 +247,8 @@ def run_daily_pipeline(
 
         # Phase 1: Layer 1 - Screening
         _progress(progress_cb, 5.0, f"Layer 1: Screening {market}")
-        screened = run_screening(market=market, top_n=cfg.max_candidates)
+        _pool_type = "short_term" if strategy_mode == "short_term_only" else "default"
+        screened = run_screening(market=market, top_n=cfg.max_candidates, pool_type=_pool_type)
         _progress(progress_cb, 15.0, f"Layer 1 screened {market}: {len(screened)} candidates")
 
         screened.sort(key=lambda x: x["score"], reverse=True)
@@ -304,10 +306,11 @@ def run_daily_pipeline(
 
         _progress(progress_cb, 30.0, f"Layers 3-6: Agent pipeline on {len(enriched)} candidates")
         from pipeline.agents import run_agent_pipeline
+        _st_type = "short" if strategy_mode == "short_term_only" else "dual"
         analyzed = run_agent_pipeline(
             enriched,
             market=market,
-            strategy_type="dual",
+            strategy_type=_st_type,
             progress_cb=progress_cb,
             regime=regime,
         )
@@ -387,6 +390,26 @@ def run_daily_pipeline(
                 })
             except Exception as e:
                 logger.warning(f"win_rate record {it.get('ticker')}: {e}")
+
+        # --- v3.x Cooldown: holding >5 days → 30-day cooldown ---
+        from datetime import timedelta as _td
+        _cd_count = 0
+        for it in saved_items:
+            hd = int(it.get("holding_days") or 0)
+            if hd > 5:
+                _expire = (datetime.strptime(ref_date, "%Y%m%d") + _td(days=30)).strftime("%Y%m%d")
+                try:
+                    db.add_to_cooldown(
+                        ticker=it["ticker"], market=market,
+                        strategy_type=it.get("strategy", "short_term"),
+                        direction=it.get("direction", "buy"),
+                        added_date=ref_date, expire_date=_expire,
+                    )
+                    _cd_count += 1
+                except Exception as e:
+                    logger.debug(f"Cooldown write {it['ticker']}: {e}")
+        if _cd_count:
+            logger.info(f"Added {_cd_count} tickers to 30-day cooldown")
 
         _progress(progress_cb, 95.0, "Computing market sentiment cache")
 

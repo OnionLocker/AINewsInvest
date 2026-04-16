@@ -296,3 +296,44 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
         if holding_expired:
             return {"outcome": "timeout", "exit_price": entry, "return_pct": 0.0}
         return None
+
+
+def get_underperforming_sectors(
+    days: int = 30,
+    min_samples: int = 8,
+    max_win_rate: float = 0.35,
+) -> list[str]:
+    """Return sector names with poor recent win rates.
+
+    Only flags sectors with >= min_samples completed trades to avoid
+    small-sample noise. Used by synthesize_agent_results for confidence penalty.
+    """
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+        rows = db._conn.execute("""
+            SELECT sector, COUNT(*) as cnt,
+                   SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins
+            FROM win_rate_records
+            WHERE outcome IN ('win', 'loss')
+              AND run_date >= ?
+              AND sector IS NOT NULL AND sector != ''
+            GROUP BY sector
+            HAVING cnt >= ?
+        """, (cutoff, min_samples)).fetchall()
+
+        bad_sectors = []
+        for sector, cnt, wins in rows:
+            wr = wins / cnt
+            if wr < max_win_rate:
+                bad_sectors.append(sector)
+                logger.info(
+                    f"Sector penalty candidate: {sector} "
+                    f"win_rate={wr:.1%} ({wins}/{cnt} in last {days}d)"
+                )
+        return bad_sectors
+    except Exception as e:
+        logger.warning(f"Sector analysis failed: {e}")
+        return []
+    finally:
+        db.close()

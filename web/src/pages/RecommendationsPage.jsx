@@ -110,6 +110,7 @@ export default function RecommendationsPage({ market = "us" }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatedAtBj, setUpdatedAtBj] = useState("");
+  const [strategyTab, setStrategyTab] = useState("short_term");
 
   function markUpdatedNow() {
     const ts = new Intl.DateTimeFormat("zh-CN", {
@@ -166,6 +167,10 @@ export default function RecommendationsPage({ market = "us" }) {
 
   const items = detail?.items || today?.items || [];
   const viewingDate = detail ? detail.run?.ref_date : "\u4eca\u65e5";
+
+  const shortItems = items.filter(i => i.strategy !== "swing");
+  const swingItems = items.filter(i => i.strategy === "swing");
+  const visibleItems = strategyTab === "short_term" ? shortItems : swingItems;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -258,15 +263,42 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* Recommendations - full width */}
       <div>
+        {/* Strategy tabs */}
         <div className="mb-3 flex items-center gap-2">
-          <p className="text-sm font-semibold text-primary">{"\u63a8\u8350\u5217\u8868"}</p>
-          <span className="text-xs text-secondary">
-            {items.length} {"\u53ea"}
-          </span>
-          {items.length > 0 && (() => {
-            const h = items.filter(i => i.quality_tier === "high").length;
-            const m = items.filter(i => i.quality_tier === "medium").length;
-            const l = items.filter(i => i.quality_tier === "low").length;
+          <button
+            onClick={() => setStrategyTab("short_term")}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              strategyTab === "short_term"
+                ? "bg-brand/10 text-brand font-semibold"
+                : "text-secondary hover:text-primary hover:bg-surface-3"
+            }`}
+          >
+            {"\u77ed\u7ebf\u63a8\u8350"}
+            {shortItems.length > 0 && (
+              <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                strategyTab === "short_term" ? "bg-brand/20 text-brand" : "bg-surface-3 text-secondary"
+              }`}>{shortItems.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setStrategyTab("swing")}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              strategyTab === "swing"
+                ? "bg-brand/10 text-brand font-semibold"
+                : "text-secondary hover:text-primary hover:bg-surface-3"
+            }`}
+          >
+            {"\u6ce2\u6bb5\u63a8\u8350"}
+            {swingItems.length > 0 && (
+              <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                strategyTab === "swing" ? "bg-brand/20 text-brand" : "bg-surface-3 text-secondary"
+              }`}>{swingItems.length}</span>
+            )}
+          </button>
+          {visibleItems.length > 0 && (() => {
+            const h = visibleItems.filter(i => i.quality_tier === "high").length;
+            const m = visibleItems.filter(i => i.quality_tier === "medium").length;
+            const l = visibleItems.filter(i => i.quality_tier === "low").length;
             const parts = [];
             if (h) parts.push(`${h} \u9ad8\u4fe1\u5fc3`);
             if (m) parts.push(`${m} \u4e2d\u7b49`);
@@ -274,14 +306,6 @@ export default function RecommendationsPage({ market = "us" }) {
             return parts.length > 0 ? (
               <span className="text-xs text-secondary">({parts.join(" / ")})</span>
             ) : null;
-          })()}
-          {items.length > 0 && (() => {
-            const st = items.filter(i => i.strategy !== "swing").length;
-            const sw = items.filter(i => i.strategy === "swing").length;
-            if (st && sw) {
-              return <span className="text-xs text-secondary">{"\u00b7"} {"\u77ed\u7ebf"} {st} / {"\u6ce2\u6bb5"} {sw}</span>;
-            }
-            return null;
           })()}
         </div>
 
@@ -305,9 +329,15 @@ export default function RecommendationsPage({ market = "us" }) {
             <p className="text-lg font-bold text-brand">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
             <p className="mt-2 text-sm text-secondary">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
           </div>
+        ) : visibleItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-12 shadow-lg">
+            <p className="text-base font-medium text-secondary">
+              {strategyTab === "short_term" ? "\u4eca\u65e5\u65e0\u77ed\u7ebf\u63a8\u8350" : "\u4eca\u65e5\u65e0\u6ce2\u6bb5\u63a8\u8350"}
+            </p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {items.map((item, i) => (
+            {visibleItems.map((item, i) => (
               <RecCard key={item.ticker || i} item={item} rank={i + 1} />
             ))}
           </div>

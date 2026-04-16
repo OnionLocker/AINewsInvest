@@ -546,3 +546,96 @@ def _get_market_breadth(market: str) -> dict[str, Any]:
         logger.warning(f"Market breadth failed: {e}")
         return {"advance": 0, "decline": 0, "unchanged": 0,
                 "total": 0, "advance_pct": 50.0}
+
+
+# -- Russell 1000 / Short-term pool --
+
+def _get_russell1000_components() -> list[dict]:
+    """Fetch Russell 1000 components from iShares IWB ETF holdings CSV."""
+    import io
+    import httpx
+    url = (
+        "https://www.ishares.com/us/products/239707/"
+        "ishares-russell-1000-etf/1467271812596.ajax"
+        "?fileType=csv&fileName=IWB_holdings&dataType=fund"
+    )
+    try:
+        resp = httpx.get(url, headers=_WIKI_HEADERS, timeout=30, follow_redirects=True)
+        resp.raise_for_status()
+        lines = resp.text.splitlines()
+        # iShares CSV has metadata rows before the header
+        header_idx = None
+        for i, line in enumerate(lines):
+            if "Ticker" in line:
+                header_idx = i
+                break
+        if header_idx is None:
+            logger.warning("Russell 1000 CSV: no header row found")
+            return []
+        df = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])))
+        results = []
+        for _, row in df.iterrows():
+            ticker = str(row.get("Ticker", "")).strip()
+            name = str(row.get("Name", "")).strip()
+            if ticker and ticker != "-" and len(ticker) <= 5 and name:
+                results.append({"ticker": ticker, "market": "us_stock", "name": name})
+        logger.info(f"Russell 1000: fetched {len(results)} components from IWB holdings")
+        return results
+    except Exception as e:
+        logger.warning(f"Russell 1000 fetch failed: {e}")
+        return []
+
+
+def build_short_term_pool(top_n: int = 300) -> list[dict]:
+    """Build short-term pool: Russell 1000 stocks NOT already in S&P 500 / Nasdaq 100.
+
+    These mid-cap stocks ($2B-$30B) have higher volatility, ideal for
+    short-term trading. Ranked by dollar volume, top N returned.
+
+    This is an OFFLINE operation — run via CLI, not during pipeline.
+    """
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Get existing pool tickers to subtract
+    sp500 = {s["ticker"] for s in _get_sp500_components()}
+    ndx = {s["ticker"] for s in _get_nasdaq100_components()}
+    existing = sp500 | ndx
+
+    # Get Russell 1000, subtract existing
+    r1000 = _get_russell1000_components()
+    incremental = [s for s in r1000 if s["ticker"] not in existing]
+    logger.info(
+        f"Short-term pool: Russell 1000 ({len(r1000)}) "
+        f"minus existing ({len(existing)}) = {len(incremental)} incremental"
+    )
+
+    if not incremental:
+        return []
+
+    # Fetch quotes for dollar volume ranking
+    quotes: dict[str, float] = {}
+    _BATCH = 5
+    for bi in range(0, len(incremental), _BATCH):
+        batch = incremental[bi:bi + _BATCH]
+        with ThreadPoolExecutor(max_workers=_BATCH) as ex:
+            futs = {ex.submit(get_quote, s["ticker"], "us_stock"): s for s in batch}
+            for fut in as_completed(futs):
+                s = futs[fut]
+                try:
+                    q = fut.result()
+                    if q and q.get("price") and q.get("volume"):
+                        dv = float(q["price"]) * float(q["volume"])
+                        quotes[s["ticker"]] = dv
+                except Exception:
+                    pass
+        if bi + _BATCH < len(incremental):
+            _time.sleep(0.5)
+
+    # Sort by dollar volume, take top N
+    ranked = sorted(incremental,
+                    key=lambda s: quotes.get(s["ticker"], 0),
+                    reverse=True)
+    result = ranked[:top_n]
+    logger.info(f"Short-term pool: top {len(result)} by dollar volume")
+    return result
