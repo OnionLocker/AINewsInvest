@@ -696,8 +696,14 @@ export default function RecCard({ item, rank }) {
           {/* Tab 0: Trading Plan */}
           {activeTab === 0 && (
             <div>
+              {showTrading && !!item.rr_warning && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#D97706]/30 bg-[#D97706]/10 px-4 py-3 text-sm font-medium text-[#D97706]">
+                  <AlertTriangle size={16} />
+                  <span>{"\u98ce\u9669\u6536\u76ca\u6bd4\u504f\u4f4e (R:R < 1.5) \u2014 \u5efa\u8bae\u89c2\u671b\u7b49\u5f85\u66f4\u4f18\u5165\u573a\u70b9\uff0c\u6216\u7f29\u5c0f\u4ed3\u4f4d\u4e25\u683c\u6b62\u635f"}</span>
+                </div>
+              )}
               {showTrading && <TradingPlanGrid item={item} currencySymbol={currencySymbol} isShort={isShort} />}
-              {showTrading && item.quality_tier === "medium" && (
+              {showTrading && !item.rr_warning && item.quality_tier === "medium" && (
                 <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#2563EB]/20 bg-[#2563EB]/10 px-4 py-2 text-sm font-medium text-[#2563EB]">
                   <AlertTriangle size={14} />
                   {"\u4fe1\u53f7\u4e2d\u7b49\u5f3a\u5ea6 \u2014 \u5efa\u8bae\u63a7\u5236\u4ed3\u4f4d\uff0c\u4e25\u683c\u6267\u884c\u6b62\u635f"}

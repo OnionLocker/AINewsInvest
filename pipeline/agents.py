@@ -738,16 +738,11 @@ def _compute_trade_params(
     reward = take_profit - entry_price
     if risk <= 0 or reward <= 0:
         return _rejected_result
-    rr_ratio = reward / risk
-    if rr_ratio < MIN_RR:
-        logger.debug(
-            f"R:R reject: entry={entry_price} sl={stop_loss} tp={take_profit} "
-            f"risk={risk:.2f} reward={reward:.2f} R:R={rr_ratio:.2f} < {MIN_RR}"
-        )
-        return _rejected_result
 
     take_profit = round(take_profit, 2)
 
+    # Compute TP2/TP3/trailing before R:R check so rejected trades
+    # can still carry real params (shown with rr_warning in UI).
     tp2_default = entry_price * strat.take_profit_2_pct
     if strategy_type == "swing":
         take_profit_2 = round(max(resist_2, tp2_default), 2)
@@ -764,6 +759,14 @@ def _compute_trade_params(
     if strategy_type == "swing" and volatility_class == "high":
         holding_days = min(10, strat.default_holding_days)
 
+    rr_ratio = reward / risk
+    _is_rejected = rr_ratio < MIN_RR
+    if _is_rejected:
+        logger.debug(
+            f"R:R reject: entry={entry_price} sl={stop_loss} tp={take_profit} "
+            f"risk={risk:.2f} reward={reward:.2f} R:R={rr_ratio:.2f} < {MIN_RR}"
+        )
+
     return {
         "entry_price": entry_price,
         "entry_2": entry_2,
@@ -776,7 +779,7 @@ def _compute_trade_params(
             entry_price + (take_profit - entry_price) * strat.trailing_activation_pct, 2
         ),
         "trailing_distance_pct": strat.trailing_distance_pct,
-        "_rejected": False,
+        "_rejected": _is_rejected,
     }
 
 
@@ -840,7 +843,7 @@ def _compute_short_trade_params(
 
     # R:R reject for short trades
     reward_short = entry_price - take_profit
-    if risk <= 0 or reward_short <= 0 or reward_short / risk < min_rr:
+    if risk <= 0 or reward_short <= 0:
         return {
             "entry_price": 0, "entry_2": 0,
             "stop_loss": 0, "take_profit": 0,
@@ -854,6 +857,14 @@ def _compute_short_trade_params(
     take_profit_2 = round(min(support_2, take_profit * 0.97), 2)
     take_profit_3 = round(take_profit_2 * 0.96, 2)
 
+    _is_rejected = reward_short / risk < min_rr
+    if _is_rejected:
+        logger.debug(
+            f"R:R reject (short): entry={entry_price} sl={stop_loss} tp={take_profit} "
+            f"risk={risk:.2f} reward={reward_short:.2f} "
+            f"R:R={reward_short / risk:.2f} < {min_rr}"
+        )
+
     return {
         "entry_price": entry_price,
         "entry_2": entry_2,
@@ -866,7 +877,7 @@ def _compute_short_trade_params(
             entry_price - (entry_price - take_profit) * strat.trailing_activation_pct, 2
         ),
         "trailing_distance_pct": strat.trailing_distance_pct,
-        "_rejected": False,
+        "_rejected": _is_rejected,
     }
 
 
@@ -1198,7 +1209,7 @@ def synthesize_agent_results(
                 f"R:R insufficient {ticker}: marking as watch-only"
             )
 
-        is_quality = (not _rr_rejected) and combined >= quality_threshold and confidence >= 50
+        is_quality = combined >= quality_threshold and confidence >= 50
 
         all_risk_flags = list(set(
             list(news.get("risk_flags") or []) +
@@ -1275,6 +1286,7 @@ def synthesize_agent_results(
             "trailing_distance_pct": trade.get("trailing_distance_pct", 0) if is_quality else 0,
             "show_trading_params": is_quality,
             "_rr_rejected": _rr_rejected,
+            "rr_warning": False,  # set later in post-filter
             "holding_days": holding_days_final,
             "tech_reason": tech_analysis,
             "news_reason": news_analysis,
@@ -1338,10 +1350,11 @@ def synthesize_agent_results(
     # Filter out excluded tier (garbage-in protection)
     all_scored = [s for s in all_scored if s["quality_tier"] != "excluded"]
 
-    # Low tier and R:R rejected → hide trading params
+    # Low tier → hide trading params; R:R rejected high/medium → show with warning
     for s in all_scored:
-        if s["quality_tier"] == "low" or s.get("_rr_rejected"):
+        if s["quality_tier"] == "low":
             s["show_trading_params"] = False
+            s["rr_warning"] = False
             s["entry_price"] = None
             s["entry_2"] = None
             s["stop_loss"] = None
@@ -1350,6 +1363,11 @@ def synthesize_agent_results(
             s["take_profit_3"] = None
             s["trailing_activation_price"] = 0
             s["trailing_distance_pct"] = 0
+        elif s.get("_rr_rejected"):
+            s["show_trading_params"] = True
+            s["rr_warning"] = True
+        else:
+            s["rr_warning"] = False
 
     # Determine top-N based on regime and strategy
     if regime_level == "crisis":
