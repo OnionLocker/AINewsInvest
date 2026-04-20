@@ -325,10 +325,34 @@ export default function RecommendationsPage({ market = "us" }) {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-16 shadow-lg">
-            <p className="text-lg font-bold text-brand">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
-            <p className="mt-2 text-sm text-secondary">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
-          </div>
+          (() => {
+            const state = (detail || today)?.empty_state;
+            if (state === "pipeline_not_run_today") {
+              return (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 py-16 shadow-lg">
+                  <p className="text-lg font-bold text-amber-700">{"\u4eca\u65e5\u7ba1\u7ebf\u5c1a\u672a\u8fd0\u884c"}</p>
+                  <p className="mt-2 text-sm text-amber-700/80">
+                    {"\u7cfb\u7edf\u4f1a\u5728\u5e02\u573a\u5f00\u76d8\u524d\u81ea\u52a8\u8fd0\u884c\uff0c\u8bf7\u7a0d\u540e\u5237\u65b0\u3002\u5f53\u524d\u5c55\u793a\u6700\u8fd1\u4e00\u6b21\u7684\u63a8\u8350\u4ec5\u4f9b\u53c2\u8003"}
+                  </p>
+                </div>
+              );
+            }
+            if (state === "no_data") {
+              return (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-16 shadow-lg">
+                  <p className="text-lg font-bold text-secondary">{"\u6682\u65e0\u63a8\u8350\u6570\u636e"}</p>
+                  <p className="mt-2 text-sm text-secondary">{"\u7ba1\u7ebf\u8fd8\u672a\u4ea7\u51fa\u8fc7\u4efb\u4f55\u63a8\u8350\uff0c\u8bf7\u7b49\u5f85\u6216\u624b\u52a8\u89e6\u53d1"}</p>
+                </div>
+              );
+            }
+            // no_signals_today or fallback
+            return (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-16 shadow-lg">
+                <p className="text-lg font-bold text-brand">{"\u4eca\u65e5\u7a7a\u4ed3\u89c2\u671b"}</p>
+                <p className="mt-2 text-sm text-secondary">{"\u672a\u53d1\u73b0\u7b26\u5408\u7f6e\u4fe1\u5ea6\u9608\u503c\u7684\u6807\u7684\uff0c\u5efa\u8bae\u4fdd\u6301\u73b0\u91d1\u7b49\u5f85\u66f4\u597d\u673a\u4f1a"}</p>
+              </div>
+            );
+          })()
         ) : visibleItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-white py-12 shadow-lg">
             <p className="text-base font-medium text-secondary">

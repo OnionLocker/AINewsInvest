@@ -120,7 +120,7 @@ def _norm_series(values: list[float | None], higher_is_better: bool) -> list[flo
 def _fetch_benchmark_return(market: str, days: int = 60) -> float:
     """Fetch benchmark index return over the lookback period.
 
-    US → SPY, HK → ^HSI.  Returns 0.0 on failure (graceful degradation).
+    US -> SPY, HK -> ^HSI.  Returns 0.0 on failure (graceful degradation).
     """
     try:
         symbol = "SPY" if market == "us_stock" else "^HSI"
@@ -167,7 +167,7 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
         if cooldown_set:
             _before = len(pool)
             pool = [r for r in pool if r["ticker"] not in cooldown_set]
-            logger.info(f"Cooldown filter: {_before} → {len(pool)} "
+            logger.info(f"Cooldown filter: {_before} -> {len(pool)} "
                         f"(removed {_before - len(pool)} in cooldown)")
     except Exception as e:
         logger.debug(f"Cooldown filter skipped: {e}")
@@ -196,6 +196,7 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
             _time.sleep(0.5)
 
     passed: list[dict] = []
+    reversal_candidates: list[dict] = []   # v10: stocks down >= |reversal_trigger|%
     for row in pool:
         t, m = row["ticker"], row["market"]
         q = quotes.get((t, m))
@@ -211,11 +212,19 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
             continue
         if volume < sc.min_avg_volume:
             continue
+        # v10 asymmetric daily-change filter:
+        # - Reject if moved too far in EITHER direction (extreme volatility day)
+        # - Reject if already up > max_upside_today_pct (chasing kills R:R)
+        # - If down past reversal_trigger, flag for reversal branch instead
         if abs(change_pct) > sc.max_daily_change_pct:
             continue
+        if change_pct > sc.max_upside_today_pct:
+            logger.debug(f"Upside reject {t}: today +{change_pct:.1f}% > {sc.max_upside_today_pct:.1f}%")
+            continue
+        _is_reversal_candidate = change_pct <= sc.reversal_trigger_pct
 
         # --- Liquidity gates (avoid "dead money" large-caps like BEN) ---
-        # Dollar volume: shares * price — filters low-price large-cap with no trading
+        # Dollar volume: shares * price - filters low-price large-cap with no trading
         dollar_volume = volume * price
         if dollar_volume < sc.min_dollar_volume:
             logger.debug(
@@ -223,21 +232,51 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
                 f"< ${sc.min_dollar_volume/1e6:.0f}M (vol={volume:.0f}, price={price:.2f})"
             )
             continue
-        # Turnover ratio: dollar_volume / market_cap — filters stale stocks
+        # Turnover ratio: dollar_volume / market_cap - filters stale stocks
+        # Tiered thresholds: mega-caps (>$500B) are exempt if dollar_volume
+        # is sufficient, because their turnover is structurally low due to
+        # enormous market cap, not lack of liquidity.
         if mc > 0:
             turnover = dollar_volume / mc
-            if turnover < sc.min_turnover_ratio:
+            if mc >= 5e11:
+                _min_to = 0  # mega-cap: exempt, dollar_volume gate is enough
+            elif mc >= 5e10:
+                _min_to = sc.min_turnover_ratio * 0.33  # large-cap: ~0.1%
+            else:
+                _min_to = sc.min_turnover_ratio  # mid/small-cap: full 0.3%
+            if _min_to > 0 and turnover < _min_to:
                 logger.debug(
                     f"Turnover reject {t}: turnover={turnover:.4f} "
-                    f"< {sc.min_turnover_ratio} (dv=${dollar_volume/1e6:.0f}M, mc=${mc/1e9:.1f}B)"
+                    f"< {_min_to:.4f} (dv=${dollar_volume/1e6:.0f}M, mc=${mc/1e9:.1f}B)"
                 )
                 continue
-        # Note: PE hard filter REMOVED — high-growth stocks (NVDA, TSLA)
+        # Note: PE hard filter REMOVED - high-growth stocks (NVDA, TSLA)
         # often have PE > 80. Quality gate in Stage B handles garbage.
 
-        passed.append({**row, "quote": q, "financial": None, "dollar_volume": dollar_volume})
+        # v10: resolve tier - prefer pool metadata (from pool_builder), else
+        # compute from live market cap.
+        tier = row.get("tier") if row.get("tier") in ("large", "mid", "small") else None
+        if tier is None:
+            if mc >= 5.0e10:
+                tier = "large"
+            elif mc >= 1.0e10:
+                tier = "mid"
+            else:
+                tier = "small"
 
-    logger.info(f"Stage A hard filter: {len(pool)} -> {len(passed)} passed (market={market})")
+        entry = {
+            **row, "quote": q, "financial": None,
+            "dollar_volume": dollar_volume, "tier": tier,
+            "_reversal": _is_reversal_candidate,
+        }
+        if _is_reversal_candidate:
+            reversal_candidates.append(entry)
+        passed.append(entry)
+
+    logger.info(
+        f"Stage A hard filter: {len(pool)} -> {len(passed)} passed (market={market}); "
+        f"{len(reversal_candidates)} flagged as reversal candidates"
+    )
 
     if not passed:
         return []
@@ -375,10 +414,10 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
     # ------------------------------------------------------------------
     # Multi-factor ranking (v4: short-term trading optimized)
     # ------------------------------------------------------------------
-    # Factor 1: Acceleration (30%) — is momentum increasing?
-    # Factor 2: Volume Anomaly (25%) — unusual volume surge
-    # Factor 3: Trend Setup (30%) — MA structure + pullback quality
-    # Factor 4: Volatility Fit (15%) — optimal vol range for trading
+    # Factor 1: Acceleration (30%) - is momentum increasing?
+    # Factor 2: Volume Anomaly (25%) - unusual volume surge
+    # Factor 3: Trend Setup (30%) - MA structure + pullback quality
+    # Factor 4: Volatility Fit (15%) - optimal vol range for trading
     # ------------------------------------------------------------------
 
     raw_accel: list[float] = []
@@ -405,7 +444,7 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
         if len(closes) >= 20:
             ret_5d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
             ret_20d = (price / closes[-20]) - 1.0 if closes[-20] > 0 else 0.0
-            # Normalize to same time period: 5d rate * 4 ≈ 20d rate
+            # Normalize to same time period: 5d rate * 4 -> 20d rate
             accel = (ret_5d * 4.0) - ret_20d  # positive = accelerating
             # Beta-adjusted benchmark: implied beta from 20d returns
             if abs(bench_ret) > 0.005:
@@ -491,10 +530,9 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
         raw_setup.append(setup)
 
         # --- Factor 4: Volatility Fit ---
-        # Short-term trading needs MODERATE volatility (1-3% daily).
-        # Too low (<0.5%): can't reach 8% TP in 3 days
-        # Too high (>4%): too likely to hit 5% SL
-        # Optimal: 1.5-2.5% daily average
+        # Short-term trading needs MODERATE volatility. Optimal range differs
+        # by market-cap tier: mega-cap "exciting" move is 1.8%, small-cap is 4.5%.
+        # v10: per-tier optimal_vol when tiers enabled, else legacy flat config.
         if len(closes) >= 10:
             daily_rets = []
             for i in range(1, len(closes)):
@@ -502,8 +540,11 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
                     daily_rets.append(abs((closes[i] - closes[i - 1]) / closes[i - 1]))
             avg_vol = sum(daily_rets) / len(daily_rets) if daily_rets else 0.02
 
-            # Bell curve: peak at blended optimal vol (short + swing)
-            optimal_vol = (sc.optimal_vol_short + sc.optimal_vol_swing) / 2
+            if cfg.tiers.enabled:
+                tcfg = cfg.tiers.get(r.get("tier", "mid"))
+                optimal_vol = (tcfg.optimal_vol_short + tcfg.optimal_vol_swing) / 2
+            else:
+                optimal_vol = (sc.optimal_vol_short + sc.optimal_vol_swing) / 2
             vol_width = sc.optimal_vol_width
             vol_distance = abs(avg_vol - optimal_vol)
             vol_fit = max(0.0, 1.0 - (vol_distance / vol_width))
@@ -530,11 +571,6 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
         if setup < 0.2:
             quality_bonus -= 5
         raw_quality_bonus.append(quality_bonus)
-    n_accel = _norm_series(raw_accel, higher_is_better=True)
-    n_volume = _norm_series(raw_volume, higher_is_better=True)
-    n_setup = _norm_series(raw_setup, higher_is_better=True)
-    n_volfit = _norm_series(raw_volfit, higher_is_better=True)
-    n_fundamental = _norm_series(raw_fundamental, higher_is_better=True)
 
     w_accel = sc.weight_acceleration
     w_volume = sc.weight_volume_anomaly
@@ -542,54 +578,110 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
     w_volfit = sc.weight_volatility_fit
     w_fund = sc.weight_fundamental
 
-    results: list[dict] = []
-    for i, r in enumerate(trend_filtered):
-        q = r["quote"]
-        fin = r.get("financial") or {}
-        comp = (w_accel * n_accel[i] + w_volume * n_volume[i] +
-                w_setup * n_setup[i] + w_volfit * n_volfit[i] +
-                w_fund * n_fundamental[i]) * 100.0
-        comp += raw_quality_bonus[i]  # absolute bonus, not normalized
-        results.append({
-            "ticker": r["ticker"],
-            "name": r.get("name", r["ticker"]),
-            "market": r["market"],
-            "score": round(comp, 2),
-            "price": q.get("price", 0),
-            "change_pct": q.get("change_pct", 0),
-            "volume": q.get("volume", 0),
-            "market_cap": q.get("market_cap", 0),
-            "pe_ttm": fin.get("pe_ttm"),
-            "pb": fin.get("pb"),
-            "year_high": q.get("year_high"),
-            "year_low": q.get("year_low"),
-            "financial": fin,
-            # Factor breakdown for transparency
-            "factors": {
-                "acceleration": round(n_accel[i], 3),
-                "volume_anomaly": round(n_volume[i], 3),
-                "trend_setup": round(n_setup[i], 3),
-                "volatility_fit": round(n_volfit[i], 3),
-                "fundamental": round(n_fundamental[i], 3),
-                "quality_bonus": round(raw_quality_bonus[i], 1),
-            },
-        })
+    def _score_group(indices: list[int]) -> list[dict]:
+        """Normalize factor values within a group and build result dicts."""
+        if not indices:
+            return []
+        s_a = _norm_series([raw_accel[i] for i in indices], higher_is_better=True)
+        s_v = _norm_series([raw_volume[i] for i in indices], higher_is_better=True)
+        s_s = _norm_series([raw_setup[i] for i in indices], higher_is_better=True)
+        s_vf = _norm_series([raw_volfit[i] for i in indices], higher_is_better=True)
+        s_fu = _norm_series([raw_fundamental[i] for i in indices], higher_is_better=True)
+        out: list[dict] = []
+        for local_i, global_i in enumerate(indices):
+            r = trend_filtered[global_i]
+            q = r["quote"]
+            fin = r.get("financial") or {}
+            comp = (w_accel * s_a[local_i] + w_volume * s_v[local_i] +
+                    w_setup * s_s[local_i] + w_volfit * s_vf[local_i] +
+                    w_fund * s_fu[local_i]) * 100.0
+            comp += raw_quality_bonus[global_i]
+            out.append({
+                "ticker": r["ticker"],
+                "name": r.get("name", r["ticker"]),
+                "market": r["market"],
+                "tier": r.get("tier", "mid"),
+                "reversal_candidate": bool(r.get("_reversal", False)),
+                "score": round(comp, 2),
+                "price": q.get("price", 0),
+                "change_pct": q.get("change_pct", 0),
+                "volume": q.get("volume", 0),
+                "market_cap": q.get("market_cap", 0),
+                "pe_ttm": fin.get("pe_ttm"),
+                "pb": fin.get("pb"),
+                "year_high": q.get("year_high"),
+                "year_low": q.get("year_low"),
+                "financial": fin,
+                "factors": {
+                    "acceleration": round(s_a[local_i], 3),
+                    "volume_anomaly": round(s_v[local_i], 3),
+                    "trend_setup": round(s_s[local_i], 3),
+                    "volatility_fit": round(s_vf[local_i], 3),
+                    "fundamental": round(s_fu[local_i], 3),
+                    "quality_bonus": round(raw_quality_bonus[global_i], 1),
+                },
+            })
+        return out
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    # v10: tier-aware path - normalize within each tier, apply per-tier quotas.
+    if cfg.tiers.enabled:
+        tier_idx: dict[str, list[int]] = {"large": [], "mid": [], "small": []}
+        for i, r in enumerate(trend_filtered):
+            t = r.get("tier")
+            if t not in tier_idx:
+                t = "mid"
+            tier_idx[t].append(i)
 
-    # Absolute quality gate: reject candidates below minimum score
-    # In weak markets, this means fewer or zero recommendations — by design
-    pre_gate_count = len(results)
-    results = [r for r in results if r["score"] >= sc.min_absolute_score]
-    if pre_gate_count > len(results):
+        merged: list[dict] = []
+        summary_parts: list[str] = []
+        for tier_name in ("large", "mid", "small"):
+            idx_list = tier_idx.get(tier_name, [])
+            tier_results = _score_group(idx_list)
+            tier_results.sort(key=lambda x: x["score"], reverse=True)
+            pre_gate = len(tier_results)
+            tier_results = [r for r in tier_results if r["score"] >= sc.min_absolute_score]
+
+            tcfg = cfg.tiers.get(tier_name)
+            quota = max(0, int(tcfg.candidate_quota))
+            selected = tier_results[:quota]
+            merged.extend(selected)
+            summary_parts.append(
+                f"{tier_name}={len(selected)}/{quota} "
+                f"(gated {len(tier_results)}/{pre_gate} of {len(idx_list)})"
+            )
+
+        results = merged
+        results.sort(key=lambda x: x["score"], reverse=True)
+        logger.info("Tier-aware selection: " + ", ".join(summary_parts))
+    else:
+        # Legacy: single global normalization
+        results = _score_group(list(range(len(trend_filtered))))
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+    # v10: tier-aware path has already applied the absolute-score gate per
+    # tier. Legacy path applies it globally here.
+    if not cfg.tiers.enabled:
+        pre_gate_count = len(results)
+        results = [r for r in results if r["score"] >= sc.min_absolute_score]
+        if pre_gate_count > len(results):
+            logger.info(
+                f"Absolute score gate: {pre_gate_count} -> {len(results)} "
+                f"(rejected {pre_gate_count - len(results)} below {sc.min_absolute_score})"
+            )
+
+    # ------------------------------------------------------------------
+    # Sector diversification: sector -> industry fallback.
+    # When tiers are enabled and per-tier quotas already fit within top_n,
+    # we skip the sector trim (each tier is small enough that concentration
+    # risk is contained within that tier's 2-3 slots).
+    # ------------------------------------------------------------------
+    if cfg.tiers.enabled and len(results) <= max(top_n, 1):
         logger.info(
-            f"Absolute score gate: {pre_gate_count} -> {len(results)} "
-            f"(rejected {pre_gate_count - len(results)} below {sc.min_absolute_score})"
+            f"Layer 1 final: {len(trend_filtered)} -> {len(results)} candidates "
+            f"(tiers.enabled=True, top_n={top_n}, sector trim skipped)"
         )
+        return results
 
-    # ------------------------------------------------------------------
-    # Sector diversification — sector -> industry fallback
-    # ------------------------------------------------------------------
     max_per_sector = max(top_n // 3, 5)
     sector_count: dict[str, int] = {}
     diversified: list[dict] = []
@@ -615,7 +707,8 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
 
     logger.info(
         f"Layer 1 final: {len(trend_filtered)} -> {len(diversified)} candidates "
-        f"(sectors: {len(sector_count)}, max/sector: {max_per_sector})"
+        f"(sectors: {len(sector_count)}, max/sector: {max_per_sector}, "
+        f"tiers.enabled={cfg.tiers.enabled})"
     )
     return diversified
 
@@ -856,7 +949,7 @@ def _continuous_score(value: float | None, breakpoints: list[float], scores: lis
     """Piecewise linear interpolation for continuous scoring.
 
     Maps a value to a score using linear interpolation between breakpoints.
-    Example: _continuous_score(0.18, [-0.10, 0, 0.15, 0.40], [-15, 0, 8, 18]) → ~9.6
+    Example: _continuous_score(0.18, [-0.10, 0, 0.15, 0.40], [-15, 0, 8, 18]) -> ~9.6
     """
     if value is None:
         return 0.0
@@ -874,7 +967,7 @@ def _continuous_score(value: float | None, breakpoints: list[float], scores: lis
 
 
 def _compute_fundamental_score(candidate: dict) -> float:
-    """Continuous fundamental scoring — magnitude-aware, not step functions.
+    """Continuous fundamental scoring - magnitude-aware, not step functions.
 
     Returns 0-100 score. 50 = neutral baseline.
     Uses piecewise linear interpolation so ROE 40% scores higher than ROE 21%.
@@ -912,7 +1005,7 @@ def _compute_fundamental_score(candidate: dict) -> float:
         [-0.10, 0, 0.05, 0.10, 0.20, 0.35],
         [-12,   -3, 0,   3,    6,    10])
 
-    # Free cash flow — binary signal but scaled by FCF yield
+    # Free cash flow - binary signal but scaled by FCF yield
     fcf = fin.get("free_cash_flow") or fin.get("free_cashflow")
     market_cap_val = (candidate.get("quote") or {}).get("market_cap") or candidate.get("market_cap") or 0
     if fcf is not None and market_cap_val and market_cap_val > 0:
@@ -1123,6 +1216,8 @@ def build_enriched_candidates(
             "ticker": ticker,
             "name": c.get("name", ticker),
             "market": market,
+            "tier": c.get("tier", "mid"),
+            "reversal_candidate": bool(c.get("reversal_candidate", False)),
             "price": price,
             "fundamental_score": fundamental_score,
             "insider_trades": insider_trades,

@@ -233,7 +233,7 @@ def _call_tech_agent(payload: dict[str, Any], max_retries: int = 1) -> list[dict
 
 
 def _compute_rsi(closes: list[float], period: int = 14) -> float:
-    """Relative Strength Index — Wilder's EMA smoothing.
+    """Relative Strength Index - Wilder's EMA smoothing.
 
     Uses the same algorithm as technical.py (_rsi_wilder) to avoid
     inconsistencies between fallback scoring and indicator computation.
@@ -344,7 +344,7 @@ def fallback_technical_scores(
     enriched: list[dict],
     regime: dict | None = None,
 ) -> list[dict]:
-    """Deterministic fallback when Tech Agent fails — v2 continuous scoring.
+    """Deterministic fallback when Tech Agent fails - v2 continuous scoring.
 
     v2 changes over v1:
     - Continuous scoring for RSI, Bollinger, MACD (no more step functions)
@@ -433,7 +433,7 @@ def fallback_technical_scores(
 
         if daily_bullish and weekly_trend == "bearish":
             # In normal/risk_on regime, daily bullish reversing weekly bearish
-            # is a potential trend reversal — flag it but penalize mildly
+            # is a potential trend reversal - flag it but penalize mildly
             if regime_level in ("normal", "cautious"):
                 score -= 2.0  # mild penalty: reversal signal, not contradiction
             else:
@@ -458,7 +458,7 @@ def fallback_technical_scores(
                 rsi = _compute_rsi(kl_closes)
                 rsi_val = rsi
                 # Continuous RSI:
-                # 15→+10, 25→+6, 30→+3, 40→+1, 50→0, 60→-1, 70→-4, 75→-8, 85→-12
+                # 15->+10, 25->+6, 30->+3, 40->+1, 50->0, 60->-1, 70->-4, 75->-8, 85->-12
                 rsi_score = _continuous_tech_score(
                     rsi,
                     [15.0, 25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0, 85.0],
@@ -470,7 +470,7 @@ def fallback_technical_scores(
                 bb_pos = _compute_bollinger_position(kl_closes)
                 bb_pos_val = bb_pos
                 # Continuous BB:
-                # 0.0→+6, 0.05→+4, 0.20→+1, 0.50→0, 0.80→-1, 0.95→-5, 1.0→-7
+                # 0.0->+6, 0.05->+4, 0.20->+1, 0.50->0, 0.80->-1, 0.95->-5, 1.0->-7
                 bb_score = _continuous_tech_score(
                     bb_pos,
                     [0.0, 0.05, 0.20, 0.50, 0.80, 0.95, 1.0],
@@ -497,7 +497,7 @@ def fallback_technical_scores(
                 elif obv_trend == "bearish":
                     score -= 3.0 * regime_bear_mult
 
-        # --- v6: Options signal scoring (DISABLED — no historical percentile
+        # --- v6: Options signal scoring (DISABLED - no historical percentile
         #     data to validate; raw PCR/unusual-volume too noisy for scoring.
         #     Data is still fetched & stored for future use.) ---
         # options = c.get("options_data") or {}
@@ -608,16 +608,20 @@ def _compute_trade_params(
     v4 changes:
     - Breakout entry: entry AT or slightly above current price (chase breakout)
     - Pullback entry: entry below current price (wait for dip)
-    - R:R < 1.5 → reject trade (return _rejected=True), don't force-adjust
+    - R:R < 1.5 -> reject trade (return _rejected=True), don't force-adjust
     """
     cfg = get_config()
     strat = cfg.swing if strategy_type == "swing" else cfg.short_term
 
-    # v3.x: Regime-aware ATR multipliers and R:R threshold
+    # v3.x-v8: Regime-aware ATR multipliers and R:R threshold
+    # Short-term R:R lowered from 1.5->1.2 because many viable 1-3 day trades
+    # (e.g. R:R=1.3) were being rejected, leaving the system with too few recs.
+    # Swing keeps 1.5 since longer holding periods justify stricter reward demands.
     is_defensive = regime_level in ("cautious", "bearish")
     sl_mult = strat.atr_sl_multiplier_defensive if is_defensive else strat.atr_sl_multiplier
     tp_mult = strat.atr_tp_multiplier_defensive if is_defensive else strat.atr_tp_multiplier
-    min_rr = strat.min_rr_defensive if is_defensive else 1.5
+    _normal_rr = 1.2 if strategy_type != "swing" else 1.5
+    min_rr = strat.min_rr_defensive if is_defensive else _normal_rr
 
     _rejected_result = {
         "entry_price": 0, "entry_2": 0,
@@ -648,7 +652,7 @@ def _compute_trade_params(
     # --- FIX 4: Breakout vs Pullback entry ---
     if is_breakout:
         # Breakout entry: buy at or near current price (don't wait for pullback)
-        # The stock just broke resistance with volume — waiting = missing the move
+        # The stock just broke resistance with volume - waiting = missing the move
         entry_price = round(price * 1.002, 2)  # tiny premium (market order simulation)
         entry_2 = round(price * 0.99, 2)       # partial fill on minor pullback
     else:
@@ -697,8 +701,8 @@ def _compute_trade_params(
 
     if atr_20d > 0:
         if is_breakout:
-            # Breakout SL: tighter — if it falls back below breakout level, thesis is wrong
-            # Use 1.0 × ATR (tighter than normal 1.5×)
+            # Breakout SL: tighter - if it falls back below breakout level, thesis is wrong
+            # Use 1.0 x ATR (tighter than normal 1.5x)
             sl_atr = entry_price - atr_20d * (sl_mult * 0.67)
             # Also: don't let SL go below the old resistance (now support)
             old_resist = resist_1 if resist_1 < entry_price else support_1
@@ -722,17 +726,17 @@ def _compute_trade_params(
         tp_atr = entry_price + atr_20d * tp_mult
         if is_breakout:
             # Breakout: resistance already broken, use full ATR target
-            # Old resistance is now support — upside is open
+            # Old resistance is now support - upside is open
             take_profit = round(tp_atr, 2)
         else:
             # Pullback: use ATR target unless a strong resistance is
             # reachable and far enough to yield good R:R
             dist_to_resist = resist_1 - entry_price
             if dist_to_resist > atr_20d * 1.5:
-                # Resistance is far — use it as a natural TP
+                # Resistance is far - use it as a natural TP
                 take_profit = round(resist_1 * 0.99, 2)
             else:
-                # Resistance is close (< 1.5 ATR) — expect breakout, use ATR TP
+                # Resistance is close (< 1.5 ATR) - expect breakout, use ATR TP
                 take_profit = round(tp_atr, 2)
         take_profit = max(take_profit, round(entry_price * 1.025, 2))
     else:
@@ -750,7 +754,7 @@ def _compute_trade_params(
                 f"dist={distance_in_atr:.2f} ATR"
             )
 
-    # --- FIX 5: R:R reject — don't force-adjust, just reject ---
+    # --- FIX 5: R:R reject - don't force-adjust, just reject ---
     MIN_RR = min_rr
     risk = entry_price - stop_loss
     reward = take_profit - entry_price
@@ -781,8 +785,9 @@ def _compute_trade_params(
     _is_rejected = rr_ratio < MIN_RR
     if _is_rejected:
         logger.debug(
-            f"R:R reject: entry={entry_price} sl={stop_loss} tp={take_profit} "
-            f"risk={risk:.2f} reward={reward:.2f} R:R={rr_ratio:.2f} < {MIN_RR}"
+            f"R:R reject [{strategy_type}]: entry={entry_price} sl={stop_loss} "
+            f"tp={take_profit} risk={risk:.2f} reward={reward:.2f} "
+            f"R:R={rr_ratio:.2f} < {MIN_RR}"
         )
 
     return {
@@ -812,9 +817,10 @@ def _compute_short_trade_params(
     cfg = get_config()
     strat = cfg.swing if strategy_type == "swing" else cfg.short_term
 
-    # v3.x: Regime-aware multipliers
+    # v3.x-v8: Regime-aware multipliers (short_term R:R lowered to 1.2)
     is_defensive = regime_level in ("cautious", "bearish")
-    min_rr = strat.min_rr_defensive if is_defensive else 1.5
+    _normal_rr = 1.2 if strategy_type != "swing" else 1.5
+    min_rr = strat.min_rr_defensive if is_defensive else _normal_rr
 
     if price <= 0:
         return {
@@ -883,9 +889,9 @@ def _compute_short_trade_params(
     _is_rejected = reward_short / risk < min_rr
     if _is_rejected:
         logger.debug(
-            f"R:R reject (short): entry={entry_price} sl={stop_loss} tp={take_profit} "
-            f"risk={risk:.2f} reward={reward_short:.2f} "
-            f"R:R={reward_short / risk:.2f} < {min_rr}"
+            f"R:R reject [{strategy_type}/short]: entry={entry_price} "
+            f"sl={stop_loss} tp={take_profit} risk={risk:.2f} "
+            f"reward={reward_short:.2f} R:R={reward_short / risk:.2f} < {min_rr}"
         )
 
     return {
@@ -913,7 +919,7 @@ def _compute_confidence(
     fundamental_score: int = 50,
     insider_data: dict | None = None,
 ) -> int:
-    """Compute confidence — how much agreement and conviction across signals.
+    """Compute confidence - how much agreement and conviction across signals.
 
     v6: Multi-dimensional confidence with continuous adjustments.
 
@@ -936,7 +942,7 @@ def _compute_confidence(
     bear_actions = ("avoid", "short")
 
     if news_action in bull_actions and tech_action in bull_actions:
-        # Both bullish — high agreement
+        # Both bullish - high agreement
         bonus = 20.0
         if news_action == "strong_buy" and tech_action == "strong_buy":
             bonus = 28.0  # extra conviction for both strong_buy
@@ -944,18 +950,18 @@ def _compute_confidence(
             bonus = 24.0
         confidence += bonus
     elif news_action in bear_actions and tech_action in bear_actions:
-        confidence += 18.0  # bearish agreement (slightly lower — shorts are harder)
+        confidence += 18.0  # bearish agreement (slightly lower - shorts are harder)
     elif (news_action in bull_actions and tech_action in bear_actions) or \
          (tech_action in bull_actions and news_action in bear_actions):
-        confidence -= 28.0  # direct contradiction — very bad
+        confidence -= 28.0  # direct contradiction - very bad
     elif news_action == "hold" and tech_action == "hold":
         confidence -= 5.0  # both uncertain
     elif news_action == "hold" or tech_action == "hold":
-        confidence += 3.0  # one directional, one neutral — mild
+        confidence += 3.0  # one directional, one neutral - mild
 
     # --- 2. Score convergence (continuous, ~20pt swing) ---
     score_gap = abs(ns - ts)
-    # Gap: 0→+15, 10→+10, 20→+3, 30→-5, 40→-12, 50+→-18
+    # Gap: 0->+15, 10->+10, 20->+3, 30->-5, 40->-12, 50+->-18
     gap_adj = _continuous_tech_score(
         float(score_gap),
         [0.0, 10.0, 20.0, 30.0, 40.0, 50.0],
@@ -982,7 +988,7 @@ def _compute_confidence(
     # --- 5. Risk flag penalty (continuous) ---
     n_risks = len(news.get("risk_flags") or []) + len(tech.get("risk_flags") or [])
     if n_risks > 0:
-        # 1 flag → -2, 3 flags → -6, 5 flags → -12, 8+ → -18
+        # 1 flag -> -2, 3 flags -> -6, 5 flags -> -12, 8+ -> -18
         risk_penalty = _continuous_tech_score(
             float(n_risks),
             [0.0, 1.0, 3.0, 5.0, 8.0],
@@ -998,19 +1004,22 @@ def _compute_confidence(
     if "v2:" in str(tech.get("analysis", "")) or not tech.get("analysis"):
         confidence -= 2.0  # fallback-only scoring
 
-    # --- 7. Insider trading signal (v6) ---
+    # --- 7. Insider trading signal (v6 -> v8 softened) ---
+    # US mega-cap executives routinely sell via 10b5-1 plans; treating every
+    # "strong_sell" as -15 was wiping out nearly all candidates.  Reduce the
+    # penalty to -8 so that planned selling still hurts but doesn't dominate.
     _ins = insider_data or {}
     _ins_signal = _ins.get("signal_strength", "neutral")
     if _ins_signal == "strong_buy":
         confidence += 12.0
         if _ins.get("has_executive_buying"):
-            confidence += 3.0  # CEO/CFO personally buying
+            confidence += 3.0
     elif _ins_signal == "moderate_buy":
         confidence += 5.0
     elif _ins_signal == "strong_sell":
-        confidence -= 15.0
+        confidence -= 8.0
     elif _ins_signal == "moderate_sell":
-        confidence -= 6.0
+        confidence -= 4.0
 
     return max(10, min(95, int(round(confidence))))
 
@@ -1022,6 +1031,7 @@ def synthesize_agent_results(
     strategy_type: str = "short",
     max_count: int | None = None,
     regime: dict | None = None,
+    _dedup_pool_multiplier: int = 1,
 ) -> list[dict]:
     """Combine news + tech scores into ranked recommendations.
 
@@ -1038,6 +1048,22 @@ def synthesize_agent_results(
     syn = cfg.synthesis
     regime_level = (regime or {}).get("level", "normal")
 
+    # v10: Tier-based strategy routing.
+    # Short-term trades favor Mid + Small (higher %/day moves, better for 3-day
+    # holds); Swing trades favor Mid + Large (stable trends, better for 10-30
+    # day holds). Mid is shared as the sweet spot for both.
+    if cfg.tiers.enabled and strategy_type in ("short", "swing"):
+        if strategy_type == "short":
+            allowed = {"mid", "small"}
+        else:
+            allowed = {"mid", "large"}
+        pre_count = len(enriched)
+        enriched = [c for c in enriched if c.get("tier", "mid") in allowed]
+        logger.info(
+            f"Tier routing ({strategy_type}): {pre_count} -> {len(enriched)} "
+            f"(allowed={sorted(allowed)})"
+        )
+
     # --- v3.x Module D: Load underperforming sectors for penalty ---
     _penalty_sectors: set[str] = set()
     try:
@@ -1048,6 +1074,7 @@ def synthesize_agent_results(
     except Exception as e:
         logger.debug(f"Sector penalty load skipped: {e}")
 
+    # Base weights by strategy type (used as fallback and for adaptive logic).
     if strategy_type == "swing":
         news_weight = cfg.swing.news_weight
         tech_weight = cfg.swing.tech_weight
@@ -1055,12 +1082,17 @@ def synthesize_agent_results(
         news_weight = syn.news_weight
         tech_weight = syn.tech_weight
 
+    # v10: tier-aware base weights. When tiers.enabled, weights are picked
+    # per-stock below; these strategy-level values still anchor adaptive
+    # adjustments (news quality, win-rate analyzer).
+    tiers_cfg = cfg.tiers if cfg.tiers.enabled else None
+
     # --- v5: News data quality check ---
     # Compute aggregate news quality from what sources actually provided
     nc_cfg = cfg.news
     has_premium_sources = bool(nc_cfg.finnhub_key) or bool(nc_cfg.marketaux_key)
     if not has_premium_sources:
-        # No premium news APIs configured — significantly reduce news influence
+        # No premium news APIs configured - significantly reduce news influence
         news_quality_factor = 0.5
         logger.info(
             f"News quality: no premium sources (Finnhub/MarketAux keys empty). "
@@ -1077,7 +1109,7 @@ def synthesize_agent_results(
         )
 
     # Adaptive weight adjustment based on historical win-rate data
-    # v6: Disabled in crisis/bearish — historical correlations unreliable during regime shifts
+    # v6: Disabled in crisis/bearish - historical correlations unreliable during regime shifts
     if regime_level in ("normal", "cautious"):
         try:
             from pipeline.analyzer import analyze_score_effectiveness
@@ -1111,7 +1143,7 @@ def synthesize_agent_results(
     else:
         logger.info(f"Adaptive weights disabled in {regime_level} regime")
 
-    quality_threshold = max(syn.quality_threshold, 55)  # v6: safety floor — never show trades for <55
+    quality_threshold = max(syn.quality_threshold, 55)  # v6: safety floor - never show trades for <55
 
     if max_count is None:
         max_count = cfg.max_recommendations
@@ -1138,7 +1170,7 @@ def synthesize_agent_results(
         ns = _safe_int(news.get("news_score", 0))
         ts = _safe_int(tech.get("technical_score", 0))
 
-        # v6: Cross-fill with source penalty — if one signal is missing,
+        # v6: Cross-fill with source penalty - if one signal is missing,
         # we fill a diluted estimate AND penalize confidence later
         _has_news = bool(news)
         _has_tech = bool(tech)
@@ -1161,6 +1193,31 @@ def synthesize_agent_results(
         if not _has_tech:
             confidence = max(10, confidence - 15)  # tech missing is worse
 
+        # v10: Reversal-candidate 3-factor check.
+        # Stocks flagged (today's drop <= reversal_trigger_pct) must pass ALL of:
+        #   (a) oversold - far below MA20
+        #   (b) capitulation volume - 1.5x avg or higher
+        #   (c) fundamentals not broken - fundamental_score >= 45
+        # Otherwise they're penalized (probably falling knives).
+        if c.get("reversal_candidate"):
+            ma_bias = _safe_float(c.get("ma20_bias_pct", 0))
+            vol_ratio = _safe_float(c.get("volume_ratio", 1.0))
+            oversold = ma_bias < -5.0
+            capitulation = vol_ratio >= 1.5
+            fund_ok = fs >= 45
+            checks_passed = sum([oversold, capitulation, fund_ok])
+            if checks_passed == 3:
+                confidence = min(100, confidence + 5)
+                logger.debug(
+                    f"{ticker}: reversal 3/3 passed "
+                    f"(ma_bias={ma_bias:.1f} vol_ratio={vol_ratio:.2f} fs={fs}) +5 conf"
+                )
+            elif checks_passed <= 1:
+                confidence = max(10, confidence - 8)
+                logger.debug(
+                    f"{ticker}: reversal {checks_passed}/3 passed - falling knife risk, -8 conf"
+                )
+
         # --- FIX 2: Filter contradictory signals ---
         news_action = _classify_action(str(news.get("action", "hold")))
         tech_action = _classify_action(str(tech.get("action", "hold")))
@@ -1181,17 +1238,32 @@ def synthesize_agent_results(
             )
 
         # --- Combined score (no sector_bonus inflation) ---
-        # fs already computed above for confidence calculation
-        fw = syn.fundamental_weight
+        # v10: tier-aware weights. Small-caps weigh news heavier; large-caps
+        # weigh fundamentals heavier. When tiers enabled, the per-tier config
+        # overrides the strategy-level weights above, but the adaptive
+        # adjustments (news quality, win-rate analyzer) are still blended in
+        # via a 70/30 mix so learned signals aren't thrown away.
+        if tiers_cfg is not None:
+            tcfg = tiers_cfg.get(c.get("tier", "mid"))
+            tier_nw, tier_tw, tier_fw = tcfg.news_weight, tcfg.tech_weight, tcfg.fundamental_weight
+            # Blend: 70% tier prior + 30% strategy-level adaptive
+            blend = 0.7
+            eff_nw = tier_nw * blend + news_weight * (1 - blend)
+            eff_tw = tier_tw * blend + tech_weight * (1 - blend)
+            eff_fw = tier_fw * blend + syn.fundamental_weight * (1 - blend)
+        else:
+            eff_nw, eff_tw, eff_fw = news_weight, tech_weight, syn.fundamental_weight
+
+        fw = eff_fw
         if fw > 0:
-            total_w = news_weight + tech_weight + fw
+            total_w = eff_nw + eff_tw + fw
             combined = int(round(
-                (ns * news_weight + ts * tech_weight + fs * fw) / total_w
+                (ns * eff_nw + ts * eff_tw + fs * fw) / total_w
             ))
         else:
-            combined = int(round(ns * news_weight + ts * tech_weight))
+            combined = int(round(ns * eff_nw + ts * eff_tw))
         combined = max(0, min(100, combined))
-        # FIX 3: sector_bonus REMOVED — was inflating scores unreliably
+        # FIX 3: sector_bonus REMOVED - was inflating scores unreliably
 
         price = _safe_float(c.get("price"))
         if price <= 0:
@@ -1201,7 +1273,7 @@ def synthesize_agent_results(
         action_bucket = _classify_action(action_str)
         market_str = c.get("market", "")
 
-        # v7: hold action no longer skipped — will rank low via conviction_score
+        # v7: hold action no longer skipped - will rank low via conviction_score
         if action_bucket == "hold":
             noted_hold += 1
 
@@ -1236,7 +1308,7 @@ def synthesize_agent_results(
             )
             direction = "buy"
 
-        # v7: R:R reject no longer eliminates — mark as watch-only instead
+        # v7: R:R reject no longer eliminates - mark as watch-only instead
         _rr_rejected = trade.get("_rejected", False)
         if _rr_rejected:
             noted_rr += 1
@@ -1255,22 +1327,24 @@ def synthesize_agent_results(
         earnings_imminent = c.get("earnings_imminent", False)
         earnings_days = c.get("earnings_days_away")
         if earnings_imminent and earnings_days is not None and earnings_days >= 0:
-            all_risk_flags.append("\u4e34\u8fd1\u8d22\u62a5")
+            all_risk_flags.append("财报临近(earnings_imminent)")
             if earnings_days < holding_days_final:
                 holding_days_final = max(1, earnings_days - 1)
 
-        # --- v6: Insider selling penalty / one-vote-veto ---
+        # --- v6-v8: Insider selling penalty (softened) ---
+        # Previously -15, which was too aggressive for US stocks where 10b5-1
+        # planned selling triggers "strong_sell" routinely.  Reduced to -8.
         _insider = c.get("insider_trades") or {}
         if _insider.get("signal_strength") == "strong_sell":
-            all_risk_flags.append("\u9ad8\u7ba1\u5927\u5e45\u51cf\u6301")
-            combined = max(0, combined - 15)
-            logger.warning(f"{ticker}: Heavy insider selling → score -{15} (now {combined})")
+            all_risk_flags.append("\u9ad8\u7ba1\u51cf\u6301")
+            combined = max(0, combined - 8)
+            logger.warning(f"{ticker}: Insider selling -> score -{8} (now {combined})")
 
         # --- v3.x Module B: Near-resistance trap confidence penalty ---
         if trade.get("_near_resistance_trap"):
             confidence = max(10, confidence - 10)
-            all_risk_flags.append("突破近阻力位")
-            logger.debug(f"{ticker}: near-resistance trap, confidence → {confidence}")
+            all_risk_flags.append("接近阻力位")
+            logger.debug(f"{ticker}: near-resistance trap, confidence -> {confidence}")
 
         news_analysis = str(news.get("analysis", ""))
         tech_analysis = str(tech.get("analysis", ""))
@@ -1282,7 +1356,7 @@ def synthesize_agent_results(
         if sector and sector in _penalty_sectors:
             confidence = max(10, confidence - 8)
             all_risk_flags.append("行业近期胜率偏低")
-            logger.debug(f"{ticker}: sector penalty ({sector}), confidence → {confidence}")
+            logger.debug(f"{ticker}: sector penalty ({sector}), confidence -> {confidence}")
 
         insider_trades_data = c.get("insider_trades")
         insider_signal = ""
@@ -1363,6 +1437,9 @@ def synthesize_agent_results(
             "options_pc_ratio": c.get("options_pc_ratio"),
             "options_unusual_activity": bool(c.get("options_unusual_activity")),
             "insider_signal": insider_signal,
+            # v10: market-cap tier label + reversal flag for UI and backtesting
+            "tier": c.get("tier", "mid"),
+            "reversal_candidate": bool(c.get("reversal_candidate", False)),
             # Skill structured outputs (for recording/backtesting)
             "_news_skill_output": news.get("_skill_output"),
             "_tech_skill_output": tech.get("_skill_output"),
@@ -1374,7 +1451,7 @@ def synthesize_agent_results(
             f"{noted_contradiction} contradictions + {noted_rr} R:R insufficient"
         )
 
-    # v6: conviction_score = score × (confidence/100)^0.7
+    # v6: conviction_score = score x (confidence/100)^0.7
     # The exponent 0.7 means confidence matters but doesn't dominate.
     for s in all_scored:
         s["conviction_score"] = round(
@@ -1398,7 +1475,7 @@ def synthesize_agent_results(
     # Filter out excluded tier (garbage-in protection)
     all_scored = [s for s in all_scored if s["quality_tier"] != "excluded"]
 
-    # Low tier → hide trading params; R:R rejected high/medium → show with warning
+    # Low tier -> hide trading params; R:R rejected high/medium -> show with warning
     for s in all_scored:
         if s["quality_tier"] == "low":
             s["show_trading_params"] = False
@@ -1458,7 +1535,8 @@ def synthesize_agent_results(
 
     filtered = _limit_sector_concentration(all_scored, max_ratio=0.4)
     filtered = _check_pairwise_correlation(filtered)
-    return filtered[:top_n]
+    _pool_n = top_n * max(1, _dedup_pool_multiplier)
+    return filtered[:_pool_n]
 
 
 def _suggest_position_pct(
@@ -1472,10 +1550,9 @@ def _suggest_position_pct(
 ) -> tuple[int, str]:
     """Suggest position size as % of portfolio with rationale.
 
-    v4.1: Multi-factor model — score, confidence, volatility, risk flags,
-    R:R, strategy, regime.  Returns (pct, rationale_chinese).
+    Multi-factor model: score, confidence, volatility, risk flags, R:R,
+    strategy, regime. Returns (pct, rationale_chinese).
     """
-    # 1) Base from score
     if score >= 85:
         base = 8
     elif score >= 75:
@@ -1486,58 +1563,51 @@ def _suggest_position_pct(
         base = 3
 
     pct = float(base)
-    reasons: list[str] = [f"基础仓位{base}%(评分{score:.0f})"]
+    reasons: list[str] = [f"基础仓位 {base}%(综合评分 {score:.0f})"]
 
-    # 2) Confidence multiplier
     if confidence >= 80:
         pct *= 1.20
-        reasons.append(f"高置信度{confidence}%↑")
+        reasons.append(f"高置信度({confidence}%) +20%")
     elif confidence < 60:
         pct *= 0.70
-        reasons.append(f"低置信度{confidence}%↓")
+        reasons.append(f"低置信度({confidence}%) -30%")
 
-    # 3) Volatility
     if volatility_class == "high":
         pct *= 0.70
-        reasons.append("高波动↓")
+        reasons.append("高波动 -30%")
     elif volatility_class == "low":
         pct *= 1.10
-        reasons.append("低波动↑")
+        reasons.append("低波动 +10%")
 
-    # 4) Risk flags
     if risk_flag_count >= 5:
         pct *= 0.60
-        reasons.append(f"{risk_flag_count}个风险标记↓↓")
+        reasons.append(f">= {risk_flag_count} 风险标记 -40%")
     elif risk_flag_count >= 3:
         pct *= 0.80
-        reasons.append(f"{risk_flag_count}个风险标记↓")
+        reasons.append(f">= {risk_flag_count} 风险标记 -20%")
 
-    # 5) R:R ratio
     if rr_ratio >= 2.5:
         pct *= 1.15
-        reasons.append(f"R:R={rr_ratio:.1f}↑")
+        reasons.append(f"R:R={rr_ratio:.1f} 风险回报佳 +15%")
     elif rr_ratio < 1.8:
         pct *= 0.85
-        reasons.append(f"R:R={rr_ratio:.1f}↓")
+        reasons.append(f"R:R={rr_ratio:.1f} 风险回报弱 -15%")
 
-    # 6) Strategy type
     if strategy_type == "swing":
         pct *= 0.90
-        reasons.append("波段策略↓")
+        reasons.append("波段策略持仓更保守 -10%")
 
-    # 7) Regime
     if regime_level == "cautious":
         pct *= 0.70
-        reasons.append("谨慎市况↓")
+        reasons.append("市场谨慎 -30%")
     elif regime_level in ("bearish", "crisis"):
         pct *= 0.50
-        reasons.append("熊市/危机↓↓")
+        reasons.append("熊市/危机 -50%")
 
     final_pct = max(2, min(10, round(pct)))
-    rationale = "，".join(reasons) + f" → {final_pct}%"
+    rationale = " · ".join(reasons) + f" -> {final_pct}%"
 
     return final_pct, rationale
-
 
 def _limit_sector_concentration(
     items: list[dict], max_ratio: float = 0.4,
@@ -1625,6 +1695,57 @@ def _check_pairwise_correlation(items: list[dict], max_corr: float = 0.7) -> lis
 
 
 # ---------------------------------------------------------------------------
+# Cross-strategy deduplication
+# ---------------------------------------------------------------------------
+
+
+def _cross_dedup_strategies(
+    short_recs: list[dict], swing_recs: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Ensure each ticker appears in only one strategy list.
+
+    When a ticker appears in both short_term and swing, keep the copy with
+    the higher conviction_score.  The pool lists contain 2x top_n candidates
+    (via _dedup_pool_multiplier), so after removing duplicates we trim each
+    list back to its configured top_n.
+    """
+    cfg = get_config()
+    short_top_n = cfg.synthesis.top_n_normal
+    swing_top_n = cfg.swing.top_n_normal
+
+    short_tickers = {r["ticker"]: r for r in short_recs}
+    swing_tickers = {r["ticker"]: r for r in swing_recs}
+    overlap = set(short_tickers) & set(swing_tickers)
+
+    logger.info(
+        f"Cross-dedup entry: short_pool={len(short_recs)} "
+        f"swing_pool={len(swing_recs)} overlap={len(overlap)} "
+        f"(top_n short={short_top_n} swing={swing_top_n})"
+    )
+
+    if not overlap:
+        logger.info("Cross-dedup: no overlap, nothing to do")
+        return short_recs[:short_top_n], swing_recs[:swing_top_n]
+
+    for ticker in overlap:
+        sc = short_tickers[ticker].get("conviction_score", 0)
+        wc = swing_tickers[ticker].get("conviction_score", 0)
+        if sc >= wc:
+            swing_recs = [r for r in swing_recs if r["ticker"] != ticker]
+        else:
+            short_recs = [r for r in short_recs if r["ticker"] != ticker]
+
+    short_recs = short_recs[:short_top_n]
+    swing_recs = swing_recs[:swing_top_n]
+
+    logger.info(
+        f"Cross-dedup done: {len(overlap)} duplicate tickers resolved -> "
+        f"short={len(short_recs)}, swing={len(swing_recs)}"
+    )
+    return short_recs, swing_recs
+
+
+# ---------------------------------------------------------------------------
 # Main agent pipeline entry point
 # ---------------------------------------------------------------------------
 
@@ -1642,7 +1763,7 @@ def _batched_news_agent(
 
     New Skill-based flow:
     1. Build structured input for each batch
-    2. Call NewsSkill LLM → get structured catalysts/risks
+    2. Call NewsSkill LLM -> get structured catalysts/risks
     3. Score each output with score_news_output() (deterministic)
     4. Return results in legacy format for downstream compatibility
     """
@@ -1689,8 +1810,8 @@ def _batched_news_agent(
                     "news_score": 50,
                     "sentiment": "neutral",
                     "action": "hold",
-                    "analysis": "新闻数据不足，中性评估",
-                    "risk_flags": ["信号不足"],
+                    "analysis": "News data unavailable, using neutral baseline.",
+                    "risk_flags": ["news_data_missing"],
                     "risk_note": "",
                     "sector_bonus": 0,
                     "themes": [],
@@ -1715,7 +1836,7 @@ def _batched_tech_agent(
     New Skill-based flow:
     1. ALL candidates get deterministic fallback scores (hard indicators)
     2. Find borderline cases (score 45-60)
-    3. Call TechSkill LLM for borderline → structured patterns/trend/setup
+    3. Call TechSkill LLM for borderline -> structured patterns/trend/setup
     4. Score LLM output with score_tech_output() (60% hard + 40% soft)
     5. Blend: for borderline cases, replace deterministic with hybrid score
     """
@@ -1862,16 +1983,28 @@ def run_agent_pipeline(
     _progress(70.0, "Layer 5-6: Synthesis and risk control")
 
     if strategy_type == "dual":
+        # Request 2x candidates so dedup can backfill freed slots
         short_recs = synthesize_agent_results(
             candidates, news_results, tech_results,
             strategy_type="short", regime=regime,
+            _dedup_pool_multiplier=2,
         )
         swing_recs = synthesize_agent_results(
             candidates, news_results, tech_results,
             strategy_type="swing", regime=regime,
+            _dedup_pool_multiplier=2,
         )
+        logger.info(
+            f"dual synthesis done: short={len(short_recs)} swing={len(swing_recs)} "
+            f"(before cross-dedup)"
+        )
+        short_recs, swing_recs = _cross_dedup_strategies(short_recs, swing_recs)
         recommendations = short_recs + swing_recs
         recommendations.sort(key=lambda x: x["conviction_score"], reverse=True)
+        logger.info(
+            f"dual final: {len(recommendations)} recommendations "
+            f"(short={len(short_recs)}, swing={len(swing_recs)})"
+        )
     else:
         recommendations = synthesize_agent_results(
             candidates, news_results, tech_results,

@@ -40,7 +40,7 @@ def _check_market_regime(market: str) -> dict:
     Levels: normal, cautious, bearish, crisis
 
     v6: Now includes macro yield curve data (US only) from core/macro_data.
-    Yield curve inversion + elevated VIX → escalate to bearish.
+    Yield curve inversion + elevated VIX -> escalate to bearish.
     """
     try:
         if market == "us_stock":
@@ -261,6 +261,7 @@ def run_daily_pipeline(
                 "candidate_count": 0,
                 "published_count": 0,
                 "items": [],
+                "empty_reason": "no_candidates",
             }
 
         # Phase 2: Layer 2 - Technical enrichment
@@ -284,10 +285,19 @@ def run_daily_pipeline(
                 "candidate_count": len(candidates),
                 "published_count": 0,
                 "items": [],
+                "empty_reason": "enrichment_failed",
             }
 
         # Phase 3: Layers 3-6 - Agent pipeline
-        max_recs = cfg.max_recommendations
+        # v9 fix: dual mode returns short + swing (already cross-deduped and each
+        # trimmed to its own top_n inside run_agent_pipeline); previously we
+        # truncated the combined list back to cfg.max_recommendations=5, which
+        # silently dropped half the recs and let duplicates (same ticker from
+        # short + swing with equal conviction) survive. Compute the cap per-mode.
+        if strategy_mode == "short_term_only":
+            max_recs = cfg.max_recommendations
+        else:  # dual
+            max_recs = cfg.synthesis.top_n_normal + cfg.swing.top_n_normal
         if regime["level"] == "crisis":
             max_recs = 0
             logger.warning(f"Market CRISIS mode - skipping all long recs for {market}")
@@ -302,6 +312,7 @@ def run_daily_pipeline(
                 "published_count": 0,
                 "regime": regime,
                 "items": [],
+                "empty_reason": "crisis_regime",
             }
 
         _progress(progress_cb, 30.0, f"Layers 3-6: Agent pipeline on {len(enriched)} candidates")
@@ -324,6 +335,7 @@ def run_daily_pipeline(
                 "published_count": 0,
                 "regime": regime,
                 "items": [],
+                "empty_reason": "no_signals",
             }
 
         top_items = analyzed[:max_recs]
@@ -352,6 +364,9 @@ def run_daily_pipeline(
             }
         pub_id = db.publish_recommendations(ref_date, market, admin_run, saved_items)
 
+        _wr_inserted = 0
+        _wr_skipped_noparams = 0
+        _wr_errors = 0
         for it in saved_items:
             try:
                 # Skip records without valid trading params (is_quality=False)
@@ -359,6 +374,7 @@ def run_daily_pipeline(
                 slp = it.get("stop_loss")
                 tpp = it.get("take_profit")
                 if not ep or not slp or not tpp:
+                    _wr_skipped_noparams += 1
                     continue
 
                 themes = it.get("themes", [])
@@ -388,10 +404,17 @@ def run_daily_pipeline(
                     "confidence": it.get("confidence", 0),
                     "sector": sector,
                 })
+                _wr_inserted += 1
             except Exception as e:
+                _wr_errors += 1
                 logger.warning(f"win_rate record {it.get('ticker')}: {e}")
 
-        # --- v3.x Cooldown: holding >5 days → 30-day cooldown ---
+        logger.info(
+            f"win_rate insert: {_wr_inserted}/{len(saved_items)} inserted "
+            f"(skipped_no_params={_wr_skipped_noparams}, errors={_wr_errors})"
+        )
+
+        # --- v3.x Cooldown: holding >5 days -> 30-day cooldown ---
         from datetime import timedelta as _td
         _cd_count = 0
         for it in saved_items:

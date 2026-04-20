@@ -26,6 +26,9 @@ class ScreeningConfig:
     min_pe: float = 0
     max_pb: float = 15.0
     max_daily_change_pct: float = 10.0
+    # v10: asymmetric daily-change filter
+    max_upside_today_pct: float = 5.0    # reject if today's change > +5%
+    reversal_trigger_pct: float = -8.0   # flag for reversal branch if <= -8%
     # v5: 5-factor model weights (must sum to 1.0)
     weight_acceleration: float = 0.25
     weight_volume_anomaly: float = 0.20
@@ -34,7 +37,8 @@ class ScreeningConfig:
     weight_fundamental: float = 0.15
     # Absolute quality gate
     min_absolute_score: float = 35.0
-    # Volatility fit — strategy-aware optimal range
+    # Volatility fit - strategy-aware optimal range (legacy, used when
+    # tiers.enabled=false; tier configs override this)
     optimal_vol_short: float = 0.025
     optimal_vol_swing: float = 0.018
     optimal_vol_width: float = 0.025
@@ -43,6 +47,50 @@ class ScreeningConfig:
     weight_trend: float = 0.25
     weight_quality: float = 0.20
     weight_volatility: float = 0.20
+
+
+@dataclass
+class TierConfig:
+    """Per market-cap tier settings (large/mid/small).
+
+    Each tier is independently screened and ranked, then the top
+    ``candidate_quota`` stocks from that tier are merged into the Layer-2
+    candidate list.  Final recommendations draw from per-tier quotas so
+    large caps don't get crowded out by small-cap volatility noise.
+    """
+    candidate_quota: int = 15
+    short_term_quota: int = 2
+    swing_quota: int = 1
+    optimal_vol_short: float = 0.025
+    optimal_vol_swing: float = 0.018
+    news_weight: float = 0.30
+    tech_weight: float = 0.55
+    fundamental_weight: float = 0.15
+
+
+@dataclass
+class TiersConfig:
+    """Container for per-tier configs."""
+    enabled: bool = False
+    large: TierConfig = field(default_factory=lambda: TierConfig(
+        candidate_quota=15, short_term_quota=2, swing_quota=2,
+        optimal_vol_short=0.018, optimal_vol_swing=0.012,
+        news_weight=0.20, tech_weight=0.55, fundamental_weight=0.25,
+    ))
+    mid: TierConfig = field(default_factory=lambda: TierConfig(
+        candidate_quota=15, short_term_quota=2, swing_quota=1,
+        optimal_vol_short=0.028, optimal_vol_swing=0.020,
+        news_weight=0.30, tech_weight=0.55, fundamental_weight=0.15,
+    ))
+    small: TierConfig = field(default_factory=lambda: TierConfig(
+        candidate_quota=10, short_term_quota=1, swing_quota=0,
+        optimal_vol_short=0.045, optimal_vol_swing=0.030,
+        news_weight=0.45, tech_weight=0.50, fundamental_weight=0.05,
+    ))
+
+    def get(self, tier: str) -> TierConfig:
+        """Return config for a tier name, falling back to mid defaults."""
+        return getattr(self, tier, self.mid) if tier in ("large", "mid", "small") else self.mid
 
 
 @dataclass
@@ -114,10 +162,10 @@ class SwingConfig:
     trailing_distance_pct: float = 0.35
     sl_max_pct: float = 0.10
     sl_min_pct: float = 0.015
-    # v7: Top-N output per regime
-    top_n_normal: int = 3
-    top_n_cautious: int = 3
-    top_n_bearish: int = 2
+    # v7-v8: Top-N output per regime (raised to match short_term: 5 each)
+    top_n_normal: int = 5
+    top_n_cautious: int = 5
+    top_n_bearish: int = 3
 
 
 @dataclass
@@ -218,6 +266,7 @@ class PipelineConfig:
     max_recommendations: int = 20
 
     screening: ScreeningConfig = field(default_factory=ScreeningConfig)
+    tiers: TiersConfig = field(default_factory=TiersConfig)
     synthesis: SynthesisConfig = field(default_factory=SynthesisConfig)
     short_term: ShortTermConfig = field(default_factory=ShortTermConfig)
     swing: SwingConfig = field(default_factory=SwingConfig)
@@ -269,10 +318,28 @@ class PipelineConfig:
         if fallback_raw:
             agent_cfg.fallback = _load_dc(FallbackConfig, fallback_raw)
 
+        # v10: tiers section (optional; falls back to TiersConfig defaults)
+        tiers_raw = pipe.get("tiers", {}) or {}
+        tiers_cfg = TiersConfig()
+        if tiers_raw:
+            tiers_cfg.enabled = bool(tiers_raw.get("enabled", False))
+            for tier_name in ("large", "mid", "small"):
+                sub = tiers_raw.get(tier_name, {})
+                if isinstance(sub, dict) and sub:
+                    # Overlay on the tier's default, preserving unspecified fields
+                    current = getattr(tiers_cfg, tier_name)
+                    merged_kwargs = {
+                        f.name: getattr(current, f.name)
+                        for f in current.__dataclass_fields__.values()
+                    }
+                    merged_kwargs.update({k: v for k, v in sub.items() if k in merged_kwargs})
+                    setattr(tiers_cfg, tier_name, _load_dc(TierConfig, merged_kwargs))
+
         return cls(
             max_candidates=int(pipe.get("max_candidates", cls.max_candidates)),
             max_recommendations=int(pipe.get("max_recommendations", cls.max_recommendations)),
             screening=_load_dc(ScreeningConfig, pipe.get("screening", {})),
+            tiers=tiers_cfg,
             synthesis=_load_dc(SynthesisConfig, pipe.get("synthesis", {})),
             short_term=_load_dc(ShortTermConfig, pipe.get("short_term", {})),
             swing=_load_dc(SwingConfig, pipe.get("swing", {})),

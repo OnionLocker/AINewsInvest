@@ -470,6 +470,9 @@ class Database:
             ("options_unusual_activity", "INTEGER DEFAULT 0"),
             ("insider_signal", "TEXT DEFAULT ''"),
             ("rr_warning", "INTEGER DEFAULT 0"),
+            # v10: market-cap tier ('large'/'mid'/'small') + reversal flag
+            ("market_cap_tier", "TEXT DEFAULT 'mid'"),
+            ("reversal_candidate", "INTEGER DEFAULT 0"),
         ]
         for table in ("published_recommendation_items", "daily_recommendation_items"):
             try:
@@ -1132,9 +1135,9 @@ class Database:
                      options_unusual_activity, insider_signal,
                      trailing_activation_price, trailing_distance_pct,
                      position_rationale, conviction_score,
-                     quality_tier)
+                     quality_tier, market_cap_tier, reversal_candidate)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run_id, item.get("ticker", ""), item.get("name", ""),
                  item.get("market", ""), item.get("strategy", "short_term"),
                  item.get("direction", "buy"), item.get("action", "hold"),
@@ -1172,7 +1175,9 @@ class Database:
                  item.get("trailing_distance_pct", 0),
                  item.get("position_rationale", ""),
                  item.get("conviction_score", 0),
-                 item.get("quality_tier", "")),
+                 item.get("quality_tier", ""),
+                 item.get("tier", "mid"),
+                 1 if item.get("reversal_candidate") else 0),
             )
 
     # ------------------------------------------------------------------

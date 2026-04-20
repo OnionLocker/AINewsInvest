@@ -4,6 +4,7 @@ Provides: quotes, K-lines, financials, news, index components.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -31,7 +32,9 @@ def to_yf_ticker(ticker: str, market: str) -> str:
     if market == "hk_stock":
         t = ticker.replace(".HK", "")
         return f"{t}.HK"
-    return ticker
+    # v9: Normalize US class-share separator. Wikipedia lists "BRK.B" but
+    # yfinance expects "BRK-B". Accept either format in the pool.
+    return ticker.replace(".", "-")
 
 
 # -- Quotes --
@@ -299,7 +302,7 @@ def get_options_signal(ticker: str, market: str) -> dict[str, Any] | None:
         pc_ratio = round(put_oi / max(call_oi, 1), 2)
         vol_pc_ratio = round(put_vol / max(call_vol, 1), 2)
 
-        # v6: Unusual activity detection — vol/OI ratio as proxy
+        # v6: Unusual activity detection - vol/OI ratio as proxy
         call_vol_ratio = round(call_vol / max(call_oi, 1), 2)
         put_vol_ratio = round(put_vol / max(put_oi, 1), 2)
         unusual_call = call_vol_ratio > 0.5   # Day vol > 50% of open interest
@@ -355,6 +358,26 @@ def get_index_components(index_symbol: str) -> list[dict]:
         return []
 
 
+_US_TICKER_RE = re.compile(r"^[A-Z][A-Z0-9\-]{0,5}$")
+
+
+def _clean_us_ticker(raw: str) -> str | None:
+    """Normalize a US ticker string to yfinance form, or return None if invalid.
+
+    - Wikipedia uses "BRK.B", yfinance uses "BRK-B" -> convert . to -
+    - Strip whitespace, uppercase
+    - Reject obvious garbage (empty, "nan", digits-only, too long, etc.)
+    """
+    if not raw:
+        return None
+    t = str(raw).strip().upper().replace(".", "-")
+    if not t or t == "NAN" or t in ("NA", "NONE"):
+        return None
+    if not _US_TICKER_RE.match(t):
+        return None
+    return t
+
+
 def _get_sp500_components() -> list[dict]:
     """Fetch S&P 500 components from Wikipedia."""
     try:
@@ -363,7 +386,7 @@ def _get_sp500_components() -> list[dict]:
         df = tables[0]
         results = []
         for _, row in df.iterrows():
-            ticker = str(row.get("Symbol", "")).strip()
+            ticker = _clean_us_ticker(row.get("Symbol", ""))
             name = str(row.get("Security", "")).strip()
             if ticker:
                 results.append({"ticker": ticker, "market": "us_stock", "name": name})
@@ -392,10 +415,11 @@ def _get_nasdaq100_components() -> list[dict]:
                 continue
             results = []
             for _, row in table.iterrows():
-                ticker = str(row[ticker_col]).strip()
+                ticker = _clean_us_ticker(row[ticker_col])
+                if not ticker:
+                    continue
                 name = str(row[name_col]).strip() if name_col else ticker
-                if ticker and ticker != "nan":
-                    results.append({"ticker": ticker, "market": "us_stock", "name": name})
+                results.append({"ticker": ticker, "market": "us_stock", "name": name})
             if results:
                 logger.info(f"Nasdaq-100: fetched {len(results)} components")
                 return results
@@ -592,7 +616,7 @@ def build_short_term_pool(top_n: int = 300) -> list[dict]:
     These mid-cap stocks ($2B-$30B) have higher volatility, ideal for
     short-term trading. Ranked by dollar volume, top N returned.
 
-    This is an OFFLINE operation — run via CLI, not during pipeline.
+    This is an OFFLINE operation - run via CLI, not during pipeline.
     """
     import time as _time
     from concurrent.futures import ThreadPoolExecutor, as_completed

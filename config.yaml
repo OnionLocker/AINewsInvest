@@ -62,26 +62,69 @@ scheduler:
 
 # Pipeline parameters
 pipeline:
-  max_candidates: 60
-  max_recommendations: 5
+  max_candidates: 40   # v9: only top-10 reach users, cut LLM token ~33%
+  max_recommendations: 5   # hard ceiling for single-strategy mode only.
+                           # dual mode uses per-tier quotas below.
+
+  # v10: Market-cap tiered screening.
+  # Stocks are partitioned by market cap; each tier is scored and ranked
+  # within itself (so small caps don't dominate via their larger % moves).
+  # The final candidate pool is drawn according to each tier's quota.
+  #
+  # Boundaries: Large >= $50B, Mid $10B-$50B, Small $2B-$10B.
+  # (These are re-derived from the actual SP500∪NDX∪SP400 distribution; when
+  # R2000 holdings are added, Small floor will drop to $500M.)
+  tiers:
+    enabled: true                 # set false to fall back to v9 flat scoring
+    large:
+      candidate_quota: 15         # # of candidates entering Layer 2 (LLM)
+      short_term_quota: 2         # final recommendations (short-term bucket)
+      swing_quota: 2              # final recommendations (swing bucket)
+      optimal_vol_short: 0.018    # 1.8%/day is "exciting" for a mega-cap
+      optimal_vol_swing: 0.012
+      news_weight: 0.20           # mega-cap news often priced in minutes
+      tech_weight: 0.55
+      fundamental_weight: 0.25    # fundamentals are reliable at scale
+    mid:
+      candidate_quota: 15
+      short_term_quota: 2
+      swing_quota: 1
+      optimal_vol_short: 0.028
+      optimal_vol_swing: 0.020
+      news_weight: 0.30           # mid-cap news highest signal/noise ratio
+      tech_weight: 0.55
+      fundamental_weight: 0.15
+    small:
+      candidate_quota: 10
+      short_term_quota: 1
+      swing_quota: 0              # small-cap swing is too noisy, short only
+      optimal_vol_short: 0.045
+      optimal_vol_swing: 0.030
+      news_weight: 0.45           # small-cap news drives most of the alpha
+      tech_weight: 0.50
+      fundamental_weight: 0.05    # small-cap financials are unreliable
 
   screening:
     min_market_cap: 1.0e9
     min_avg_volume: 500000
-    min_dollar_volume: 1.0e8       # $100M snapshot — Stage A fast pre-filter
-    min_avg_dollar_volume_20d: 2.0e8  # $200M 20-day avg — Stage B precise filter
-    min_turnover_ratio: 0.003    # 0.3% daily turnover — reject "dead money"
+    min_dollar_volume: 1.0e8       # $100M snapshot (Stage A fast pre-filter)
+    min_avg_dollar_volume_20d: 2.0e8  # $200M 20-day avg (Stage B precise)
+    min_turnover_ratio: 0.003
     max_pb: 15.0
-    max_daily_change_pct: 10.0
+    # v10: asymmetric daily-change filter (was symmetric ±10%)
+    # +N% -> already run up, chasing hurts R:R -> skip
+    # -N% -> potential reversal, send to reversal branch instead of rejecting
+    max_upside_today_pct: 5.0      # reject if today's change > +5%
+    reversal_trigger_pct: -8.0     # flag for reversal branch if <= -8%
+    max_daily_change_pct: 10.0     # legacy safety cap (still enforced)
     # v5: 5-factor model (sum = 1.0)
     weight_acceleration: 0.25
     weight_volume_anomaly: 0.20
     weight_trend_setup: 0.30
     weight_volatility_fit: 0.10
     weight_fundamental: 0.15
-    # Absolute quality gate 閳ワ拷 below this score, don't recommend at all
     min_absolute_score: 35.0
-    # Volatility fit 閳ワ拷 strategy-aware optimal daily volatility
+    # Legacy fallbacks (used only when tiers.enabled=false)
     optimal_vol_short: 0.025
     optimal_vol_swing: 0.018
     optimal_vol_width: 0.025
@@ -95,7 +138,7 @@ pipeline:
     adaptive_threshold_drop: 15
     adaptive_threshold_floor: 50
     cross_fill_factor: 0.3
-    # v7: Quality tier boundaries (conviction_score = combined × (conf/100)^0.7)
+    # v7: Quality tier boundaries (conviction_score = combined x (conf/100)^0.7)
     high_min_conviction: 42       # Full recommendation with trading params
     medium_min_conviction: 28     # Recommendation with caution label
     low_min_conviction: 15        # Watch-only, no trading params
@@ -109,13 +152,13 @@ pipeline:
     news_weight: 0.40
     tech_weight: 0.55
     fundamental_weight: 0.05
-    # v4: ATR-based TP/SL 閳ワ拷 these are FALLBACKS when ATR is unavailable
+    # v4: ATR-based TP/SL - these are FALLBACKS when ATR is unavailable
     default_stop_loss_pct: 0.97       # -3% (was -5%)
     default_take_profit_pct: 1.05     # +5% (was +8%)
     take_profit_2_pct: 1.08           # +8% (was +12%)
     # ATR multipliers for dynamic TP/SL
-    atr_sl_multiplier: 2.0            # SL = entry - 2.0 鑴� ATR (room to breathe)
-    atr_tp_multiplier: 3.0            # TP = entry + 3.0 鑴� ATR (R:R = 1.5)
+    atr_sl_multiplier: 2.0            # SL = entry - 2.0 x ATR (room to breathe)
+    atr_tp_multiplier: 3.0            # TP = entry + 3.0 x ATR (R:R = 1.5)
     # v3.x: Defensive multipliers for cautious/bearish regime
     atr_sl_multiplier_defensive: 1.5
     atr_tp_multiplier_defensive: 2.0

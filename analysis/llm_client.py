@@ -182,21 +182,53 @@ def _load_skill(skill_name: str) -> str:
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract JSON from LLM response, handling markdown code fences."""
+    """Extract JSON from LLM response, handling markdown fences and preamble.
+
+    Many LLMs prepend natural-language analysis before the JSON object.
+    Strategy: find the outermost balanced { ... } block via brace counting,
+    which is more robust than simple find/rfind.
+    """
     text = text.strip()
+    # Try markdown code fence first
     fence = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
     if fence:
-        text = fence.group(1).strip()
+        try:
+            return json.loads(fence.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    # Try full text as JSON
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        brace_start = text.find("{")
-        brace_end = text.rfind("}")
-        if brace_start >= 0 and brace_end > brace_start:
-            try:
-                return json.loads(text[brace_start : brace_end + 1])
-            except json.JSONDecodeError:
-                pass
+        pass
+    # Brace-counting: find the first top-level { ... } block
+    depth = 0
+    start = -1
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start >= 0:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    start = -1  # try next top-level block
     return None
 
 
@@ -227,9 +259,15 @@ def agent_analyze(
 
     data_text = json.dumps(payload, ensure_ascii=False, default=str)
 
+    _json_reminder = (
+        "\n\n---\nIMPORTANT: Respond with a SINGLE JSON object ONLY. "
+        "Do NOT include any text, explanation, or markdown before or after the JSON. "
+        "Start your response with { and end with }."
+    )
+
     messages = [
         {"role": "system", "content": skill_prompt},
-        {"role": "user", "content": data_text},
+        {"role": "user", "content": data_text + _json_reminder},
     ]
 
     for attempt in range(1 + max_retries):
@@ -248,6 +286,15 @@ def agent_analyze(
             return parsed
 
         logger.warning(f"agent_analyze({role}): JSON parse failed (attempt {attempt + 1}), raw[:200]={raw[:200]}")
+
+        # On retry, append the failed output and a stronger correction nudge
+        if attempt < max_retries:
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content":
+                "Your previous response was NOT valid JSON. "
+                "Output ONLY the JSON object, starting with { and ending with }. "
+                "No explanation, no markdown, no preamble."
+            })
 
     logger.error(f"agent_analyze({role}): all attempts exhausted")
     return None

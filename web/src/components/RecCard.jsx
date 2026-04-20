@@ -62,6 +62,27 @@ function QualityTierBadge({ tier }) {
   );
 }
 
+function MarketCapTierBadge({ tier }) {
+  // Shows market-cap tier so users can see scale context (mega vs mid vs small).
+  // Colors intentionally muted to avoid competing with the quality-tier badge.
+  const map = {
+    large: { label: "\u5927\u76d8", color: "#0F172A", bg: "rgba(15,23,42,0.06)",  title: "\u5e02\u503c \u2265 $50B \u7684\u5927\u76d8/\u5de8\u76d8\u80a1" },
+    mid:   { label: "\u4e2d\u76d8", color: "#334155", bg: "rgba(51,65,85,0.06)",  title: "\u5e02\u503c $10B\u2013$50B \u7684\u4e2d\u5e02\u503c\u80a1" },
+    small: { label: "\u5c0f\u76d8", color: "#7C2D12", bg: "rgba(124,45,18,0.07)", title: "\u5e02\u503c $2B\u2013$10B \u7684\u5c0f\u5e02\u503c\u80a1" },
+  };
+  const info = map[tier];
+  if (!info) return null;
+  return (
+    <span
+      className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+      style={{ color: info.color, background: info.bg }}
+      title={info.title}
+    >
+      {info.label}
+    </span>
+  );
+}
+
 function ThemeTag({ text }) {
   return (
     <span className="inline-flex items-center gap-1 text-sm font-medium text-secondary">
@@ -612,6 +633,15 @@ export default function RecCard({ item, rank }) {
             </span>
           )}
           <QualityTierBadge tier={item.quality_tier} />
+          <MarketCapTierBadge tier={item.market_cap_tier} />
+          {item.reversal_candidate ? (
+            <span
+              className="rounded-full border border-[#B45309]/30 bg-[#B45309]/10 px-2.5 py-0.5 text-xs font-bold text-[#B45309]"
+              title={"\u5f53\u65e5\u5927\u5e45\u4e0b\u8dcc\uff0c\u5df2\u901a\u8fc7\u8d85\u5356/\u653e\u91cf/\u57fa\u672c\u9762 3 \u91cd\u68c0\u9a8c"}
+            >
+              {"\u53cd\u8f6c\u5019\u9009"}
+            </span>
+          ) : null}
           {item.strategy === "swing" ? (
             <span className="rounded-full border border-brand/20 bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
               {"\u6ce2\u6bb5"} {item.holding_days}{"\u5929"}

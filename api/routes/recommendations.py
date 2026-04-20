@@ -147,15 +147,40 @@ async def market_today_recommendations(
         db = Database(SYSTEM_DB_PATH)
         try:
             run_info, items = db.get_published_recommendations(ref_date, market=mkt)
+
+            # Case A: today's run has not been executed yet -> show last published
             if not run_info:
                 last_run, last_items = db.get_latest_published(market=mkt)
                 if last_run:
                     _normalize_item_names(last_items)
                     return {
-                        "run": last_run, "items": last_items,
-                        "display_message": f"\u663e\u793a\u6700\u8fd1\u4e00\u6b21\u63a8\u8350 ({last_run.get('ref_date', '?')})",
+                        "run": last_run,
+                        "items": last_items,
+                        "empty_state": "pipeline_not_run_today",
+                        "display_message": (
+                            f"\u4eca\u65e5\u7ba1\u7ebf\u5c1a\u672a\u8fd0\u884c\uff0c"
+                            f"\u663e\u793a\u6700\u8fd1\u4e00\u6b21\u63a8\u8350 "
+                            f"({last_run.get('ref_date', '?')})"
+                        ),
                     }
-                return {"run": None, "items": [], "display_message": "\u6682\u65e0\u63a8\u8350\u6570\u636e"}
+                return {
+                    "run": None,
+                    "items": [],
+                    "empty_state": "no_data",
+                    "display_message": "\u6682\u65e0\u63a8\u8350\u6570\u636e",
+                }
+
+            # Case B: today's run executed but returned no items
+            if not items:
+                return {
+                    "run": run_info,
+                    "items": [],
+                    "empty_state": "no_signals_today",
+                    "display_message": (
+                        "\u4eca\u65e5\u7ba1\u7ebf\u5df2\u8fd0\u884c\uff0c"
+                        "\u672a\u53d1\u73b0\u7b26\u5408\u6761\u4ef6\u7684\u6807\u7684"
+                    ),
+                }
 
             _normalize_item_names(items)
 
@@ -169,7 +194,7 @@ async def market_today_recommendations(
             for item in items:
                 item["in_watchlist"] = (item["ticker"], item["market"]) in watch_tickers
 
-            return {"run": run_info, "items": items}
+            return {"run": run_info, "items": items, "empty_state": "ok"}
         finally:
             db.close()
 
