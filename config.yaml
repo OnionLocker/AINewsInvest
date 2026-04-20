@@ -26,7 +26,7 @@ llm:
   model: "openclaw/default"
   api_key: "1896f74b7ed4be3d81c1883434d9ae5ccaa673991ecdc2a0"
   temperature: 0.3
-  max_tokens: 4096
+  max_tokens: 8192   # raised from 4096 to avoid truncation of batched agent outputs
   timeout: 180
 
 # LLM Agent settings (6-layer: screen->enrich->news_agent->tech_agent->synthesis->risk_control)
@@ -59,6 +59,11 @@ scheduler:
   enabled: true
   us_run_time: "07:30"
   hk_run_time: ""
+  # v11: Stage-2 recalibration. At this time each trading day, the system
+  # fetches the real post-open price and recomputes entry/SL/TP. Tickers that
+  # gapped more than 3% vs Stage-1 reference are aborted. Leave empty to
+  # disable stage-2 (not recommended for US trading).
+  us_recalibrate_time: "09:35"
 
 # Pipeline parameters
 pipeline:

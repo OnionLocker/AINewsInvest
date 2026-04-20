@@ -127,13 +127,22 @@ def call_news_skill(
         logger.info(f"NewsSkill: {len(parsed.results)} results, regime={parsed.market_regime}")
         return parsed
     except Exception as e:
-        logger.warning(f"NewsSkill: parse error: {e}, falling back to legacy format")
+        logger.warning(f"NewsSkill: bulk validation failed ({e}), falling back to per-result parse")
         results = []
-        for r in response.get("results", []):
+        raw_results = response.get("results", []) or []
+        dropped: list[tuple[str, str]] = []
+        for r in raw_results:
+            ticker = (r or {}).get("ticker", "?") if isinstance(r, dict) else "?"
             try:
                 results.append(NewsSkillStockOutput.model_validate(r))
-            except Exception:
-                pass
+            except Exception as ve:
+                # v10.1: log dropped records so ops can see which tickers silently failed
+                dropped.append((str(ticker), str(ve)[:160]))
+        if dropped:
+            logger.warning(
+                f"NewsSkill: dropped {len(dropped)}/{len(raw_results)} records due to schema mismatch; "
+                f"examples: {dropped[:3]}"
+            )
         return NewsSkillResponse(
             market_regime=response.get("market_regime", "neutral"),
             results=results,

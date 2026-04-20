@@ -234,6 +234,8 @@ class SchedulerConfig:
     enabled: bool = False
     us_run_time: str = "07:30"
     hk_run_time: str = "07:30"
+    # v11: Two-stage entry pricing. Set to "" to disable stage-2 recalibration.
+    us_recalibrate_time: str = "09:35"
 
 
 @dataclass

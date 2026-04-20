@@ -770,6 +770,21 @@ class Database:
         )
         self._conn.commit()
 
+    def delete_pending_win_rate_records(self, run_date: str, market: str) -> int:
+        """Delete still-pending win_rate_records for a given (run_date, market).
+
+        Used by the recalibration pass so it can re-insert rows with the
+        re-computed entry/SL/TP without leaving stale pending entries behind.
+        Evaluated rows (outcome != 'pending') are kept intact.
+        """
+        cur = self._conn.execute(
+            "DELETE FROM win_rate_records "
+            "WHERE run_date=? AND market=? AND outcome='pending'",
+            (run_date, market),
+        )
+        self._conn.commit()
+        return cur.rowcount or 0
+
     def get_pending_evaluations(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM win_rate_records WHERE outcome = 'pending'"

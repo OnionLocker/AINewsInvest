@@ -56,7 +56,7 @@ def chat_completion(messages: list[dict[str, Any]], **kwargs: Any) -> str | None
         "temperature": kwargs.get("temperature", cfg.llm.temperature),
         "max_tokens": kwargs.get("max_tokens", cfg.llm.max_tokens),
     }
-    for k in ("top_p", "frequency_penalty", "presence_penalty", "stream"):
+    for k in ("top_p", "frequency_penalty", "presence_penalty", "stream", "response_format"):
         if k in kwargs:
             body[k] = kwargs[k]
 
@@ -76,8 +76,18 @@ def chat_completion(messages: list[dict[str, Any]], **kwargs: Any) -> str | None
             return str(content).strip() or None
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
-            if 500 <= status < 600 and attempt < max_retries:
-                wait = 2 ** (attempt + 1)
+            # 5xx server errors and 429 rate-limit are retryable with backoff.
+            # Other 4xx (400/401/403/404/422) are client-side and not retryable.
+            if (500 <= status < 600 or status == 429) and attempt < max_retries:
+                # 429: honor Retry-After header if provided, else exponential backoff with a floor
+                if status == 429:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after), 2 ** (attempt + 1)) if retry_after else 2 ** (attempt + 2)
+                    except (TypeError, ValueError):
+                        wait = 2 ** (attempt + 2)
+                else:
+                    wait = 2 ** (attempt + 1)
                 logger.warning(
                     f"LLM HTTP {status} (attempt {attempt + 1}/{1 + max_retries}), "
                     f"retrying in {wait}s: {e.response.text[:200]}"
@@ -85,6 +95,28 @@ def chat_completion(messages: list[dict[str, Any]], **kwargs: Any) -> str | None
                 time.sleep(wait)
                 continue
             logger.warning(f"LLM HTTP {status}: {e.response.text[:500]}")
+            # v10.1: if gateway rejects `response_format`, retry once without it
+            if (
+                status in (400, 422)
+                and "response_format" in body
+                and "response_format" in (e.response.text or "").lower()
+            ):
+                logger.info("LLM gateway rejected response_format; retrying without it")
+                body.pop("response_format", None)
+                try:
+                    with httpx.Client(timeout=cfg.llm.timeout) as client:
+                        r = client.post(_chat_url(), headers=_headers(), json=body)
+                    r.raise_for_status()
+                    data = r.json()
+                    choices = data.get("choices") or []
+                    if not choices:
+                        return None
+                    msg = choices[0].get("message") or {}
+                    content = msg.get("content")
+                    return str(content).strip() if content else None
+                except Exception as retry_err:
+                    logger.warning(f"LLM fallback-without-response_format also failed: {retry_err}")
+                    return None
             return None
         except _RETRYABLE_EXCEPTIONS as e:
             if attempt < max_retries:
@@ -251,6 +283,8 @@ def agent_analyze(
         logger.debug(f"agent_analyze({role}): LLM disabled")
         return None
 
+    cfg_max_tokens = get_config().llm.max_tokens or 4096
+
     try:
         skill_prompt = _load_skill(role)
     except FileNotFoundError as e:
@@ -274,7 +308,8 @@ def agent_analyze(
         raw = chat_completion(
             messages,
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=cfg_max_tokens,
+            response_format={"type": "json_object"},
         )
         if raw is None:
             logger.warning(f"agent_analyze({role}): LLM returned None (attempt {attempt + 1})")

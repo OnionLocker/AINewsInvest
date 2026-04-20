@@ -14,6 +14,7 @@ def cmd_serve(args):
         start_scheduler(
             us_time=cfg.scheduler.us_run_time,
             hk_time=cfg.scheduler.hk_run_time,
+            us_recalibrate_time=cfg.scheduler.us_recalibrate_time,
         )
 
     import uvicorn

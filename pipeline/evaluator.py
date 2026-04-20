@@ -28,6 +28,24 @@ from core.user import SYSTEM_DB_PATH
 from pipeline.config import get_config
 
 
+# v11: Per-trade round-trip cost model.
+# 0.3% total = 0.15% on entry (paying ask + slippage) + 0.15% on exit
+# (hitting bid + slippage). This covers a realistic zero-commission US-retail
+# account where bid-ask spread + market impact is the true cost. Applied only
+# to return_pct calculation so win/loss determination still uses raw prices
+# (the broker sees the raw TP/SL orders, not the cost-adjusted ones).
+_TRADE_COST_ONE_WAY = 0.0015  # 0.15% per fill
+_TRADE_COST_ROUND_TRIP = 2 * _TRADE_COST_ONE_WAY  # 0.30%
+
+
+def _apply_trade_cost(raw_return_pct: float) -> float:
+    """Deduct round-trip cost from a raw % return.
+
+    Works for both long and short since cost is symmetric.
+    """
+    return round(raw_return_pct - _TRADE_COST_ROUND_TRIP * 100, 2)
+
+
 def evaluate_pending_records() -> dict[str, Any]:
     """Check all pending records against current prices.
 
@@ -203,18 +221,18 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                     tp_dist = abs(low - tp1)
                     sl_dist = abs(high - effective_sl)
                     if tp_dist <= sl_dist:
-                        ret_pct = round((entry - tp1) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((entry - tp1) / entry * 100)
                         return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
                     else:
-                        ret_pct = round((entry - effective_sl) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((entry - effective_sl) / entry * 100)
                         outcome_str = "trailing_stop" if trailing_active else "loss"
                         return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_sl:
-                    ret_pct = round((entry - effective_sl) / entry * 100, 2)
+                    ret_pct = _apply_trade_cost((entry - effective_sl) / entry * 100)
                     outcome_str = "trailing_stop" if trailing_active else "loss"
                     return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_tp:
-                    ret_pct = round((entry - tp1) / entry * 100, 2)
+                    ret_pct = _apply_trade_cost((entry - tp1) / entry * 100)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
 
                 # Partial win detection
@@ -223,7 +241,7 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                     pullback = high - best_price
                     if pullback > gain * 0.5:
                         exit_p = round(entry - gain * 0.4, 2)
-                        ret_pct = round((entry - exit_p) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((entry - exit_p) / entry * 100)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
 
             else:  # LONG
@@ -244,18 +262,18 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                     tp_dist = abs(high - tp1)
                     sl_dist = abs(low - effective_sl)
                     if tp_dist <= sl_dist:
-                        ret_pct = round((tp1 - entry) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((tp1 - entry) / entry * 100)
                         return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
                     else:
-                        ret_pct = round((effective_sl - entry) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((effective_sl - entry) / entry * 100)
                         outcome_str = "trailing_stop" if trailing_active else "loss"
                         return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_sl:
-                    ret_pct = round((effective_sl - entry) / entry * 100, 2)
+                    ret_pct = _apply_trade_cost((effective_sl - entry) / entry * 100)
                     outcome_str = "trailing_stop" if trailing_active else "loss"
                     return {"outcome": outcome_str, "exit_price": effective_sl, "return_pct": ret_pct}
                 if hit_tp:
-                    ret_pct = round((tp1 - entry) / entry * 100, 2)
+                    ret_pct = _apply_trade_cost((tp1 - entry) / entry * 100)
                     return {"outcome": "win", "exit_price": tp1, "return_pct": ret_pct}
 
                 # Partial win detection
@@ -264,15 +282,15 @@ def _evaluate_single(rec: dict, today: datetime) -> dict[str, Any] | None:
                     pullback = best_price - low
                     if pullback > gain * 0.5:
                         exit_p = round(entry + gain * 0.4, 2)
-                        ret_pct = round((exit_p - entry) / entry * 100, 2)
+                        ret_pct = _apply_trade_cost((exit_p - entry) / entry * 100)
                         return {"outcome": "partial_win", "exit_price": exit_p, "return_pct": ret_pct}
 
         if holding_expired:
             last_close = float(hist["Close"].iloc[-1])
             if is_short:
-                ret_pct = round((entry - last_close) / entry * 100, 2)
+                ret_pct = _apply_trade_cost((entry - last_close) / entry * 100)
             else:
-                ret_pct = round((last_close - entry) / entry * 100, 2)
+                ret_pct = _apply_trade_cost((last_close - entry) / entry * 100)
 
             if is_short:
                 if last_close <= tp1:

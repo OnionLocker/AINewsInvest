@@ -5,7 +5,7 @@ import PriceChange from "../components/PriceChange";
 import RecCard from "../components/RecCard";
 import MarketSentimentPanel from "../components/MarketSentimentPanel";
 import Skeleton from "../components/Skeleton";
-import { Calendar, Clock, Trophy, TrendingUp, TrendingDown } from "lucide-react";
+import { Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 
 const MARKET_CFG = {
   us: {
@@ -97,6 +97,69 @@ function WinRateBanner({ market }) {
       <span className="ml-auto text-xs text-secondary hover:text-brand">{"\u67e5\u770b\u8be6\u60c5 \u2192"}</span>
     </Link>
   );
+}
+
+// v11: Macro event advisory banner (FOMC / CPI / NFP / PCE).
+// Red alert on day-of critical, amber warning on day-before, subtle info
+// chip for upcoming events within 5 days. US only.
+function MacroAdvisoryBanner({ advisory }) {
+  if (!advisory || advisory.market !== "us_stock") return null;
+  const today = advisory.today || [];
+  const tomorrow = advisory.tomorrow || [];
+  const upcoming = advisory.upcoming;
+
+  const labelForCode = (code) => ({
+    FOMC: "\u8054\u50a8\u5229\u7387\u51b3\u8bae",
+    CPI: "CPI \u901a\u80c0\u6570\u636e",
+    PCE: "PCE \u901a\u80c0\u6570\u636e",
+    NFP: "\u975e\u519c\u5c31\u4e1a",
+  }[code] || code);
+
+  const todayCritical = today.filter((e) => e.severity === "critical");
+  if (todayCritical.length > 0) {
+    const names = todayCritical.map((e) => labelForCode(e.code)).join(" / ");
+    return (
+      <div className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-600" />
+        <div>
+          <p className="font-bold text-red-700">{"\u4eca\u65e5\u91cd\u5927\u5b8f\u89c2\u4e8b\u4ef6\uff1a"}{names}</p>
+          <p className="mt-0.5 text-xs text-red-700/80">
+            {"\u5e02\u573a\u6ce2\u52a8\u7387\u5c06\u6025\u5267\u653e\u5927\uff0cATR-based \u6b62\u635f\u53ef\u80fd\u5931\u6548\u3002\u5df2\u81ea\u52a8\u5347\u7ea7 regime \u4e3a cautious\uff0c\u5efa\u8bae\u51cf\u534a\u6301\u4ed3\u6216\u7b49\u5f85\u6570\u636e\u516c\u5e03\u540e\u518d\u8fdb\u573a\u3002"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const tomorrowCritical = tomorrow.filter((e) => e.severity === "critical");
+  if (tomorrowCritical.length > 0) {
+    const names = tomorrowCritical.map((e) => labelForCode(e.code)).join(" / ");
+    return (
+      <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+        <div>
+          <p className="font-bold text-amber-700">{"\u660e\u65e5\u91cd\u5927\u5b8f\u89c2\u4e8b\u4ef6\uff1a"}{names}</p>
+          <p className="mt-0.5 text-xs text-amber-700/80">
+            {"\u7cfb\u7edf\u5df2\u5c06\u4eca\u65e5\u63a8\u8350\u6570\u91cf\u8150\u65a9\uff08\u5e02\u573a\u5e38\u5728\u91cd\u8981\u6570\u636e\u524d\u5065\u884c\u60c5\u6216\u6551\u5047\u7a81\u7834\uff09\u3002"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (upcoming && upcoming.days_until > 1 && upcoming.days_until <= 5) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-xs text-secondary">
+        <Calendar size={13} />
+        <span>
+          {upcoming.days_until} {"\u5929\u540e\uff1a"}
+          {labelForCode(upcoming.code)} ({upcoming.date})
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export default function RecommendationsPage({ market = "us" }) {
@@ -220,6 +283,9 @@ export default function RecommendationsPage({ market = "us" }) {
 
       {/* Win rate banner */}
       <WinRateBanner market={market} />
+
+      {/* v11: Macro event advisory (US only) */}
+      <MacroAdvisoryBanner advisory={(detail || today)?.macro_advisory} />
 
       {/* Display message */}
       {today?.display_message && !detail && (

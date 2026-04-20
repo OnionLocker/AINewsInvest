@@ -128,26 +128,71 @@ OUTPUT CONSTRAINTS:
 - Output STRICT JSON only, no extra text
 - analysis/risk_note in Chinese
 - Do NOT fabricate news or data not in the input
+- EVERY field below is REQUIRED. Missing fields cause the record to be dropped.
+- `news_score` and `sector_bonus` MUST be integers (not strings, not floats).
+- `sentiment` MUST be exactly one of: "bullish" | "neutral" | "bearish".
+- `action` MUST be exactly one of: "buy" | "hold" | "avoid" | "short".
+- `risk_flags` MUST be an array of Chinese strings (use [] if none).
+- `themes` MUST be an array of lowercase English strings (use [] if none).
+- `catalysts` / `risks` MUST be arrays of objects matching the shape below (use [] if none).
+- `event_flags` MUST be an object of boolean flags (use {} if none).
+- Numeric scores must fall in [0, 100]. `confidence` in catalysts is [0.0, 1.0].
 
-OUTPUT FORMAT:
+SCHEMA (enum values are fixed, do not invent new ones):
+
+- catalyst.type: "earnings" | "guidance" | "product" | "contract" | "regulatory" | "insider" | "macro" | "other"
+- catalyst.magnitude: "minor" | "moderate" | "major"
+- catalyst.impact: "positive" | "neutral" | "negative"
+- catalyst.time_horizon: "short_term" | "medium_term" | "long_term"
+- risk.severity: "minor" | "moderate" | "major"
+- risk.probability: "unlikely" | "possible" | "likely"
+- sector_sentiment: "positive" | "neutral" | "negative"
+
+OUTPUT FORMAT (ALL fields must appear in every result):
 
 {
   "agent_version": "news-edge-v3.0",
-  "market_regime": "risk_on" or "risk_off" or "neutral",
-  "market_summary": "1-2 sentence Chinese overview focusing on what is NOT priced in",
-  "hot_sectors": ["sector1", "sector2"],
+  "market_regime": "risk_on",
+  "market_summary": "中文一到两句：当前市场尚未完全定价的主要变量",
+  "hot_sectors": ["semiconductors", "biotech"],
   "results": [
     {
       "ticker": "AAPL",
       "news_score": 72,
       "sentiment": "bullish",
       "action": "buy",
-      "analysis": "Chinese: what the market is missing about this stock",
-      "risk_flags": [],
-      "risk_note": "",
+      "analysis": "中文一到三句：市场忽略的关键信息差",
+      "risk_flags": ["已被定价"],
+      "risk_note": "中文一到两句风险提示",
       "sector_bonus": 5,
-      "themes": ["consumer_tech"]
+      "themes": ["consumer_tech"],
+      "catalysts": [
+        {
+          "type": "guidance",
+          "description": "管理层上调全年营收指引",
+          "magnitude": "moderate",
+          "impact": "positive",
+          "confidence": 0.7,
+          "time_horizon": "medium_term"
+        }
+      ],
+      "risks": [
+        {
+          "type": "regulatory",
+          "description": "欧盟反垄断调查延期",
+          "severity": "minor",
+          "probability": "possible"
+        }
+      ],
+      "event_flags": {
+        "earnings_imminent": false,
+        "insider_selling": false,
+        "guidance_raised": true
+      },
+      "sector_sentiment": "positive"
     }
   ]
 }
+
+IMPORTANT: If you have no data for `catalysts`/`risks`/`risk_flags`/`themes`, output an empty array [], NOT null and NOT missing. If you have no data for `event_flags`, output an empty object {}.
 ```

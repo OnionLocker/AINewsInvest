@@ -124,6 +124,37 @@ def _check_market_regime(market: str) -> dict:
             "spread_trend": macro_data.get("spread_trend"),
         }
 
+        # --- v11: Macro event calendar (FOMC/CPI/PCE/NFP, US only) ---
+        # High-impact releases routinely cause 1-3% intraday swings that blow
+        # through ATR-based stops. Day-of critical event -> escalate to
+        # cautious; day-before critical -> flag so the runner can halve the
+        # recommendation quota downstream.
+        macro_events_today: list[dict] = []
+        macro_events_tomorrow: list[dict] = []
+        if market == "us_stock":
+            try:
+                from core.macro_calendar import (
+                    get_macro_events_on, get_macro_events_tomorrow,
+                    has_critical_event, has_critical_event_tomorrow,
+                )
+                today_ref = datetime.now(ZoneInfo(_MARKET_TZ[market])).strftime("%Y%m%d")
+                macro_events_today = get_macro_events_on(today_ref)
+                macro_events_tomorrow = get_macro_events_tomorrow(today_ref)
+
+                if has_critical_event(today_ref):
+                    flags.append("macro_event_today")
+                    # Even normal markets become cautious on FOMC/CPI days
+                    level = max(level, "cautious",
+                                key=["normal", "cautious", "bearish", "crisis"].index)
+                if has_critical_event_tomorrow(today_ref):
+                    flags.append("macro_event_tomorrow")
+                    # Do not escalate regime; runner will halve rec quota instead.
+            except Exception as e:
+                logger.debug(f"Macro calendar check failed: {e}")
+
+        details["macro_events_today"] = macro_events_today
+        details["macro_events_tomorrow"] = macro_events_tomorrow
+
         logger.info(
             f"Market regime {market}: {level} | "
             f"1d={daily_change:+.1f}% 5d={five_day_change:+.1f}% VIX={vix_val:.0f} "
@@ -141,6 +172,65 @@ def _check_market_regime(market: str) -> dict:
 def _ref_date_for_market(market: str) -> str:
     tz_name = _MARKET_TZ.get(market, "America/New_York")
     return datetime.now(ZoneInfo(tz_name)).strftime("%Y%m%d")
+
+
+def _apply_earnings_blackout(
+    candidates: list[dict],
+    ref_date: str,
+    days_before: int = 2,
+    days_after: int = 1,
+) -> list[dict]:
+    """Drop US candidates whose next earnings date falls in the blackout window.
+
+    Blackout = [T - days_before, T + days_after] around the earnings release.
+    Earnings weeks routinely produce 5-10% single-day moves which completely
+    invalidate ATR-based stop-losses. Entering during this window is reckless
+    regardless of how strong the signal looks on other dimensions.
+
+    The cache in ``core.earnings_calendar`` keeps yfinance calls bounded.
+    Any ticker whose earnings lookup fails falls back to "no blackout" so an
+    intermittent data outage never silently blocks the full pipeline.
+    """
+    try:
+        from core.earnings_calendar import is_in_earnings_blackout, days_until_earnings
+    except Exception as e:
+        logger.warning(f"earnings_calendar import failed, skipping blackout: {e}")
+        return candidates
+
+    kept: list[dict] = []
+    dropped: list[tuple[str, int]] = []
+    for c in candidates:
+        ticker = c.get("ticker")
+        if not ticker:
+            continue
+        try:
+            blocked = is_in_earnings_blackout(
+                ticker, market="us_stock", ref_date=ref_date,
+                days_before=days_before, days_after=days_after,
+            )
+        except Exception as e:
+            logger.debug(f"earnings lookup failed for {ticker}: {e}")
+            blocked = False
+        if blocked:
+            try:
+                du = days_until_earnings(ticker, "us_stock", ref_date)
+            except Exception:
+                du = None
+            dropped.append((str(ticker), du if du is not None else 0))
+            continue
+        kept.append(c)
+
+    if dropped:
+        logger.warning(
+            f"Earnings blackout: dropped {len(dropped)}/{len(candidates)} candidates "
+            f"(window T-{days_before}..T+{days_after}); examples: {dropped[:5]}"
+        )
+    else:
+        logger.info(
+            f"Earnings blackout: 0 candidates dropped "
+            f"(window T-{days_before}..T+{days_after})"
+        )
+    return kept
 
 
 def _progress(
@@ -264,6 +354,23 @@ def run_daily_pipeline(
                 "empty_reason": "no_candidates",
             }
 
+        # v11: Earnings blackout filter (US only).
+        # Drop any candidate whose next earnings date falls within T-2..T+1 of
+        # ref_date. yfinance earnings_dates coverage for HK stocks is poor, so
+        # we skip the filter for hk_stock to avoid false rejections.
+        if market == "us_stock":
+            candidates = _apply_earnings_blackout(candidates, ref_date)
+            if not candidates:
+                _progress(progress_cb, 100.0, "All candidates in earnings blackout")
+                return {
+                    "ref_date": ref_date,
+                    "market": market,
+                    "candidate_count": 0,
+                    "published_count": 0,
+                    "items": [],
+                    "empty_reason": "earnings_blackout",
+                }
+
         # Phase 2: Layer 2 - Technical enrichment
         # Reuse K-line data from Layer 1 if available, fetch missing ones
         _progress(progress_cb, 20.0, f"Layer 2: Enriching {len(candidates)} candidates")
@@ -302,6 +409,15 @@ def run_daily_pipeline(
             max_recs = 0
             logger.warning(f"Market CRISIS mode - skipping all long recs for {market}")
         # v7: bearish/cautious/normal handled by synthesis quality tier logic
+
+        # v11: Halve recommendation quota the day before a critical macro release
+        # (FOMC / CPI). Market often front-runs these events with fake breakouts.
+        if "macro_event_tomorrow" in regime.get("flags", []) and max_recs > 0:
+            max_recs = max(1, max_recs // 2)
+            logger.warning(
+                f"Critical macro event tomorrow - halving max_recs to {max_recs} "
+                f"for {market}"
+            )
 
         if regime["level"] == "crisis" and market == "hk_stock":
             _progress(progress_cb, 100.0, "Market crisis - no recommendations")
@@ -525,3 +641,298 @@ def _cache_market_sentiment(db: Database, market: str):
 
     db.save_market_sentiment(market, result)
     logger.info(f"Market sentiment cached for {market}: fg={fear_greed['value']}, breadth={total}")
+
+
+# ---------------------------------------------------------------------------
+# v11: Two-stage entry pricing
+#
+# Stage 1 (pre-market, e.g. 07:30 ET): initial pipeline run produces
+# recommendations using pre-market / previous-close reference prices. Entry/
+# SL/TP computed against that reference are an *approximation*.
+#
+# Stage 2 (post-open, e.g. 09:35 ET): recalibrate_trade_params pulls the real
+# 09:35 price from yfinance intraday bars, recomputes entry/SL/TP against the
+# true open, and either:
+#   - Updates the recommendation in place (if gap-up/down is tolerable), OR
+#   - Marks it "aborted" (entry/SL/TP zeroed + _rejected flag) if the stock
+#     gapped more than the configured tolerance vs Stage 1 reference.
+# ---------------------------------------------------------------------------
+
+_GAP_ABORT_THRESHOLD = 0.03  # 3% gap vs stage-1 reference -> abort
+
+
+def _fetch_open_price(ticker: str, market: str) -> float | None:
+    """Return the 09:35 ET price (close of the first 5-minute bar).
+
+    Falls back to regularMarketOpen / last_price if intraday bars are
+    unavailable. Returns None on any failure.
+    """
+    from core.data_source import to_yf_ticker
+    symbol = to_yf_ticker(ticker, market)
+    try:
+        t = yf.Ticker(symbol)
+        # Try 5-minute bars first; yfinance returns OHLCV for the current
+        # trading session when called intraday.
+        intraday = t.history(period="1d", interval="5m")
+        if intraday is not None and not intraday.empty:
+            # Close of the first 5-min bar is the 09:35 ET price
+            return float(intraday["Close"].iloc[0])
+        # Fallback: regular market open from fast_info
+        info = t.fast_info
+        op = getattr(info, "open", None) or getattr(info, "last_price", None)
+        return float(op) if op else None
+    except Exception as e:
+        logger.debug(f"open price fetch failed {symbol}: {e}")
+        return None
+
+
+def recalibrate_trade_params(
+    market: str = "us_stock",
+    ref_date: str | None = None,
+    gap_abort_threshold: float = _GAP_ABORT_THRESHOLD,
+) -> dict:
+    """Stage 2 of the two-stage entry pricing.
+
+    Re-prices every published recommendation for today using the real
+    post-open price, then writes the new entry/SL/TP back into the DB and
+    replaces the pending win_rate_records so win-rate tracking uses realistic
+    targets.
+
+    Returns a summary dict for logging / API consumption.
+    """
+    if market != "us_stock":
+        logger.info(f"recalibrate: skipping non-US market {market}")
+        return {"market": market, "skipped": "non_us"}
+
+    if ref_date is None:
+        ref_date = _ref_date_for_market(market)
+
+    from pipeline.agents import _compute_trade_params, _compute_short_trade_params
+    cfg = get_config()
+
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        # Read admin (daily) + published recommendations for today
+        admin_run, admin_items = db.get_daily_recommendations(ref_date, market=market)
+        pub_run, pub_items = db.get_published_recommendations(ref_date, market=market)
+
+        if not admin_items and not pub_items:
+            logger.info(f"recalibrate: no recommendations to recalibrate for {ref_date}/{market}")
+            return {"market": market, "ref_date": ref_date, "recalibrated": 0,
+                    "aborted": 0, "skipped": "no_items"}
+
+        # Snapshot Stage-1 reference prices from the current rows so we can
+        # detect gap abort. `price` column holds the Stage-1 quote.
+        stage1_prices: dict[str, float] = {}
+        for it in admin_items:
+            try:
+                stage1_prices[it["ticker"]] = float(it.get("price") or 0)
+            except (TypeError, ValueError):
+                pass
+
+        stats = {"recalibrated": 0, "aborted_gap": 0, "aborted_price_fail": 0,
+                 "unchanged": 0}
+        updated_admin: list[dict] = []
+
+        for it in admin_items:
+            ticker = it["ticker"]
+            item = dict(it)  # copy
+
+            open_price = _fetch_open_price(ticker, market)
+            stage1_price = stage1_prices.get(ticker, 0)
+
+            # Price fetch failed entirely -> keep Stage-1 params but mark
+            # with a warning flag so the UI can show "no recalibration"
+            if open_price is None or open_price <= 0:
+                item["_recalibrated"] = False
+                item["_recalibration_status"] = "price_unavailable"
+                stats["aborted_price_fail"] += 1
+                updated_admin.append(item)
+                continue
+
+            # Gap check: if open deviated > threshold from Stage-1 reference,
+            # abort. ATR-based targets are no longer reliable.
+            if stage1_price > 0:
+                gap = abs(open_price - stage1_price) / stage1_price
+                if gap > gap_abort_threshold:
+                    item["_recalibrated"] = False
+                    item["_recalibration_status"] = "gap_abort"
+                    item["_gap_pct"] = round(gap * 100, 2)
+                    # Zero out trade params so evaluator / UI treat as
+                    # rejected and do not track win-rate against stale numbers
+                    item["entry_price"] = 0
+                    item["entry_2"] = 0
+                    item["stop_loss"] = 0
+                    item["take_profit"] = 0
+                    item["take_profit_2"] = 0
+                    item["take_profit_3"] = 0
+                    stats["aborted_gap"] += 1
+                    updated_admin.append(item)
+                    logger.warning(
+                        f"recalibrate abort {ticker}: gap={gap*100:.2f}% "
+                        f"(stage1={stage1_price:.2f} open={open_price:.2f})"
+                    )
+                    continue
+
+            # Normal recalibration path
+            strategy = str(item.get("strategy", "short_term"))
+            strategy_type = "swing" if strategy == "swing" else "short"
+            action = str(item.get("action", "buy"))
+            direction = str(item.get("direction", "buy"))
+            is_breakout = bool(item.get("is_breakout", False))
+            regime_level = str(item.get("regime_level", "normal"))
+
+            # Rebuild the minimal enriched dict _compute_trade_params needs.
+            enriched = {
+                "ma20": item.get("ma20"),
+                "atr_20d": item.get("atr_20d"),
+                "volatility_class": item.get("volatility_class", "medium"),
+                "support_levels": _maybe_json_list(item.get("support_levels")),
+                "resistance_levels": _maybe_json_list(item.get("resistance_levels")),
+                "support_hold_strength": item.get("support_hold_strength", "untested"),
+            }
+
+            try:
+                if direction == "short":
+                    params = _compute_short_trade_params(
+                        open_price, enriched,
+                        strategy_type=strategy_type,
+                        regime_level=regime_level,
+                    )
+                else:
+                    params = _compute_trade_params(
+                        open_price, enriched,
+                        action=action,
+                        strategy_type=strategy_type,
+                        is_breakout=is_breakout,
+                        regime_level=regime_level,
+                    )
+            except Exception as e:
+                logger.warning(f"recalibrate compute failed {ticker}: {e}")
+                item["_recalibrated"] = False
+                item["_recalibration_status"] = "compute_failed"
+                updated_admin.append(item)
+                continue
+
+            # Write new prices back; preserve everything else
+            item["price"] = round(open_price, 4)
+            item["entry_price"] = params.get("entry_price", 0)
+            item["entry_2"] = params.get("entry_2", 0)
+            item["stop_loss"] = params.get("stop_loss", 0)
+            item["take_profit"] = params.get("take_profit", 0)
+            item["take_profit_2"] = params.get("take_profit_2", 0)
+            item["take_profit_3"] = params.get("take_profit_3", 0)
+            item["holding_days"] = params.get(
+                "holding_days", item.get("holding_days"))
+            item["trailing_activation_price"] = params.get(
+                "trailing_activation_price", item.get("trailing_activation_price"))
+            item["trailing_distance_pct"] = params.get(
+                "trailing_distance_pct", item.get("trailing_distance_pct"))
+            item["_recalibrated"] = True
+            item["_recalibration_status"] = "ok"
+            if params.get("_rejected"):
+                # Recalibrated but R:R no longer viable -> zero params
+                item["entry_price"] = 0
+                item["stop_loss"] = 0
+                item["take_profit"] = 0
+                item["_recalibration_status"] = "rr_rejected_post_open"
+                stats["aborted_gap"] += 1  # accounted in aborted bucket
+            else:
+                stats["recalibrated"] += 1
+            updated_admin.append(item)
+
+        # Persist: overwrite both daily + published rows with refreshed items.
+        # save_daily_recommendation_run already does DELETE+INSERT atomically.
+        _meta = {
+            "strategy": (admin_run or {}).get("strategy", "dual"),
+            "source_count": (admin_run or {}).get("source_count", 0),
+            "candidate_count": (admin_run or {}).get("candidate_count", 0),
+            "trigger_source": "recalibration",
+            "trigger_note": f"stage2_open_recalibration @ {datetime.now().isoformat()}",
+        }
+        db.save_daily_recommendation_run(ref_date, market, updated_admin, **_meta)
+
+        # Re-publish with the new items
+        _admin_run_refreshed, _admin_items_refreshed = db.get_daily_recommendations(
+            ref_date, market=market)
+        if _admin_run_refreshed:
+            db.publish_recommendations(ref_date, market,
+                                       _admin_run_refreshed, _admin_items_refreshed)
+
+        # Reset pending win-rate records for today and re-insert with new numbers
+        deleted = db.delete_pending_win_rate_records(ref_date, market)
+        _wr_inserted = 0
+        st = cfg.short_term
+        for it in _admin_items_refreshed:
+            ep = it.get("entry_price")
+            slp = it.get("stop_loss")
+            tpp = it.get("take_profit")
+            if not ep or not slp or not tpp:
+                continue
+            try:
+                themes = it.get("themes", [])
+                if isinstance(themes, str):
+                    try:
+                        themes = json.loads(themes) if themes.strip() else []
+                    except Exception:
+                        themes = []
+                elif themes is None:
+                    themes = []
+                sector = themes[0] if themes else ""
+                db.save_win_rate_record({
+                    "run_date": ref_date,
+                    "ticker": it["ticker"],
+                    "name": it["name"],
+                    "market": it["market"],
+                    "strategy": it.get("strategy", "short_term"),
+                    "direction": it.get("direction", "buy"),
+                    "entry_price": float(it.get("entry_price") or 0),
+                    "stop_loss": float(it.get("stop_loss") or 0),
+                    "take_profit": float(it.get("take_profit") or 0),
+                    "holding_days": int(it.get("holding_days")
+                                        or st.default_holding_days),
+                    "news_score": it.get("news_score", 0),
+                    "tech_score": it.get("tech_score", 0),
+                    "fundamental_score": it.get("fundamental_score", 0),
+                    "combined_score": it.get("combined_score", 0),
+                    "confidence": it.get("confidence", 0),
+                    "sector": sector,
+                })
+                _wr_inserted += 1
+            except Exception as e:
+                logger.warning(f"recalibrate win_rate reinsert {it.get('ticker')}: {e}")
+
+        logger.info(
+            f"Recalibration {ref_date}/{market}: "
+            f"recalibrated={stats['recalibrated']}, "
+            f"aborted_gap={stats['aborted_gap']}, "
+            f"aborted_price_fail={stats['aborted_price_fail']}, "
+            f"win_rate deleted_pending={deleted} reinserted={_wr_inserted}"
+        )
+        return {
+            "market": market,
+            "ref_date": ref_date,
+            **stats,
+            "win_rate_deleted": deleted,
+            "win_rate_reinserted": _wr_inserted,
+        }
+    finally:
+        db.close()
+
+
+def _maybe_json_list(val) -> list:
+    """Accept either list, JSON string, or None; return list."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return []
+        try:
+            parsed = json.loads(s)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:
+            return []
+    return []

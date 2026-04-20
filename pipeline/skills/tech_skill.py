@@ -114,13 +114,22 @@ def call_tech_skill(
         logger.info(f"TechSkill: {len(parsed.results)} results")
         return parsed
     except Exception as e:
-        logger.warning(f"TechSkill: parse error: {e}, trying per-result parse")
+        logger.warning(f"TechSkill: bulk validation failed ({e}), trying per-result parse")
         results = []
-        for r in response.get("results", []):
+        raw_results = response.get("results", []) or []
+        dropped: list[tuple[str, str]] = []
+        for r in raw_results:
+            ticker = (r or {}).get("ticker", "?") if isinstance(r, dict) else "?"
             try:
                 results.append(TechSkillStockOutput.model_validate(r))
-            except Exception:
-                pass
+            except Exception as ve:
+                # v10.1: log dropped records so ops can see which tickers silently failed
+                dropped.append((str(ticker), str(ve)[:160]))
+        if dropped:
+            logger.warning(
+                f"TechSkill: dropped {len(dropped)}/{len(raw_results)} records due to schema mismatch; "
+                f"examples: {dropped[:3]}"
+            )
         return TechSkillResponse(results=results)
 
 

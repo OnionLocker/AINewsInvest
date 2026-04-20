@@ -560,9 +560,19 @@ function SignalBadges({ item }) {
   }
   const eda = item.earnings_days_away;
   const eds = item.earnings_date_str;
-  if (eda != null && eda >= 0 && eda <= 10) {
+  // v11: Widened window (was 0..10) so swing holders see upcoming earnings
+  // that will fall within their holding period. Red <= 3 days, amber otherwise.
+  if (eda != null && eda >= -1 && eda <= 14) {
     const eColor = eda <= 3 ? "#DC2626" : "#D97706";
-    badges.push({ text: `${eda}\u5929\u540e\u8d22\u62a5${eds ? ` (${eds})` : ""}`, color: eColor, icon: Calendar });
+    let label;
+    if (eda < 0) {
+      label = `\u8d22\u62a5\u521a\u516c\u5e03${eds ? ` (${eds})` : ""}`;
+    } else if (eda === 0) {
+      label = `\u4eca\u65e5\u8d22\u62a5${eds ? ` (${eds})` : ""}`;
+    } else {
+      label = `${eda}\u5929\u540e\u8d22\u62a5${eds ? ` (${eds})` : ""}`;
+    }
+    badges.push({ text: label, color: eColor, icon: Calendar });
   }
   if (badges.length === 0) return null;
   return (

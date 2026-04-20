@@ -194,11 +194,42 @@ async def market_today_recommendations(
             for item in items:
                 item["in_watchlist"] = (item["ticker"], item["market"]) in watch_tickers
 
-            return {"run": run_info, "items": items, "empty_state": "ok"}
+            # v11: Attach today's macro-event advisory (US only; HK calendar
+            # is not modeled yet). Computed on demand from the in-memory
+            # schedule so we do not need to persist it per-run.
+            macro_advisory = _compute_macro_advisory(mkt, ref_date)
+
+            return {
+                "run": run_info,
+                "items": items,
+                "empty_state": "ok",
+                "macro_advisory": macro_advisory,
+            }
         finally:
             db.close()
 
     return await run_in_threadpool(_work)
+
+
+def _compute_macro_advisory(market: str, ref_date: str) -> dict:
+    """Return today/tomorrow macro-event list + next upcoming for the UI."""
+    if market != "us_stock":
+        return {"market": market, "today": [], "tomorrow": [], "upcoming": None}
+    try:
+        from core.macro_calendar import (
+            get_macro_events_on, get_macro_events_tomorrow, get_next_macro_event,
+        )
+        today = get_macro_events_on(ref_date)
+        tomorrow = get_macro_events_tomorrow(ref_date)
+        upcoming = get_next_macro_event(ref_date, horizon_days=10)
+        return {
+            "market": market,
+            "today": today,
+            "tomorrow": tomorrow,
+            "upcoming": upcoming,
+        }
+    except Exception:
+        return {"market": market, "today": [], "tomorrow": [], "upcoming": None}
 
 
 @router.get("/recommendations/{market}/history")

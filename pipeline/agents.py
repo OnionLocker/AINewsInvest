@@ -497,13 +497,24 @@ def fallback_technical_scores(
                 elif obv_trend == "bearish":
                     score -= 3.0 * regime_bear_mult
 
-        # --- v6: Options signal scoring (DISABLED - no historical percentile
-        #     data to validate; raw PCR/unusual-volume too noisy for scoring.
-        #     Data is still fetched & stored for future use.) ---
-        # options = c.get("options_data") or {}
-        # pc_ratio = options.get("put_call_ratio")
-        # unusual_call = options.get("unusual_call_activity", False)
-        # unusual_put = options.get("unusual_put_activity", False)
+        # --- v11: Options signal scoring (ENABLED via percentile).
+        # Raw PCR is noisy (mega-caps vs biotech have different baselines), so
+        # we use each ticker's own 30-day PCR percentile as the signal. See
+        # core/options_history.py for store + logic.
+        options_data = c.get("options_data") or {}
+        opts_signal_info: dict | None = None
+        if options_data:
+            try:
+                from core.options_history import compute_options_signal
+                opts_signal_info = compute_options_signal(ticker, options_data)
+                delta = int(opts_signal_info.get("score_delta", 0))
+                if delta:
+                    score += delta
+                rf = opts_signal_info.get("risk_flag")
+                if rf and rf not in risk_flags:
+                    risk_flags.append(rf)
+            except Exception as e:
+                logger.debug(f"options signal failed {ticker}: {e}")
 
         score = max(0, min(100, int(round(score))))
 
@@ -532,6 +543,8 @@ def fallback_technical_scores(
             "macd_histogram": macd_hist_val,
             "bollinger_position": bb_pos_val,
             "obv_trend": obv_trend_val,
+            # v11: attach options signal so synthesis/UI can surface it
+            "options_signal_info": opts_signal_info,
         })
 
     return results
@@ -1282,6 +1295,25 @@ def synthesize_agent_results(
             and market_str == "us_stock"
         )
 
+        # --- v11: SSR (Short Sale Restriction) check ---
+        # SEC Regulation SHO Rule 201: if a US stock drops >=10% from the
+        # prior day's close, short selling is restricted for the remainder
+        # of that day AND all of the next trading day. Our screening runs
+        # pre-market, so `change_pct` already represents the prior completed
+        # day's move vs the day before it; a -10% reading means SSR is
+        # active for today's session.
+        if is_short:
+            prior_change = _safe_float(c.get("change_pct", 0))
+            if prior_change <= -10.0:
+                logger.info(
+                    f"SSR triggered for {c.get('ticker')}: "
+                    f"prior day {prior_change:.2f}% -> dropping short recommendation"
+                )
+                # Don't fall through to a long recommendation either: the
+                # analyst signal was bearish, flipping direction would be
+                # dishonest. Just skip this candidate entirely.
+                continue
+
         # --- FIX 4: Route to breakout vs pullback entry ---
         signals = c.get("signals", {})
         is_breakout = (
@@ -1749,7 +1781,7 @@ def _cross_dedup_strategies(
 # Main agent pipeline entry point
 # ---------------------------------------------------------------------------
 
-LLM_BATCH_SIZE = 10
+LLM_BATCH_SIZE = 5  # v10.1: halved (was 10) to avoid max_tokens truncation on verbose JSON outputs
 
 
 def _batched_news_agent(
