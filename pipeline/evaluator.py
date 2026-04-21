@@ -355,3 +355,142 @@ def get_underperforming_sectors(
         return []
     finally:
         db.close()
+
+
+def compute_dimensional_win_rates(lookback_days: int = 60) -> dict[str, dict]:
+    """Compute win rates grouped by (tier, strategy, regime_level).
+
+    Returns dict like:
+      {"large|short_term|normal": {"win_rate": 0.55, "count": 20}, ...}
+
+    Only includes groups with completed trades (win/loss).
+    """
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        cutoff = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y%m%d")
+        # Check if tier and regime_level columns exist
+        cols = [c[1] for c in db._conn.execute("PRAGMA table_info(win_rate_records)").fetchall()]
+        has_tier = "tier" in cols
+        has_regime = "regime_level" in cols
+
+        if not has_tier or not has_regime:
+            logger.debug("dimensional win-rates: tier/regime_level columns not yet in DB")
+            return {}
+
+        rows = db._conn.execute("""
+            SELECT tier, strategy, regime_level,
+                   COUNT(*) as cnt,
+                   SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins
+            FROM win_rate_records
+            WHERE outcome IN ('win', 'loss')
+              AND run_date >= ?
+              AND tier IS NOT NULL
+              AND regime_level IS NOT NULL
+            GROUP BY tier, strategy, regime_level
+        """, (cutoff,)).fetchall()
+
+        result: dict[str, dict] = {}
+        for tier, strategy, regime, cnt, wins in rows:
+            key = f"{tier}|{strategy}|{regime}"
+            result[key] = {
+                "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                "count": cnt,
+                "wins": wins,
+            }
+
+        if result:
+            logger.info(f"Dimensional win-rates: {len(result)} groups over {lookback_days}d")
+        return result
+    except Exception as e:
+        logger.debug(f"Dimensional win-rates failed: {e}")
+        return {}
+    finally:
+        db.close()
+
+
+def check_parameter_drift(lookback_days: int = 30, threshold_pp: float = 10.0) -> dict:
+    """Compare recent win-rate vs prior period to detect performance drift.
+
+    Checks the last `lookback_days` vs the preceding `lookback_days`.
+    If overall or any dimensional win-rate drops by more than `threshold_pp`
+    percentage points, returns drifted=True with details.
+    """
+    db = Database(SYSTEM_DB_PATH)
+    try:
+        now = datetime.now()
+        recent_start = (now - timedelta(days=lookback_days)).strftime("%Y%m%d")
+        prior_start = (now - timedelta(days=lookback_days * 2)).strftime("%Y%m%d")
+
+        def _win_rate_in_range(start: str, end: str) -> tuple[int, int]:
+            row = db._conn.execute("""
+                SELECT COUNT(*) as cnt,
+                       SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins
+                FROM win_rate_records
+                WHERE outcome IN ('win', 'loss')
+                  AND run_date >= ? AND run_date < ?
+            """, (start, end)).fetchone()
+            return (row[0] or 0, row[1] or 0)
+
+        recent_cnt, recent_wins = _win_rate_in_range(recent_start, now.strftime("%Y%m%d"))
+        prior_cnt, prior_wins = _win_rate_in_range(prior_start, recent_start)
+
+        if recent_cnt < 5 or prior_cnt < 5:
+            return {"drifted": False, "reason": "insufficient_data",
+                    "recent_count": recent_cnt, "prior_count": prior_cnt}
+
+        recent_wr = recent_wins / recent_cnt * 100
+        prior_wr = prior_wins / prior_cnt * 100
+        drop = prior_wr - recent_wr
+
+        drifted = drop > threshold_pp
+        details = {
+            "recent_win_rate": round(recent_wr, 1),
+            "prior_win_rate": round(prior_wr, 1),
+            "drop_pp": round(drop, 1),
+            "recent_count": recent_cnt,
+            "prior_count": prior_cnt,
+        }
+
+        # Also check by strategy
+        drifted_dimensions: list[str] = []
+        for strategy in ("short_term", "swing"):
+            def _wr_strat(start, end, strat):
+                r = db._conn.execute("""
+                    SELECT COUNT(*), SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END)
+                    FROM win_rate_records
+                    WHERE outcome IN ('win','loss') AND run_date >= ? AND run_date < ?
+                      AND strategy = ?
+                """, (start, end, strat)).fetchone()
+                return (r[0] or 0, r[1] or 0)
+
+            rc, rw = _wr_strat(recent_start, now.strftime("%Y%m%d"), strategy)
+            pc, pw = _wr_strat(prior_start, recent_start, strategy)
+            if rc >= 3 and pc >= 3:
+                r_wr = rw / rc * 100
+                p_wr = pw / pc * 100
+                strat_drop = p_wr - r_wr
+                if strat_drop > threshold_pp:
+                    drifted_dimensions.append(f"{strategy}: {p_wr:.0f}% -> {r_wr:.0f}%")
+                    drifted = True
+
+        if drifted:
+            logger.warning(
+                f"Parameter drift detected: overall {prior_wr:.0f}% -> {recent_wr:.0f}% "
+                f"(drop {drop:.1f}pp). Dimensions: {drifted_dimensions or ['overall']}"
+            )
+        else:
+            logger.info(
+                f"Drift check OK: {prior_wr:.0f}% -> {recent_wr:.0f}% "
+                f"(delta {drop:+.1f}pp, threshold {threshold_pp}pp)"
+            )
+
+        return {
+            "drifted": drifted,
+            "dimensions": drifted_dimensions,
+            "details": details,
+        }
+    except Exception as e:
+        logger.debug(f"Parameter drift check failed: {e}")
+        return {"drifted": False, "error": str(e)}
+    finally:
+        db.close()

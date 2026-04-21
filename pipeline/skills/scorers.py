@@ -101,8 +101,10 @@ def score_news_output(
         impact = p.get(f"impact_{c.get('impact', 'neutral')}", 0.0)
         confidence = max(0.0, min(1.0, float(c.get("confidence", 0.5))))
         horizon = p.get(f"horizon_{c.get('time_horizon', 'short_term')}", 0.5)
+        # v12: Apply time decay to catalyst scoring
+        time_decay = max(0.1, min(1.0, float(c.get("time_decay_factor", 1.0))))
 
-        contribution = impact * magnitude * confidence * horizon * p["catalyst_scale"]
+        contribution = impact * magnitude * confidence * horizon * time_decay * p["catalyst_scale"]
         score += contribution
 
     # --- Risks ---

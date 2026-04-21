@@ -90,6 +90,42 @@ def _check_market_regime(market: str) -> dict:
             flags.append("elevated_vix")
             level = max(level, "cautious", key=["normal", "cautious", "bearish", "crisis"].index)
 
+        # --- v12: SPY fund flow (OBV trend) ---
+        spy_flow_trend = None
+        if market == "us_stock":
+            try:
+                spy_10d = spy  # already fetched above (SPY history)
+                if len(spy_10d) >= 5:
+                    _closes = spy_10d["Close"].values
+                    _volumes = spy_10d["Volume"].values
+                    # Compute cumulative OBV
+                    _obv = [0.0]
+                    for _i in range(1, len(_closes)):
+                        if _closes[_i] > _closes[_i - 1]:
+                            _obv.append(_obv[-1] + _volumes[_i])
+                        elif _closes[_i] < _closes[_i - 1]:
+                            _obv.append(_obv[-1] - _volumes[_i])
+                        else:
+                            _obv.append(_obv[-1])
+                    # Compare second half vs first half OBV
+                    _mid = len(_obv) // 2
+                    _obv_first_avg = sum(_obv[:_mid]) / max(_mid, 1)
+                    _obv_second_avg = sum(_obv[_mid:]) / max(len(_obv) - _mid, 1)
+                    if _obv_first_avg != 0:
+                        _obv_ratio = _obv_second_avg / abs(_obv_first_avg)
+                    else:
+                        _obv_ratio = 1.0
+                    if _obv_ratio > 1.1:
+                        spy_flow_trend = "inflow"
+                    elif _obv_ratio < 0.9:
+                        spy_flow_trend = "outflow"
+                        flags.append("spy_outflow")
+                        level = max(level, "cautious", key=["normal", "cautious", "bearish", "crisis"].index)
+                    else:
+                        spy_flow_trend = "neutral"
+            except Exception as e:
+                logger.debug(f"SPY fund flow check failed: {e}")
+
         # --- v6: Macro yield curve integration (US only) ---
         macro_data: dict = {}
         if market == "us_stock":
@@ -122,6 +158,8 @@ def _check_market_regime(market: str) -> dict:
             "yield_spread": macro_data.get("yield_spread_10y5y"),
             "macro_risk": macro_data.get("macro_risk_level"),
             "spread_trend": macro_data.get("spread_trend"),
+            # v12: SPY fund flow
+            "spy_flow_trend": spy_flow_trend if market == "us_stock" else None,
         }
 
         # --- v11: Macro event calendar (FOMC/CPI/PCE/NFP, US only) ---
@@ -316,6 +354,23 @@ def run_daily_pipeline(
         logger.info(f"Pre-run evaluation: {eval_result}")
     except Exception as e:
         logger.warning(f"Pre-run evaluation failed: {e}")
+
+    # v12: Parameter drift detection
+    try:
+        from pipeline.evaluator import check_parameter_drift
+        _drift_cfg = cfg.raw.get("pipeline", {}).get("drift_detection", {})
+        if _drift_cfg.get("enabled", True):
+            drift = check_parameter_drift(
+                lookback_days=int(_drift_cfg.get("lookback_days", 30)),
+                threshold_pp=float(_drift_cfg.get("threshold_pp", 10)),
+            )
+            if drift.get("drifted"):
+                logger.warning(
+                    f"PARAMETER DRIFT ALERT: {drift.get('details', {})} "
+                    f"dimensions={drift.get('dimensions', [])}"
+                )
+    except Exception as e:
+        logger.debug(f"Drift check failed: {e}")
 
     _progress(progress_cb, 4.0, "Checking market regime")
     regime = _check_market_regime(market)
@@ -519,6 +574,9 @@ def run_daily_pipeline(
                     "combined_score": it.get("combined_score", 0),
                     "confidence": it.get("confidence", 0),
                     "sector": sector,
+                    # v12: dimensional tracking
+                    "tier": it.get("tier", "unknown"),
+                    "regime_level": regime.get("level", "normal"),
                 })
                 _wr_inserted += 1
             except Exception as e:
@@ -662,20 +720,26 @@ _GAP_ABORT_THRESHOLD = 0.03  # 3% gap vs stage-1 reference -> abort
 
 
 def _fetch_open_price(ticker: str, market: str) -> float | None:
-    """Return the 09:35 ET price (close of the first 5-minute bar).
+    """Return the VWAP of the first 1-3 five-minute bars after market open.
 
-    Falls back to regularMarketOpen / last_price if intraday bars are
-    unavailable. Returns None on any failure.
+    v12: Uses VWAP instead of single bar close for more representative
+    post-open pricing. Falls back to first-bar close, then
+    regularMarketOpen / last_price if intraday bars unavailable.
+    Returns None on any failure.
     """
     from core.data_source import to_yf_ticker
     symbol = to_yf_ticker(ticker, market)
     try:
         t = yf.Ticker(symbol)
-        # Try 5-minute bars first; yfinance returns OHLCV for the current
-        # trading session when called intraday.
         intraday = t.history(period="1d", interval="5m")
         if intraday is not None and not intraday.empty:
-            # Close of the first 5-min bar is the 09:35 ET price
+            # VWAP of first 1-3 bars (covers 09:30-09:45 ET)
+            bars = intraday.head(min(3, len(intraday)))
+            vol_sum = bars["Volume"].sum()
+            if vol_sum > 0:
+                vwap = float((bars["Close"] * bars["Volume"]).sum() / vol_sum)
+                return vwap
+            # Zero volume edge case: fall back to first bar close
             return float(intraday["Close"].iloc[0])
         # Fallback: regular market open from fast_info
         info = t.fast_info

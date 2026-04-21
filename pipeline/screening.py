@@ -44,6 +44,80 @@ def _package_root() -> Path:
 
 
 # ---------------------------------------------------------------------------
+# v12: Sector rotation detection
+# ---------------------------------------------------------------------------
+
+_SECTOR_ETF_MAP = {
+    "XLK": "Technology",
+    "XLF": "Financial Services",
+    "XLE": "Energy",
+    "XLV": "Healthcare",
+    "XLI": "Industrials",
+    "XLY": "Consumer Cyclical",
+    "XLP": "Consumer Defensive",
+    "XLC": "Communication Services",
+    "XLRE": "Real Estate",
+    "XLB": "Basic Materials",
+    "XLU": "Utilities",
+}
+
+_sector_rotation_cache: dict[str, float] | None = None
+
+
+def _compute_sector_rotation(lookback_days: int = 5) -> dict[str, float]:
+    """Compute sector relative strength vs SPY over the lookback window.
+
+    Returns dict mapping sector name to excess return (e.g., +0.023 = 2.3% above SPY).
+    Cached per screening run.
+    """
+    global _sector_rotation_cache
+    if _sector_rotation_cache is not None:
+        return _sector_rotation_cache
+
+    import yfinance as yf
+
+    result: dict[str, float] = {}
+    try:
+        tickers = list(_SECTOR_ETF_MAP.keys()) + ["SPY"]
+        data = yf.download(tickers, period=f"{lookback_days + 5}d", progress=False)
+        if data.empty or "Close" not in data.columns.get_level_values(0):
+            logger.debug("Sector rotation: download failed or empty")
+            _sector_rotation_cache = {}
+            return {}
+
+        closes = data["Close"]
+        if isinstance(closes, pd.Series):
+            _sector_rotation_cache = {}
+            return {}
+
+        spy_ret = 0.0
+        if "SPY" in closes.columns and len(closes) >= 2:
+            spy_first = closes["SPY"].dropna().iloc[0]
+            spy_last = closes["SPY"].dropna().iloc[-1]
+            spy_ret = (spy_last - spy_first) / spy_first if spy_first > 0 else 0.0
+
+        for etf, sector in _SECTOR_ETF_MAP.items():
+            if etf in closes.columns:
+                col = closes[etf].dropna()
+                if len(col) >= 2:
+                    first = col.iloc[0]
+                    last = col.iloc[-1]
+                    ret = (last - first) / first if first > 0 else 0.0
+                    result[sector] = round(ret - spy_ret, 4)
+
+        logger.info(
+            f"Sector rotation ({lookback_days}d): "
+            f"top={max(result, key=result.get) if result else 'N/A'} "
+            f"bottom={min(result, key=result.get) if result else 'N/A'}"
+        )
+    except Exception as e:
+        logger.warning(f"Sector rotation computation failed: {e}")
+
+    _sector_rotation_cache = result
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Stock pool loading
 # ---------------------------------------------------------------------------
 
@@ -147,6 +221,10 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
     """
     cfg = get_config()
     sc = cfg.screening
+
+    # v12: Clear sector rotation cache at each run to avoid stale data
+    global _sector_rotation_cache
+    _sector_rotation_cache = None
 
     pool = _load_pool_file(market, pool_type=pool_type)
     if not pool:
@@ -440,41 +518,64 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
             closes = []
             volumes = []
 
-        # --- Factor 1: Acceleration (beta-adjusted, not absolute momentum) ---
+        # --- Factor 1: Relative Strength vs benchmark (v12) ---
+        # Replaces absolute momentum with excess return over SPY/HSI.
+        # _norm_series maps raw RS to percentile within peer group.
         if len(closes) >= 20:
+            ret_20d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
+            ret_20d_full = (price / closes[-20]) - 1.0 if closes[-20] > 0 else 0.0
+            # Relative strength = excess return over benchmark
+            rs_raw = ret_20d_full - bench_ret
+            # Also factor in short-term acceleration
             ret_5d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
-            ret_20d = (price / closes[-20]) - 1.0 if closes[-20] > 0 else 0.0
-            # Normalize to same time period: 5d rate * 4 -> 20d rate
-            accel = (ret_5d * 4.0) - ret_20d  # positive = accelerating
-            # Beta-adjusted benchmark: implied beta from 20d returns
-            if abs(bench_ret) > 0.005:
-                implied_beta = ret_20d / bench_ret
-                implied_beta = max(0.5, min(2.5, implied_beta))
-            else:
-                implied_beta = 1.0
-            accel -= implied_beta * bench_ret * (5 / 20)
+            short_accel = ret_5d * 4.0 - ret_20d_full  # 5d annualized vs 20d
+            # Blend: 70% RS + 30% short-term acceleration
+            accel = 0.7 * rs_raw + 0.3 * max(-0.3, min(0.3, short_accel))
             accel = max(-0.5, min(0.5, accel))
         elif len(closes) >= 5:
             ret_5d = (price / closes[-5]) - 1.0 if closes[-5] > 0 else 0.0
-            accel = ret_5d - bench_ret * 0.1
+            accel = ret_5d - bench_ret * 0.25
             accel = max(-0.3, min(0.3, accel))
         else:
             accel = 0.0
         raw_accel.append(accel)
 
-        # --- Factor 2: Volume Anomaly ---
-        # How much is recent volume above the 20-day average?
-        if len(volumes) >= 20:
-            vol_5d_avg = sum(volumes[-5:]) / 5.0 if sum(volumes[-5:]) > 0 else 1.0
-            vol_20d_avg = sum(volumes[-20:]) / 20.0 if sum(volumes[-20:]) > 0 else 1.0
-            vol_ratio = vol_5d_avg / max(vol_20d_avg, 1.0)
-            # Also check today's volume vs average
-            today_vol = float(q.get("volume") or 0)
-            today_ratio = today_vol / max(vol_20d_avg, 1.0) if today_vol > 0 else 1.0
-            # Combine: 60% recent trend + 40% today spike
-            vol_anomaly = 0.6 * min(vol_ratio, 4.0) + 0.4 * min(today_ratio, 5.0)
-            # Normalize: 1.0 = normal, 2.0+ = interesting, 3.0+ = very unusual
-            vol_anomaly = max(0.0, (vol_anomaly - 0.8) / 3.0)  # maps [0.8, 3.8] -> [0, 1]
+        # --- Factor 2: Directional Volume Anomaly (v12) ---
+        # Distinguishes up-volume from down-volume. High volume on up days
+        # is bullish; high volume on down days is bearish (distribution).
+        if len(closes) >= 20 and len(volumes) >= 20:
+            # Classify each day's volume as "up" or "down" based on close-to-close
+            up_vol_5d = 0.0
+            dn_vol_5d = 0.0
+            for _vi in range(-5, 0):
+                if closes[_vi] > closes[_vi - 1]:
+                    up_vol_5d += volumes[_vi]
+                else:
+                    dn_vol_5d += volumes[_vi]
+
+            up_vol_20d = 0.0
+            dn_vol_20d = 0.0
+            for _vi in range(-20, 0):
+                if closes[_vi] > closes[_vi - 1]:
+                    up_vol_20d += volumes[_vi]
+                else:
+                    dn_vol_20d += volumes[_vi]
+
+            # Compute up-volume expansion ratio and down-volume expansion ratio
+            up_avg_5 = up_vol_5d / 5.0 if up_vol_5d > 0 else 0
+            up_avg_20 = up_vol_20d / 20.0 if up_vol_20d > 0 else 1
+            dn_avg_5 = dn_vol_5d / 5.0 if dn_vol_5d > 0 else 0
+            dn_avg_20 = dn_vol_20d / 20.0 if dn_vol_20d > 0 else 1
+
+            up_ratio = up_avg_5 / max(up_avg_20, 1) if up_avg_20 > 0 else 1.0
+            dn_ratio = dn_avg_5 / max(dn_avg_20, 1) if dn_avg_20 > 0 else 1.0
+
+            # Net directional score: up-volume expansion good, down-volume bad
+            # up_ratio=2.0 means up-days have 2x normal volume (accumulation)
+            # dn_ratio=2.0 means down-days have 2x normal volume (distribution)
+            vol_anomaly = max(0.0, min(1.0,
+                (min(up_ratio, 4.0) - min(dn_ratio, 4.0) * 0.5 + 0.5) / 2.5
+            ))
         else:
             vol_anomaly = 0.3  # neutral
         raw_volume.append(vol_anomaly)
@@ -578,6 +679,11 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
     w_volfit = sc.weight_volatility_fit
     w_fund = sc.weight_fundamental
 
+    # v12: Sector rotation signal
+    _sector_rot = _compute_sector_rotation() if cfg.raw.get("pipeline", {}).get("sector_rotation", {}).get("enabled", False) else {}
+    _rot_bonus = float(cfg.raw.get("pipeline", {}).get("sector_rotation", {}).get("bonus_pct", 0.08)) * 100
+    _rot_penalty = float(cfg.raw.get("pipeline", {}).get("sector_rotation", {}).get("penalty_pct", -0.05)) * 100
+
     def _score_group(indices: list[int]) -> list[dict]:
         """Normalize factor values within a group and build result dicts."""
         if not indices:
@@ -596,6 +702,18 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
                     w_setup * s_s[local_i] + w_volfit * s_vf[local_i] +
                     w_fund * s_fu[local_i]) * 100.0
             comp += raw_quality_bonus[global_i]
+
+            # v12: Sector rotation bonus/penalty
+            _sr_adj = 0.0
+            _stock_sector = (fin.get("sector") or "").strip()
+            if _sector_rot and _stock_sector:
+                _sr_val = _sector_rot.get(_stock_sector, 0.0)
+                if _sr_val > 0.01:   # sector outperforming SPY by >1%
+                    _sr_adj = _rot_bonus
+                elif _sr_val < -0.01:  # sector underperforming SPY by >1%
+                    _sr_adj = _rot_penalty
+                comp += _sr_adj
+
             out.append({
                 "ticker": r["ticker"],
                 "name": r.get("name", r["ticker"]),
@@ -619,7 +737,12 @@ def run_screening(market: str = "us_stock", top_n: int = 40, pool_type: str = "d
                     "volatility_fit": round(s_vf[local_i], 3),
                     "fundamental": round(s_fu[local_i], 3),
                     "quality_bonus": round(raw_quality_bonus[global_i], 1),
+                    "sector_rotation": round(_sr_adj, 1),
                 },
+                # v12: pass premarket data through
+                "premarket_price": q.get("premarket_price"),
+                "premarket_change_pct": q.get("premarket_change_pct", 0.0),
+                "premarket_volume": q.get("premarket_volume", 0),
             })
         return out
 
@@ -720,6 +843,18 @@ _layer1_kline_cache: dict[str, pd.DataFrame] = {}
 # ---------------------------------------------------------------------------
 # Layer 2: Technical data enrichment
 # ---------------------------------------------------------------------------
+
+def _compute_adv_20d(kdf: pd.DataFrame) -> float:
+    """Compute 20-day average daily dollar volume from K-line data."""
+    if kdf is None or kdf.empty or len(kdf) < 5:
+        return 0.0
+    try:
+        tail = kdf.tail(20)
+        dollar_vols = tail["close"].values * tail["volume"].values
+        return float(dollar_vols.mean())
+    except Exception:
+        return 0.0
+
 
 def compute_atr(kdf: pd.DataFrame, period: int = 20) -> float:
     """Average True Range over last `period` bars."""
@@ -1264,6 +1399,12 @@ def build_enriched_candidates(
             "options_pc_ratio": options_pc_ratio_val,
             "options_unusual_activity": options_unusual,
             "options_data": opt_info,  # v6: full options dict for Layer 4 scoring
+            # v12: Premarket data (passed through from quote)
+            "premarket_price": c.get("premarket_price"),
+            "premarket_change_pct": c.get("premarket_change_pct", 0.0),
+            "premarket_volume": c.get("premarket_volume", 0),
+            # v12: Average daily dollar volume for liquidity-aware position sizing
+            "adv_20d": _compute_adv_20d(kdf),
         })
 
     logger.info(f"Layer 2 enrichment: {len(enriched)} candidates with technical data")

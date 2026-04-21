@@ -49,6 +49,26 @@ def get_quote(ticker: str, market: str) -> dict[str, Any] | None:
         if price is None:
             return None
         change_pct = round((price - prev) / prev * 100, 2) if prev and prev > 0 else 0.0
+
+        # v12: Premarket data (US only, best-effort)
+        pre_price = None
+        pre_change_pct = 0.0
+        pre_volume = 0
+        if market == "us_stock":
+            try:
+                import datetime as _dt
+                pre_hist = t.history(period="1d", prepost=True)
+                if pre_hist is not None and not pre_hist.empty:
+                    # Filter bars before 09:30 ET (premarket)
+                    pre_bars = pre_hist[pre_hist.index.time < _dt.time(9, 30)]
+                    if not pre_bars.empty:
+                        pre_price = round(float(pre_bars["Close"].iloc[-1]), 4)
+                        pre_volume = int(pre_bars["Volume"].sum())
+                        if prev and prev > 0:
+                            pre_change_pct = round((pre_price - prev) / prev * 100, 2)
+            except Exception:
+                pass
+
         return {
             "ticker": ticker, "market": market,
             "price": round(float(price), 4), "change_pct": change_pct,
@@ -58,6 +78,9 @@ def get_quote(ticker: str, market: str) -> dict[str, Any] | None:
             "day_low": float(getattr(info, "day_low", 0) or 0),
             "year_high": float(getattr(info, "year_high", 0) or 0),
             "year_low": float(getattr(info, "year_low", 0) or 0),
+            "premarket_price": pre_price,
+            "premarket_change_pct": pre_change_pct,
+            "premarket_volume": pre_volume,
         }
     except Exception as e:
         logger.warning(f"Quote failed {symbol}: {e}")

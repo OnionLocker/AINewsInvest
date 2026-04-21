@@ -498,3 +498,210 @@ class SECEdgarNews:
         except Exception as e:
             logger.debug(f"SEC EDGAR search failed {ticker}: {e}")
             return []
+
+
+# ---------------------------------------------------------------------------
+# Source 6: Seeking Alpha RSS (analyst/community stock analysis)
+# ---------------------------------------------------------------------------
+
+class SeekingAlphaRSS:
+    """Seeking Alpha per-ticker RSS feed.
+    Pros: Free, no API key, analyst-grade commentary, earnings transcripts,
+          bullish/bearish thesis per stock. Largest US stock analysis platform.
+    Cons: Some delay (not breaking news), editorial slant
+    Why it matters for P&L: Analyst buy/sell thesis directly influences
+    retail and small-fund positioning. Catching a negative SA article early
+    can front-run the retail sell pressure.
+    """
+
+    _BASE = "https://seekingalpha.com/api/sa/combined/{ticker}.xml"
+    _MARKET_CURRENTS = "https://seekingalpha.com/market_currents.xml"
+
+    def _parse_rss(self, xml_text: str) -> list[dict]:
+        items = []
+        try:
+            root = ET.fromstring(xml_text)
+            for item_el in root.findall(".//item"):
+                title = (item_el.findtext("title") or "").strip()
+                link = (item_el.findtext("link") or "").strip()
+                pub_date = (item_el.findtext("pubDate") or "").strip()
+                desc = (item_el.findtext("description") or "").strip()
+
+                if not title:
+                    continue
+
+                # SA titles sometimes include author: "AAPL: Buy thesis (Author Name)"
+                publisher = "Seeking Alpha"
+                items.append({
+                    "title": title,
+                    "publisher": publisher,
+                    "link": link,
+                    "published": pub_date,
+                    "summary": re.sub(r"<[^>]+>", "", desc)[:300] if desc else "",
+                })
+        except ET.ParseError as e:
+            logger.debug(f"Seeking Alpha RSS parse error: {e}")
+        return items
+
+    def fetch(self, ticker: str, market: str, limit: int = 8) -> list[dict]:
+        # Seeking Alpha only covers US stocks
+        if market != "us_stock":
+            return []
+
+        url = self._BASE.format(ticker=ticker)
+        try:
+            with httpx.Client(timeout=8, follow_redirects=True) as client:
+                r = client.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                  "Chrome/131.0.0.0 Safari/537.36",
+                })
+                if r.status_code == 403:
+                    # SA occasionally blocks scraping; graceful degradation
+                    logger.debug(f"Seeking Alpha RSS blocked for {ticker}")
+                    return []
+                r.raise_for_status()
+                raw_items = self._parse_rss(r.text)
+
+            items = []
+            for item in raw_items[:limit]:
+                items.append(_tag_item(item, "seeking_alpha"))
+            return items
+        except Exception as e:
+            logger.debug(f"Seeking Alpha RSS failed {ticker}: {e}")
+            return []
+
+    def fetch_market_currents(self, limit: int = 10) -> list[dict]:
+        """Fetch Seeking Alpha Market Currents (broad market news)."""
+        try:
+            with httpx.Client(timeout=8, follow_redirects=True) as client:
+                r = client.get(self._MARKET_CURRENTS, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                  "Chrome/131.0.0.0 Safari/537.36",
+                })
+                if r.status_code == 403:
+                    return []
+                r.raise_for_status()
+                raw_items = self._parse_rss(r.text)
+
+            items = []
+            for item in raw_items[:limit]:
+                items.append(_tag_item(item, "seeking_alpha_market"))
+            return items
+        except Exception as e:
+            logger.debug(f"Seeking Alpha market currents failed: {e}")
+            return []
+
+
+# ---------------------------------------------------------------------------
+# Source 7: CNBC RSS (mainstream financial news, fast breaking)
+# ---------------------------------------------------------------------------
+
+class CNBCRSS:
+    """CNBC RSS feeds for market-moving news.
+    Pros: Free, no API key, fast breaking news, institutional credibility,
+          multiple category feeds (markets, earnings, economy)
+    Cons: No per-ticker feed, broad market news only
+    Why it matters for P&L: CNBC is the most-watched financial news source
+    during US trading hours. Breaking CNBC headlines move prices in seconds.
+    Best used for market-level context, not per-stock signals.
+    """
+
+    # Category RSS feed URLs
+    _FEEDS = {
+        "top_news": "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+                    "?partnerId=wrss01&id=100003114",
+        "markets": "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+                   "?partnerId=wrss01&id=20910258",
+        "earnings": "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+                    "?partnerId=wrss01&id=15839135",
+        "economy": "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+                   "?partnerId=wrss01&id=20910258",
+        "investing": "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+                     "?partnerId=wrss01&id=15839069",
+    }
+
+    def _parse_rss(self, xml_text: str) -> list[dict]:
+        items = []
+        try:
+            root = ET.fromstring(xml_text)
+            for item_el in root.findall(".//item"):
+                title = (item_el.findtext("title") or "").strip()
+                link = (item_el.findtext("link") or "").strip()
+                pub_date = (item_el.findtext("pubDate") or "").strip()
+                desc = (item_el.findtext("description") or "").strip()
+
+                if not title:
+                    continue
+
+                items.append({
+                    "title": title,
+                    "publisher": "CNBC",
+                    "link": link,
+                    "published": pub_date,
+                    "summary": re.sub(r"<[^>]+>", "", desc)[:300] if desc else "",
+                })
+        except ET.ParseError as e:
+            logger.debug(f"CNBC RSS parse error: {e}")
+        return items
+
+    def fetch(self, ticker: str, market: str, limit: int = 6) -> list[dict]:
+        """Fetch CNBC news relevant to a specific ticker.
+
+        CNBC RSS doesn't have per-ticker feeds, so we search title/description
+        for the ticker symbol to filter relevant items.
+        """
+        if market != "us_stock":
+            return []
+
+        # Fetch from markets + earnings feeds (most relevant for individual stocks)
+        all_items: list[dict] = []
+        for cat in ("markets", "earnings"):
+            url = self._FEEDS.get(cat)
+            if not url:
+                continue
+            try:
+                with httpx.Client(timeout=8, follow_redirects=True) as client:
+                    r = client.get(url, headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                      "Chrome/131.0.0.0 Safari/537.36",
+                    })
+                    r.raise_for_status()
+                    all_items.extend(self._parse_rss(r.text))
+            except Exception as e:
+                logger.debug(f"CNBC RSS {cat} failed: {e}")
+
+        # Filter items that mention the ticker or company name
+        ticker_upper = ticker.upper().replace("-", ".").replace("-", " ")
+        relevant = []
+        for item in all_items:
+            text = f"{item.get('title', '')} {item.get('summary', '')}".upper()
+            if ticker_upper in text:
+                relevant.append(_tag_item(item, "cnbc"))
+
+        return relevant[:limit]
+
+    def fetch_market_news(self, limit: int = 10) -> list[dict]:
+        """Fetch broad market news from CNBC (for market context)."""
+        all_items: list[dict] = []
+        for cat in ("top_news", "markets", "economy"):
+            url = self._FEEDS.get(cat)
+            if not url:
+                continue
+            try:
+                with httpx.Client(timeout=8, follow_redirects=True) as client:
+                    r = client.get(url, headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                      "Chrome/131.0.0.0 Safari/537.36",
+                    })
+                    r.raise_for_status()
+                    raw = self._parse_rss(r.text)
+                    for item in raw:
+                        all_items.append(_tag_item(item, "cnbc_market"))
+            except Exception as e:
+                logger.debug(f"CNBC RSS {cat} market news failed: {e}")
+
+        return all_items[:limit]

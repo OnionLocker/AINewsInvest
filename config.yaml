@@ -208,6 +208,25 @@ pipeline:
     evaluation_retention_days: 21
     enable_auto_cleanup: true
 
+  # v12: Sector rotation detection
+  sector_rotation:
+    enabled: true
+    lookback_days: 5
+    bonus_pct: 0.08
+    penalty_pct: -0.05
+
+  # v12: Premarket conviction modifier
+  premarket:
+    enabled: true
+    alignment_bonus: 3
+    contrary_penalty: 5
+
+  # v12: Parameter drift detection
+  drift_detection:
+    enabled: true
+    lookback_days: 30
+    threshold_pp: 10
+
 # Stock pool
 stock_pool:
   us_stock:

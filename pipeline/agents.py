@@ -734,6 +734,29 @@ def _compute_trade_params(
         stop_loss = max(stop_from_support, stop_from_default)
     stop_loss = round(stop_loss, 2)
 
+    # --- v12: Stop-loss cluster avoidance ---
+    # ATR round-number stops are predictable; add deterministic offset
+    # to avoid market-maker stop-hunting at common levels.
+    import hashlib as _hashlib
+    _ticker_str = str(enriched.get("ticker", ""))
+    if _ticker_str:
+        _sl_hash = int(_hashlib.md5(_ticker_str.encode()).hexdigest()[:8], 16)
+        _sl_offset_pct = 0.003 + (_sl_hash % 5) * 0.001  # 0.3% - 0.7%
+        # Snap to nearest support if within 1% of computed SL
+        _sl_snapped = False
+        if support_levels:
+            for _sup in support_levels:
+                _sup_f = _safe_float(_sup)
+                if 0 < _sup_f < stop_loss and (stop_loss - _sup_f) / _sup_f < 0.01:
+                    stop_loss = round(_sup_f * (1 - _sl_offset_pct), 2)
+                    _sl_snapped = True
+                    break
+        if not _sl_snapped:
+            stop_loss = round(stop_loss * (1 - _sl_offset_pct * 0.5), 2)
+        # Re-enforce bounds after offset
+        stop_loss = max(stop_loss, round(entry_price * (1 - strat.sl_max_pct), 2))
+        stop_loss = min(stop_loss, round(entry_price * (1 - strat.sl_min_pct), 2))
+
     # --- Take Profit: ATR-based primary, resistance as reference ---
     if atr_20d > 0:
         tp_atr = entry_price + atr_20d * tp_mult
@@ -877,6 +900,26 @@ def _compute_short_trade_params(
         sl_max_pct = 0.08
     stop_loss = min(stop_loss, round(entry_price * (1 + sl_max_pct), 2))
     stop_loss = max(stop_loss, round(entry_price * 1.015, 2))
+
+    # --- v12: Stop-loss cluster avoidance (short direction) ---
+    import hashlib as _hashlib_s
+    _ticker_s = str(enriched.get("ticker", ""))
+    if _ticker_s:
+        _sl_hash_s = int(_hashlib_s.md5(_ticker_s.encode()).hexdigest()[:8], 16)
+        _sl_offset_s = 0.003 + (_sl_hash_s % 5) * 0.001
+        # For short: SL is above entry, snap to resistance + offset
+        _sl_snapped_s = False
+        if resistance_levels:
+            for _res in resistance_levels:
+                _res_f = _safe_float(_res)
+                if _res_f > stop_loss and (_res_f - stop_loss) / _res_f < 0.01:
+                    stop_loss = round(_res_f * (1 + _sl_offset_s), 2)
+                    _sl_snapped_s = True
+                    break
+        if not _sl_snapped_s:
+            stop_loss = round(stop_loss * (1 + _sl_offset_s * 0.5), 2)
+        stop_loss = min(stop_loss, round(entry_price * (1 + sl_max_pct), 2))
+        stop_loss = max(stop_loss, round(entry_price * 1.015, 2))
 
     risk = stop_loss - entry_price
     take_profit = round(min(support_1, entry_price * (1 - strat.default_stop_loss_pct + 1)), 2)
@@ -1415,6 +1458,7 @@ def synthesize_agent_results(
             risk_flag_count=len(all_risk_flags),
             rr_ratio=_rr_ratio,
             strategy_type=strategy_type,
+            adv_20d=_safe_float(c.get("adv_20d", 0)),
         )
 
         all_scored.append({
@@ -1489,6 +1533,41 @@ def synthesize_agent_results(
         s["conviction_score"] = round(
             s["combined_score"] * (s["confidence"] / 100.0) ** 0.7, 2
         )
+
+    # v12: Premarket alignment modifier
+    # If premarket move aligns with signal direction, boost conviction;
+    # if it opposes, penalize. Skip if no premarket data.
+    _enriched_map = {c["ticker"]: c for c in enriched}
+    for s in all_scored:
+        _em = _enriched_map.get(s["ticker"], {})
+        _pre_chg = _safe_float(_em.get("premarket_change_pct", 0))
+        _pre_vol = _safe_int(_em.get("premarket_volume", 0))
+        if _pre_vol > 0 and abs(_pre_chg) > 0.5:
+            _is_long = s.get("direction", "buy") == "buy"
+            if _is_long and _pre_chg > 1.0:
+                s["conviction_score"] = round(s["conviction_score"] + 3, 2)
+            elif _is_long and _pre_chg < -2.0:
+                s["conviction_score"] = round(s["conviction_score"] - 5, 2)
+            elif not _is_long and _pre_chg < -1.0:
+                s["conviction_score"] = round(s["conviction_score"] + 3, 2)
+            elif not _is_long and _pre_chg > 2.0:
+                s["conviction_score"] = round(s["conviction_score"] - 5, 2)
+
+    # v12: Dimensional win-rate modifier
+    try:
+        from pipeline.evaluator import compute_dimensional_win_rates
+        _dim_wr = compute_dimensional_win_rates(lookback_days=60)
+        if _dim_wr:
+            for s in all_scored:
+                _wr_key = f"{s.get('tier', 'mid')}|{strategy_type}|{regime_level}"
+                _wr_data = _dim_wr.get(_wr_key)
+                if _wr_data and _wr_data["count"] >= 10:
+                    if _wr_data["win_rate"] < 0.30:
+                        s["conviction_score"] = round(s["conviction_score"] * 0.85, 2)
+                    elif _wr_data["win_rate"] > 0.60:
+                        s["conviction_score"] = round(s["conviction_score"] * 1.10, 2)
+    except Exception as e:
+        logger.debug(f"Dimensional win-rate modifier skipped: {e}")
 
     all_scored.sort(key=lambda x: x["conviction_score"], reverse=True)
 
@@ -1579,11 +1658,13 @@ def _suggest_position_pct(
     risk_flag_count: int = 0,
     rr_ratio: float = 2.0,
     strategy_type: str = "short_term",
+    adv_20d: float = 0.0,
+    portfolio_value: float = 100_000.0,
 ) -> tuple[int, str]:
     """Suggest position size as % of portfolio with rationale.
 
     Multi-factor model: score, confidence, volatility, risk flags, R:R,
-    strategy, regime. Returns (pct, rationale_chinese).
+    strategy, regime, liquidity. Returns (pct, rationale_chinese).
     """
     if score >= 85:
         base = 8
@@ -1635,6 +1716,16 @@ def _suggest_position_pct(
     elif regime_level in ("bearish", "crisis"):
         pct *= 0.50
         reasons.append("熊市/危机 -50%")
+
+    # v12: Liquidity constraint - cap position to 1% of ADV
+    if adv_20d > 0 and portfolio_value > 0:
+        max_position_dollar = adv_20d * 0.01
+        suggested_dollar = portfolio_value * (pct / 100)
+        if suggested_dollar > max_position_dollar:
+            capped_pct = max_position_dollar / portfolio_value * 100
+            if capped_pct < pct:
+                pct = capped_pct
+                reasons.append(f"流动性约束: ADV ${adv_20d/1e6:.0f}M 限制仓位")
 
     final_pct = max(2, min(10, round(pct)))
     rationale = " · ".join(reasons) + f" -> {final_pct}%"
@@ -1885,7 +1976,7 @@ def _batched_tech_agent(
     llm_candidates = []
     for c in candidates:
         det_score = det_map.get(c["ticker"], {}).get("technical_score", 0)
-        if 40 <= det_score <= 65 or det_score > 70:
+        if 40 <= det_score <= 65:
             llm_candidates.append(c)
 
     if not llm_candidates:

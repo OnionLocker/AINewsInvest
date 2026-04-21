@@ -437,6 +437,9 @@ class Database:
             ("combined_score", "INTEGER DEFAULT 0"),
             ("confidence", "INTEGER DEFAULT 0"),
             ("sector", "TEXT DEFAULT ''"),
+            # v12: dimensional win-rate tracking
+            ("tier", "TEXT DEFAULT 'unknown'"),
+            ("regime_level", "TEXT DEFAULT 'normal'"),
         ]
         try:
             existing = {
@@ -755,8 +758,8 @@ class Database:
                (run_date, ticker, name, market, strategy, direction,
                 entry_price, stop_loss, take_profit, holding_days, outcome,
                 news_score, tech_score, fundamental_score, combined_score,
-                confidence, sector)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                confidence, sector, tier, regime_level)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (record["run_date"], record["ticker"], record["name"],
              record["market"], record["strategy"], record["direction"],
              record["entry_price"], record["stop_loss"], record["take_profit"],
@@ -766,7 +769,9 @@ class Database:
              int(record.get("fundamental_score", 0)),
              int(record.get("combined_score", 0)),
              int(record.get("confidence", 0)),
-             str(record.get("sector", ""))),
+             str(record.get("sector", "")),
+             str(record.get("tier", "unknown")),
+             str(record.get("regime_level", "normal"))),
         )
         self._conn.commit()
 

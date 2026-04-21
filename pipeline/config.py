@@ -281,6 +281,9 @@ class PipelineConfig:
     markets: dict[str, MarketInfo] = field(default_factory=dict)
     stock_pool: dict[str, list[IndexEntry]] = field(default_factory=dict)
 
+    # v12: Raw YAML dict for accessing non-dataclass config sections
+    raw: dict[str, Any] = field(default_factory=dict)
+
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> PipelineConfig:
         if config_path is None:
@@ -352,6 +355,7 @@ class PipelineConfig:
             scheduler=_load_dc(SchedulerConfig, sched_raw),
             markets=markets,
             stock_pool=stock_pool,
+            raw=raw,
         )
 
 

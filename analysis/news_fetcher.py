@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from typing import Any
 
 from loguru import logger
@@ -32,6 +33,8 @@ from core.news_sources import (
     MarketAuxNews,
     SECEdgarNews,
     YFinanceNews,
+    SeekingAlphaRSS,
+    CNBCRSS,
     classify_publisher,
 )
 from pipeline.config import get_config
@@ -89,17 +92,63 @@ def _normalize_title(title: str) -> str:
     return t[:80]
 
 
+def _trigrams(s: str) -> set[str]:
+    """Generate character trigrams for fuzzy dedup."""
+    if len(s) < 3:
+        return {s}
+    return {s[i : i + 3] for i in range(len(s) - 2)}
+
+
+def _jaccard(a: set, b: set) -> float:
+    """Jaccard similarity between two sets."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 def _dedup_news(items: list[dict]) -> list[dict]:
-    """Remove near-duplicate titles, keeping the highest-credibility version."""
-    seen: dict[str, dict] = {}
+    """Remove near-duplicate titles using exact match + trigram similarity.
+
+    v12: Enhanced with trigram Jaccard similarity (>0.6 = duplicate).
+    Keeps the highest-credibility version of each duplicate cluster.
+    """
+    if not items:
+        return []
+
+    # Phase 1: exact normalized-title dedup (fast)
+    seen_exact: dict[str, dict] = {}
+    phase1: list[dict] = []
     for item in items:
         key = _normalize_title(item.get("title", ""))
         if not key or len(key) < 10:
             continue
-        existing = seen.get(key)
-        if existing is None or item.get("credibility", 0) > existing.get("credibility", 0):
-            seen[key] = item
-    return list(seen.values())
+        existing = seen_exact.get(key)
+        if existing is None:
+            seen_exact[key] = item
+            phase1.append(item)
+        elif item.get("credibility", 0) > existing.get("credibility", 0):
+            seen_exact[key] = item
+            phase1 = [item if _normalize_title(x.get("title", "")) == key else x for x in phase1]
+
+    # Phase 2: trigram similarity dedup (catches rewrites of same story)
+    if len(phase1) <= 1:
+        return phase1
+
+    kept: list[dict] = []
+    kept_trigrams: list[set[str]] = []
+    for item in sorted(phase1, key=lambda x: x.get("credibility", 0), reverse=True):
+        title_norm = _normalize_title(item.get("title", ""))
+        tri = _trigrams(title_norm)
+        is_dup = False
+        for kt in kept_trigrams:
+            if _jaccard(tri, kt) > 0.6:
+                is_dup = True
+                break
+        if not is_dup:
+            kept.append(item)
+            kept_trigrams.append(tri)
+
+    return kept
 
 
 def _get_sources() -> list[tuple[str, Any]]:
@@ -131,6 +180,8 @@ def _get_sources() -> list[tuple[str, Any]]:
 
     sources.append(("google_news", GoogleNewsRSS()))
     sources.append(("sec_edgar", SECEdgarNews()))
+    sources.append(("seeking_alpha", SeekingAlphaRSS()))
+    sources.append(("cnbc", CNBCRSS()))
 
     return sources
 
@@ -196,7 +247,55 @@ def fetch_news(ticker: str, market: str, limit: int = 15) -> list[dict]:
 
     deduped.sort(key=lambda x: x.get("credibility", 0), reverse=True)
 
+    # v12: Add time decay factor based on news age
+    _annotate_time_decay(deduped)
+
     return deduped[:limit]
+
+
+def _annotate_time_decay(items: list[dict]) -> None:
+    """Add age_days and time_decay_factor to each news item in-place.
+
+    Decay schedule (v12):
+      0-1 day:  1.0   (fresh)
+      1-3 days: 0.7   (recent)
+      3-7 days: 0.4   (fading)
+      >7 days:  0.15  (stale)
+    """
+    now = datetime.now(timezone.utc)
+    for item in items:
+        published = item.get("published")
+        age_days = 0.0
+        if published:
+            try:
+                if isinstance(published, str):
+                    # Try ISO format first, then common formats
+                    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S",
+                                "%Y-%m-%d %H:%M:%S", "%a, %d %b %Y %H:%M:%S %z"):
+                        try:
+                            dt = datetime.strptime(published, fmt)
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            age_days = (now - dt).total_seconds() / 86400
+                            break
+                        except ValueError:
+                            continue
+                elif isinstance(published, (int, float)):
+                    age_days = (now.timestamp() - published) / 86400
+            except Exception:
+                pass
+
+        age_days = max(0.0, age_days)
+        item["age_days"] = round(age_days, 1)
+
+        if age_days <= 1.0:
+            item["time_decay_factor"] = 1.0
+        elif age_days <= 3.0:
+            item["time_decay_factor"] = 0.7
+        elif age_days <= 7.0:
+            item["time_decay_factor"] = 0.4
+        else:
+            item["time_decay_factor"] = 0.15
 
 
 def fetch_market_news(market: str = "us_stock", limit: int = 20) -> list[dict]:
@@ -240,6 +339,20 @@ def fetch_market_news(market: str = "us_stock", limit: int = 20) -> list[dict]:
             all_items.extend(items)
         except Exception as e:
             logger.debug(f"MarketAux market news failed: {e}")
+
+    # v12: Seeking Alpha market currents + CNBC market news
+    if market == "us_stock":
+        try:
+            sa = SeekingAlphaRSS()
+            all_items.extend(sa.fetch_market_currents(limit=8))
+        except Exception as e:
+            logger.debug(f"Seeking Alpha market currents failed: {e}")
+
+        try:
+            cnbc = CNBCRSS()
+            all_items.extend(cnbc.fetch_market_news(limit=8))
+        except Exception as e:
+            logger.debug(f"CNBC market news failed: {e}")
 
     deduped = _dedup_news(all_items)
     deduped.sort(key=lambda x: x.get("credibility", 0), reverse=True)
